@@ -43,7 +43,7 @@ class FantasyProsADPScraper:
         })
         self.base_url = "https://www.fantasypros.com/nfl/adp"
         
-    def get_scoring_url(self, scoring: str) -> str:
+    def get_scoring_url(self, scoring: str, year: int = None) -> str:
         """Get the correct URL for the scoring format"""
         scoring_map = {
             'ppr': 'ppr-overall.php',
@@ -54,7 +54,13 @@ class FantasyProsADPScraper:
         if scoring not in scoring_map:
             raise ValueError(f"Unsupported scoring format: {scoring}")
         
-        return f"{self.base_url}/{scoring_map[scoring]}"
+        base_url = f"{self.base_url}/{scoring_map[scoring]}"
+        
+        # Add year parameter for historical data
+        if year and year != 2024:  # 2024 is current year
+            base_url += f"?year={year}"
+        
+        return base_url
     
     def scrape_adp_page(self, url: str) -> pd.DataFrame:
         """Scrape ADP data from a FantasyPros page"""
@@ -230,7 +236,7 @@ def build_fantasypros_adp(args: Args):
     
     # Get URL for scoring format
     try:
-        url = scraper.get_scoring_url(args.scoring)
+        url = scraper.get_scoring_url(args.scoring, args.season)
     except ValueError as e:
         print(f"❌ {e}")
         return

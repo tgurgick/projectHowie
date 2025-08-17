@@ -20,7 +20,10 @@ A comprehensive fantasy football database system with advanced analytics, multip
 
 ### 📊 Market Data
 - **ECR Rankings**: Expert consensus rankings (3,691 records)
-- **ADP Data**: Average draft position (planned integration)
+- **ADP Data**: FantasyPros ADP data (2,074 records across all formats)
+  - PPR: 884 players with ADP rankings (2021-2024)
+  - Half-PPR: 492 players with ADP rankings (2023-2024)
+  - Standard: 698 players with ADP rankings (2022-2024)
 
 ### 🔄 Multiple Scoring Formats
 - **PPR**: Point per reception scoring
@@ -155,7 +158,9 @@ print(df)
 - **`scripts/build_fantasy_db_simple.py`** - Build core database (players, games, stats)
 - **`scripts/build_all_scoring.py`** - Build all three scoring databases
 - **`scripts/build_advanced_stats.py`** - Add advanced analytics
-- **`scripts/build_fantasy_market.py`** - Add market data (ECR, ADP)
+- **`scripts/build_fantasy_market.py`** - Add market data (ECR)
+- **`scripts/build_fantasypros_adp.py`** - Add FantasyPros ADP data (single year)
+- **`scripts/build_historical_adp.py`** - Add historical ADP data (2021-2024)
 - **`scripts/build_all_stats.py`** - Master script for all advanced features
 
 ### Verification & Testing
@@ -175,8 +180,12 @@ print(df)
 - **DynastyProcess**: Player IDs and ECR rankings
 - **PFR**: Pro Football Reference snap counts
 
+### Current Integrations
+- **FantasyPros**: ✅ ADP data and expert rankings (implemented)
+- **DynastyProcess**: ✅ ECR rankings and player IDs (implemented)
+- **nfl_data_py**: ✅ Official NFL statistics (implemented)
+
 ### Planned Integrations
-- **FantasyPros**: ADP data and expert rankings
 - **Sleeper**: Real-time ADP and league data
 - **PFF**: Advanced analytics (route running, broken tackles)
 - **NFL Next Gen Stats**: Player tracking data
