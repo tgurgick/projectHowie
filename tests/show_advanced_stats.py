@@ -125,11 +125,18 @@ def show_market_data_sample(db_path, db_name):
                 print("-" * 60)
                 
                 for _, row in sample.iterrows():
-                    ecr = f"{row['ecr_rank']:.1f}" if pd.notna(row['ecr_rank']) else "N/A"
-                    adp_overall = f"{row['adp_overall']:.0f}" if pd.notna(row['adp_overall']) else "N/A"
-                    adp_pos = f"{row['adp_position']:.0f}" if pd.notna(row['adp_position']) else "N/A"
+                    # Handle None values properly - convert to string first
+                    ecr_val = row['ecr_rank']
+                    adp_overall_val = row['adp_overall']
+                    adp_pos_val = row['adp_position']
                     
-                    print(f"{row['name']:<20} {row['position']:<3} {row['team']:<3} "
+                    ecr = f"{ecr_val:.1f}" if ecr_val is not None and pd.notna(ecr_val) else "N/A"
+                    adp_overall = f"{adp_overall_val:.0f}" if adp_overall_val is not None and pd.notna(adp_overall_val) else "N/A"
+                    adp_pos = f"{adp_pos_val:.0f}" if adp_pos_val is not None and pd.notna(adp_pos_val) else "N/A"
+                    
+                    # Handle None team value
+                    team_display = row['team'] if row['team'] is not None else "N/A"
+                    print(f"{row['name']:<20} {row['position']:<3} {team_display:<3} "
                           f"{ecr:<6} {adp_overall:<12} {adp_pos:<8}")
             else:
                 print("No market data found")
