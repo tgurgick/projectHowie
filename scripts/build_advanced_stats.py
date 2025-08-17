@@ -140,12 +140,12 @@ def build_advanced_stats(args: Args):
     
     if not qb.empty:
         qb_stats = qb.groupby(["game_id","player_id"], dropna=True).agg(
-            epa_per_play=("epa", "mean"),
+            qb_epa_per_play=("epa", "mean"),
             cpoe=("cpoe", "mean")
         ).reset_index()
         print(f"  Created {len(qb_stats)} QB stat records")
     else:
-        qb_stats = pd.DataFrame(columns=["game_id","player_id","epa_per_play","cpoe"])
+        qb_stats = pd.DataFrame(columns=["game_id","player_id","qb_epa_per_play","cpoe"])
         print("  No QB stats created")
 
     # --- Build rusher stats (EPA) ---
@@ -158,11 +158,11 @@ def build_advanced_stats(args: Args):
     
     if not rush.empty:
         rush_stats = rush.groupby(["game_id","player_id"], dropna=True).agg(
-            epa_per_play=("epa", "mean")
+            rush_epa_per_play=("epa", "mean")
         ).reset_index()
         print(f"  Created {len(rush_stats)} rusher stat records")
     else:
-        rush_stats = pd.DataFrame(columns=["game_id","player_id","epa_per_play"])
+        rush_stats = pd.DataFrame(columns=["game_id","player_id","rush_epa_per_play"])
         print("  No rusher stats created")
 
     # --- Team totals for shares ---
@@ -215,6 +215,16 @@ def build_advanced_stats(args: Args):
     # Merge rusher stats
     if not rush_stats.empty:
         adv = adv.merge(rush_stats, on=["game_id","player_id"], how="outer")
+    
+    # Combine EPA values (QB takes precedence if both exist)
+    if 'qb_epa_per_play' in adv.columns and 'rush_epa_per_play' in adv.columns:
+        adv['epa_per_play'] = adv['qb_epa_per_play'].fillna(adv['rush_epa_per_play'])
+    elif 'qb_epa_per_play' in adv.columns:
+        adv['epa_per_play'] = adv['qb_epa_per_play']
+    elif 'rush_epa_per_play' in adv.columns:
+        adv['epa_per_play'] = adv['rush_epa_per_play']
+    else:
+        adv['epa_per_play'] = np.nan
     
     # Merge snap stats
     if not snap_stats.empty:
