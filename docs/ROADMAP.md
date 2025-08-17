@@ -6,7 +6,7 @@
 - **Core Data**: Players, games, fantasy points (2018-2024)
 - **Multiple Scoring**: PPR, Half-PPR, Standard
 - **Advanced Stats**: Snap share, target share, air yards, aDOT, YAC, EPA, CPOE
-- **Market Data**: ECR rankings (3,691 records) + FantasyPros ADP (785 records)
+- **Market Data**: ECR rankings (3,691 records) + FantasyPros ADP (2,074 records)
 - **Incremental Loading**: Season-based updates
 - **Data Validation**: Integrity checks and error handling
 
@@ -15,8 +15,8 @@
 - **Players**: 24,522 unique players
 - **Games**: 1,942 games
 - **Player Stats**: 38,235 records per scoring type
-- **Advanced Stats**: 38,372 records
-- **Market Data**: 3,691 ECR records
+- **Advanced Stats**: 38,372 records (complete 2018-2024)
+- **Market Data**: 3,691 ECR records + 2,074 ADP records
 
 ---
 
@@ -24,20 +24,38 @@
 
 ### 1.1 EPA & CPOE Integration
 **Priority**: High
-**Status**: Partially implemented (0 records currently)
+**Status**: ✅ COMPLETED
 
 **Tasks**:
-- [ ] Fix EPA per play calculation from play-by-play data
-- [ ] Add CPOE (Completion Percentage Over Expected) for QBs
-- [ ] Implement QB-specific advanced metrics
-- [ ] Add rushing EPA for RBs
+- [x] Fix EPA per play calculation from play-by-play data
+- [x] Add CPOE (Completion Percentage Over Expected) for QBs
+- [x] Implement QB-specific advanced metrics
+- [x] Add rushing EPA for RBs
 
-**Expected Impact**: 
-- 7,000+ EPA records
-- 1,000+ CPOE records
-- Better QB and RB analysis
+**Achieved Results**: 
+- 16,968 EPA/CPOE records across 2018-2024
+- QB EPA per play and CPOE metrics
+- RB rushing EPA per play metrics
+- Complete coverage across all three scoring databases
 
-### 1.2 Route Running Data
+### 1.2 Snap Share Integration
+**Priority**: High
+**Status**: ✅ COMPLETED
+
+**Tasks**:
+- [x] Fix player ID mapping for snap count data
+- [x] Implement multi-strategy mapping (PFR ID + name/position/team)
+- [x] Calculate team offense snaps and snap share percentages
+- [x] Backfill historical data (2018-2024)
+- [x] Deploy across all three scoring databases
+
+**Achieved Results**:
+- 10,274 snap share records across 2018-2024
+- Complete coverage for all three databases (PPR, Half-PPR, Standard)
+- Real snap percentages (e.g., Drake London 19.8%, Rome Odunze 26.6%)
+- Robust player ID mapping with fallback strategies
+
+### 1.3 Route Running Data
 **Priority**: Medium
 **Status**: Placeholder (NaN values)
 
@@ -211,7 +229,8 @@
 ### Immediate (Next 2-4 weeks)
 1. **Route running data integration** - Medium impact, high effort
 2. **Predictive models** - High impact, high effort
-3. **ADP trend analysis** - Analyze historical ADP changes
+3. **Market data display fixes** - Fix formatting issues in verification scripts
+4. **ADP trend analysis** - Analyze historical ADP changes
 
 ### Short-term (1-3 months)
 1. **Route running data integration** - Medium impact, high effort

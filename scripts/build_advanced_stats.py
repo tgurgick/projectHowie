@@ -67,7 +67,7 @@ def create_player_id_mapping(engine):
     for _, row in dp_mapping.iterrows():
         mapping[row['player_id']] = row['player_id']  # Already mapped
     
-    # Map 3: PFR player IDs (from snap counts)
+    # Map 3: PFR player IDs (from snap counts) - map by name/position/team
     try:
         snaps = nfl.import_snap_counts([2024])  # Use recent year for mapping
         pfr_mapping = snaps[['pfr_player_id', 'player', 'position', 'team']].copy()
@@ -77,6 +77,7 @@ def create_player_id_mapping(engine):
                                        how='inner')
         for _, row in pfr_mapping.iterrows():
             mapping[row['pfr_player_id']] = row['player_id']
+        print(f"  Created PFR mapping for {len(pfr_mapping)} players")
     except Exception as e:
         print(f"Warning: Could not create PFR mapping: {e}")
     
@@ -175,8 +176,35 @@ def build_advanced_stats(args: Args):
         snaps = nfl.import_snap_counts(seasons)
         print(f"  Loaded {len(snaps)} snap count records")
         
-        # Map player IDs
-        snaps['player_id'] = snaps['pfr_player_id'].map(player_mapping)
+        # Try multiple mapping strategies for snap counts
+        snaps['player_id'] = np.nan
+        
+        # Strategy 1: Map by pfr_player_id (from our mapping)
+        pfr_mapped = snaps['pfr_player_id'].map(player_mapping)
+        snaps.loc[pfr_mapped.notna(), 'player_id'] = pfr_mapped[pfr_mapped.notna()]
+        
+        # Strategy 2: Map by name/position/team (fallback)
+        unmapped = snaps[snaps['player_id'].isna()].copy()
+        if not unmapped.empty:
+            print(f"  Attempting name-based mapping for {len(unmapped)} unmapped players...")
+            try:
+                with engine.connect() as conn:
+                    our_players = pd.read_sql(text("SELECT player_id, name, position, team FROM players"), conn)
+                
+                name_mapping = unmapped.merge(our_players, 
+                                             left_on=['player', 'position', 'team'], 
+                                             right_on=['name', 'position', 'team'], 
+                                             how='inner')
+                
+                for _, row in name_mapping.iterrows():
+                    snaps.loc[snaps['pfr_player_id'] == row['pfr_player_id'], 'player_id'] = row['player_id']
+                
+                print(f"  Name-based mapping added {len(name_mapping)} players")
+            except Exception as e:
+                print(f"  Warning: Name-based mapping failed: {e}")
+                # Continue without name-based mapping
+        
+        # Remove rows without player_id
         snaps = snaps.dropna(subset=['player_id'])
         
         if not snaps.empty:

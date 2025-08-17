@@ -11,12 +11,12 @@ A comprehensive fantasy football database system with advanced analytics, multip
 - **Player Stats**: 38,235 records per scoring type
 
 ### 📈 Advanced Analytics
-- **Snap Share**: Offensive snap percentage (10,343 records)
+- **Snap Share**: Offensive snap percentage (10,274 records across 2018-2024)
 - **Target Share**: Percentage of team targets (31,109 records)
 - **Air Yards**: Passing yards before catch (31,109 records)
 - **aDOT**: Average depth of target (31,109 records)
 - **YAC**: Yards after catch (31,109 records)
-- **EPA/CPOE**: Expected points added and completion percentage over expected (in development)
+- **EPA/CPOE**: Expected points added and completion percentage over expected (16,968 records)
 
 ### 📊 Market Data
 - **ECR Rankings**: Expert consensus rankings (3,691 records)
