@@ -57,18 +57,21 @@
 
 ### 1.3 Route Running Data
 **Priority**: Medium
-**Status**: Placeholder (NaN values)
+**Status**: ✅ COMPLETED
 
 **Tasks**:
-- [ ] Integrate with PFF (Pro Football Focus) data
-- [ ] Add route participation metrics
-- [ ] Calculate route efficiency
-- [ ] Add route depth analysis
+- [x] Import PFF route data from CSV files (2018-2024)
+- [x] Process route grades, YPRR, route participation
+- [x] Add route depth, contested catch metrics
+- [x] Integrate with all three scoring databases
+- [x] Create comprehensive route analytics display
 
-**Data Sources**:
-- PFF API (paid)
-- NFL Next Gen Stats (limited)
-- Manual scraping (fallback)
+**Achieved Results**:
+- 3,558 route running records across 2018-2024
+- Complete route analytics: grades, YPRR, participation, depth
+- Multi-database integration (PPR, Half-PPR, Standard)
+- Advanced metrics: contested catches, slot/wide rates, QB ratings
+- **Files**: `scripts/build_pff_route_data_batch.py`, `tests/show_route_data.py`
 
 ### 1.3 Broken Tackles & RYOE
 **Priority**: Medium

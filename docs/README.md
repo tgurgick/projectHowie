@@ -17,6 +17,7 @@ A comprehensive fantasy football database system with advanced analytics, multip
 - **aDOT**: Average depth of target (31,109 records)
 - **YAC**: Yards after catch (31,109 records)
 - **EPA/CPOE**: Expected points added and completion percentage over expected (16,968 records)
+- **Route Running**: PFF route grades, YPRR, route participation (3,558 records across 2018-2024)
 
 ### 📊 Market Data
 - **ECR Rankings**: Expert consensus rankings (3,691 records)
@@ -161,6 +162,7 @@ print(df)
 - **`scripts/build_fantasy_market.py`** - Add market data (ECR)
 - **`scripts/build_fantasypros_adp.py`** - Add FantasyPros ADP data (single year)
 - **`scripts/build_historical_adp.py`** - Add historical ADP data (2021-2024)
+- **`scripts/build_pff_route_data_batch.py`** - Import PFF route running data (2018-2024)
 - **`scripts/build_all_stats.py`** - Master script for all advanced features
 
 ### Verification & Testing
@@ -168,6 +170,7 @@ print(df)
 - **`tests/test_all_databases.py`** - Detailed testing suite
 - **`tests/database_summary.py`** - Quick database overview
 - **`tests/show_advanced_stats.py`** - Display available advanced stats
+- **`tests/show_route_data.py`** - Display PFF route running data
 
 ### Analysis Scripts
 - **`scripts/compare_scoring.py`** - Compare fantasy points across scoring types
@@ -184,10 +187,10 @@ print(df)
 - **FantasyPros**: ✅ ADP data and expert rankings (implemented)
 - **DynastyProcess**: ✅ ECR rankings and player IDs (implemented)
 - **nfl_data_py**: ✅ Official NFL statistics (implemented)
+- **PFF**: ✅ Route running analytics and grades (implemented)
 
 ### Planned Integrations
 - **Sleeper**: Real-time ADP and league data
-- **PFF**: Advanced analytics (route running, broken tackles)
 - **NFL Next Gen Stats**: Player tracking data
 
 ## 🔄 Incremental Updates
