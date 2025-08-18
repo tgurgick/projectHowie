@@ -71,6 +71,7 @@
 - Complete route analytics: grades, YPRR, participation, depth
 - Multi-database integration (PPR, Half-PPR, Standard)
 - Advanced metrics: contested catches, slot/wide rates, QB ratings
+- **BYOD Integration**: Requires PFF+ subscription for data access
 - **Files**: `scripts/build_pff_route_data_batch.py`, `tests/show_route_data.py`
 
 ### 1.3 Broken Tackles & RYOE

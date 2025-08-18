@@ -36,6 +36,7 @@ A comprehensive fantasy football database system with advanced analytics, multip
 ### Prerequisites
 - Python 3.8+
 - pip or conda
+- **PFF+ Subscription** (for route running data - BYOD)
 
 ### Installation
 
@@ -64,6 +65,12 @@ A comprehensive fantasy football database system with advanced analytics, multip
 4. **Add advanced stats and market data**
    ```bash
    python3 scripts/build_all_stats.py
+   ```
+
+5. **Add PFF route running data (BYOD)**
+   ```bash
+   # Download CSV files from PFF+ and place in data/pff_csv/
+   python3 scripts/build_pff_route_data_batch.py
    ```
 
 5. **Verify the installation**
@@ -162,7 +169,7 @@ print(df)
 - **`scripts/build_fantasy_market.py`** - Add market data (ECR)
 - **`scripts/build_fantasypros_adp.py`** - Add FantasyPros ADP data (single year)
 - **`scripts/build_historical_adp.py`** - Add historical ADP data (2021-2024)
-- **`scripts/build_pff_route_data_batch.py`** - Import PFF route running data (2018-2024)
+- **`scripts/build_pff_route_data_batch.py`** - Import PFF route running data (2018-2024, BYOD)
 - **`scripts/build_all_stats.py`** - Master script for all advanced features
 
 ### Verification & Testing
@@ -183,11 +190,16 @@ print(df)
 - **DynastyProcess**: Player IDs and ECR rankings
 - **PFR**: Pro Football Reference snap counts
 
+### Data Access Requirements
+- **Free Data**: NFL stats, ECR rankings, basic advanced stats
+- **PFF+ Subscription**: Route running analytics (BYOD - Bring Your Own Data)
+- **FantasyPros**: ADP data (web scraping, no subscription required)
+
 ### Current Integrations
 - **FantasyPros**: ✅ ADP data and expert rankings (implemented)
 - **DynastyProcess**: ✅ ECR rankings and player IDs (implemented)
 - **nfl_data_py**: ✅ Official NFL statistics (implemented)
-- **PFF**: ✅ Route running analytics and grades (implemented)
+- **PFF**: ✅ Route running analytics and grades (BYOD - Bring Your Own Data via PFF+)
 
 ### Planned Integrations
 - **Sleeper**: Real-time ADP and league data

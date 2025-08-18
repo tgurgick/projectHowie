@@ -1,5 +1,19 @@
 # PFF Route Running Statistics Guide
 
+## ⚠️ **BYOD (Bring Your Own Data) Requirement**
+
+**PFF route running data requires a PFF+ subscription** to access and download the CSV files. This integration is designed as a BYOD (Bring Your Own Data) solution.
+
+### **PFF+ Subscription Required**
+- **PFF+ Elite**: Access to advanced receiving statistics and route running data
+- **CSV Export**: Download route data for seasons 2018-2024
+- **Data Format**: Regular season receiving statistics with route metrics
+
+### **What You Need**
+1. **Active PFF+ subscription** (Elite tier recommended)
+2. **Access to receiving statistics** in PFF dashboard
+3. **Ability to export CSV files** from PFF platform
+
 ## 📁 **Data Directory**
 Your PFF CSV files should be placed in: `data/pff_csv/`
 
@@ -44,14 +58,15 @@ Your PFF CSV files should be placed in: `data/pff_csv/`
 - **Route Success Rate** - Percentage of routes that result in positive outcomes
 - **Route Efficiency Score** - PFF's efficiency rating
 
-## 🔍 **What to Download from PFF**
+## 🔍 **What to Download from PFF+**
 
 ### **Receiving Route Data**
-Look for these export options in PFF:
+With your PFF+ subscription, look for these export options:
 - **"Receiving Routes"** or **"Route Running"** data
 - **"Advanced Receiving Stats"** 
 - **"Route Efficiency"** data
 - **"Separation Metrics"**
+- **"Regular Season Receiving Statistics"** (recommended)
 
 ### **Data Granularity**
 - **Weekly data** (preferred) - Game-by-game route stats
@@ -77,13 +92,13 @@ Route Running Grade, Route Running Score
 
 ## 🚀 **Next Steps**
 
-1. **Log into PFF** and navigate to receiving/route data
+1. **Log into PFF+** with your subscription and navigate to receiving/route data
 2. **Look for CSV export options** in the route running section
 3. **Download data** for 2024 (and earlier seasons if available)
 4. **Save files** to `data/pff_csv/` with descriptive names like:
-   - `pff_route_data_2024.csv`
-   - `pff_route_data_2023.csv`
-   - `pff_advanced_receiving_2024.csv`
+   - `receiving_2024_reg.csv`
+   - `receiving_2023_reg.csv`
+   - `receiving_2022_reg.csv`
 
 5. **Run analysis** to understand the structure:
    ```bash
@@ -92,10 +107,11 @@ Route Running Grade, Route Running Score
 
 ## 💡 **Alternative Data Sources**
 
-If PFF doesn't have the exact route data you need, also look for:
-- **Next Gen Stats** (from NFL) - Separation and cushion data
-- **ESPN Advanced Stats** - Route participation metrics
-- **Pro Football Reference** - Basic route running stats
+If you don't have PFF+ access, consider these alternatives:
+- **Next Gen Stats** (from NFL) - Separation and cushion data (free)
+- **ESPN Advanced Stats** - Route participation metrics (free)
+- **Pro Football Reference** - Basic route running stats (free)
+- **nfl_data_py** - Limited route metrics (free, already integrated)
 
 ## 🔧 **Customization**
 
@@ -106,4 +122,8 @@ Once you have the CSV files, the import script will:
 4. **Create player ID mappings**
 5. **Import into your fantasy database**
 
-**Ready to download your PFF data?** Place the CSV files in `data/pff_csv/` and we'll analyze and import them!
+**Ready to download your PFF+ data?** Place the CSV files in `data/pff_csv/` and we'll analyze and import them!
+
+## 📝 **Note on Data Access**
+
+This integration is designed for users who already have PFF+ subscriptions and want to enhance their fantasy football analysis with route running data. The system provides tools to import and analyze PFF data but does not provide access to the data itself.
