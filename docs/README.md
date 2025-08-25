@@ -12,6 +12,7 @@ A comprehensive fantasy football database system with advanced analytics, route 
 - **Scheme Splits Analysis**: Man vs Zone coverage performance (2018-2024)
 - **Incremental Loading**: Efficient data updates without duplicates
 - **Comprehensive Testing**: Automated verification and data quality checks
+- **🤖 Enhanced Chat System**: AI-powered multi-agent chat interface with GPT-4o
 
 ## 📊 Data Coverage
 
@@ -63,6 +64,11 @@ A comprehensive fantasy football database system with advanced analytics, route 
 fantasy-etl/
 ├── scripts/           # Database building scripts
 ├── tests/            # Testing and verification scripts
+├── chat_system/      # Enhanced AI chat interface
+│   ├── enhanced_agents.py  # Main chat system with GPT-4o
+│   ├── test_demo.py        # Demo without API key
+│   ├── requirements.txt    # Chat system dependencies
+│   └── README.md          # Chat system documentation
 ├── docs/             # Documentation
 ├── data/             # Database files and CSV data
 │   ├── pff_csv/      # PFF CSV files (BYOD)
@@ -97,6 +103,21 @@ python3 scripts/build_all_scoring.py
 ```bash
 # Add advanced stats (EPA, CPOE, snap share)
 python3 scripts/build_advanced_stats.py --db-url sqlite:///data/fantasy_ppr.db
+```
+
+### 4. Try the Enhanced Chat System (Optional)
+```bash
+# View demo
+cd chat_system
+python test_demo.py
+
+# Start interactive chat (requires OpenAI API key)
+export OPENAI_API_KEY="your-api-key"
+python enhanced_agents.py chat
+
+# Ask a single question
+python enhanced_agents.py ask "Tell me about Justin Jefferson"
+```
 
 # Add market data (ADP, ECR)
 python3 scripts/build_fantasy_market.py --db-url sqlite:///data/fantasy_ppr.db
