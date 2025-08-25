@@ -1,0 +1,16 @@
+# Core dependencies
+nfl_data_py>=0.3.0
+pandas>=1.3.0
+sqlalchemy>=2.0.0
+numpy>=1.21.0
+requests>=2.25.0
+
+# Data processing
+python-dateutil>=2.8.0
+
+# Optional dependencies for future features
+# beautifulsoup4>=4.9.0  # For web scraping
+# plotly>=5.0.0         # For visualizations
+# scikit-learn>=1.0.0   # For predictive models
+# fastapi>=0.68.0       # For API development
+# uvicorn>=0.15.0       # For API server
