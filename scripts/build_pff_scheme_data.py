@@ -149,12 +149,8 @@ class PFFSchemeDataBuilder:
         if 'man_route_grade' in processed_df.columns and 'zone_route_grade' in processed_df.columns:
             processed_df['route_grade_man_vs_zone_diff'] = processed_df['man_route_grade'] - processed_df['zone_route_grade']
         
-        # Convert rates to percentages
-        rate_columns = ['man_route_participation', 'zone_route_participation', 
-                       'man_target_share', 'zone_target_share']
-        for col in rate_columns:
-            if col in processed_df.columns:
-                processed_df[col] = processed_df[col] * 100
+        # Note: PFF data is already in percentage format, no conversion needed
+        # man_route_participation, zone_route_participation, man_target_share, zone_target_share are already percentages
         
         print(f"  📊 Processed {len(processed_df)} scheme records")
         

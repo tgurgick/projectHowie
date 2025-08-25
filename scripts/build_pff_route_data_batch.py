@@ -122,15 +122,8 @@ class PFFRouteDataBatchBuilder:
         if 'routes_run' in processed_df.columns and 'receptions' in processed_df.columns:
             processed_df['reception_per_route'] = processed_df['receptions'] / processed_df['routes_run']
         
-        # Convert route participation to percentage
-        if 'route_participation' in processed_df.columns:
-            processed_df['route_participation'] = processed_df['route_participation'] * 100
-        
-        # Convert rates to percentages
-        rate_columns = ['slot_rate', 'wide_rate', 'inline_rate']
-        for col in rate_columns:
-            if col in processed_df.columns:
-                processed_df[col] = processed_df[col] * 100
+        # Note: PFF data is already in percentage format, no conversion needed
+        # route_participation, slot_rate, wide_rate, inline_rate are already percentages
         
         print(f"  📊 Processed {len(processed_df)} route records")
         
