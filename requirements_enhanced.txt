@@ -1,0 +1,34 @@
+# Core dependencies
+openai>=1.0.0
+pandas>=1.3.0
+numpy>=1.21.0
+sqlalchemy>=2.0.0
+click>=8.0.0
+rich>=13.0.0
+pydantic>=2.0.0
+aiohttp>=3.8.0
+
+# Data processing
+python-dateutil>=2.8.0
+openpyxl>=3.0.0  # For Excel support
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+joblib>=1.0.0
+
+# Web scraping (for real-time data)
+beautifulsoup4>=4.9.0
+requests>=2.25.0
+
+# Database
+nfl_data_py>=0.3.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=22.0.0
+mypy>=1.0.0

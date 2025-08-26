@@ -61,59 +61,58 @@ A comprehensive fantasy football database system with advanced analytics, route 
 ## 📁 Project Structure
 
 ```
-projectHowie/
-├── fantasy-etl/          # Data processing and ETL pipeline
-│   ├── scripts/         # Database building scripts
-│   ├── tests/          # Testing and verification
-│   ├── data/           # Database files and CSV data
-│   │   ├── pff_csv/    # PFF CSV files (BYOD)
-│   │   ├── fantasy_ppr.db
-│   │   ├── fantasy_halfppr.db
-│   │   └── fantasy_standard.db
-│   └── requirements.txt # ETL dependencies
-├── chat_system/         # AI-powered chat interface
+fantasy-etl/
+├── scripts/           # Database building scripts
+├── tests/            # Testing and verification scripts
+├── chat_system/      # Enhanced AI chat interface
 │   ├── enhanced_agents.py  # Main chat system with GPT-4o
 │   ├── test_demo.py        # Demo without API key
 │   ├── requirements.txt    # Chat system dependencies
 │   └── README.md          # Chat system documentation
-└── docs/                # Project documentation
-    ├── README.md        # Main documentation
-    ├── CHAT_SYSTEM_DESIGN.md
-    ├── AGENT_POWER_SYSTEM.md
-    ├── ROADMAP.md
-    └── ...
+├── docs/             # Documentation
+├── data/             # Database files and CSV data
+│   ├── pff_csv/      # PFF CSV files (BYOD)
+│   ├── fantasy_ppr.db
+│   ├── fantasy_halfppr.db
+│   └── fantasy_standard.db
+├── requirements.txt  # Python dependencies
+├── .gitignore       # Git ignore rules
+├── LICENSE          # MIT License
+└── CONTRIBUTING.md  # Contribution guidelines
 ```
 
 ## 🚀 Quick Start
 
-### 1. Data Processing (ETL)
+### 1. Installation
 ```bash
 git clone <repository>
 cd fantasy-etl
 pip install -r requirements.txt
+```
 
+### 2. Build Core Database
+```bash
 # Build PPR database (2018-2024)
 python3 scripts/build_fantasy_db.py --db-url sqlite:///data/fantasy_ppr.db
 
 # Build all scoring types
 python3 scripts/build_all_scoring.py
+```
 
+### 3. Add Advanced Analytics
+```bash
 # Add advanced stats (EPA, CPOE, snap share)
 python3 scripts/build_advanced_stats.py --db-url sqlite:///data/fantasy_ppr.db
 ```
 
-### 2. AI Chat System
+### 4. Try the Enhanced Chat System (Optional)
 ```bash
-cd ../chat_system
-pip install -r requirements.txt
-
-# Set up API key
-echo "OPENAI_API_KEY=your-api-key-here" > .env
-
-# View demo (no API key required)
+# View demo
+cd chat_system
 python test_demo.py
 
-# Start interactive chat
+# Start interactive chat (requires OpenAI API key)
+export OPENAI_API_KEY="your-api-key"
 python enhanced_agents.py chat
 
 # Ask a single question

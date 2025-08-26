@@ -25,21 +25,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt, Confirm
 from rich.markdown import Markdown
 
-# Load environment variables from .env file
-def load_env():
-    """Load environment variables from .env file"""
-    env_path = Path(__file__).parent / '.env'
-    if env_path.exists():
-        with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key] = value
-
-# Load .env file
-load_env()
-
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -253,21 +238,11 @@ class EnhancedQueryRouter:
         - comparison: Direct player comparisons
         
         Provide step-by-step reasoning for your classification.
-        
-        Return your response as a JSON object with the following structure:
-        {
-            "query_type": "data|route|market|strategy|analytics|comparison",
-            "primary_players": ["player1", "player2"],
-            "secondary_players": [],
-            "metrics_requested": [],
-            "season": 2024,
-            "reasoning": "Step-by-step reasoning for classification"
-        }
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze this query and return JSON: {query}"}
+            {"role": "user", "content": f"Analyze this query: {query}"}
         ]
         
         response = await client.chat.completions.create(
@@ -377,19 +352,11 @@ class DataAgent:
         You are an expert fantasy football analyst. Analyze the provided player data and provide structured insights.
         Focus on identifying strengths, weaknesses, and actionable insights.
         Provide step-by-step reasoning for your analysis.
-        
-        Return your response as a JSON object with the following structure:
-        {
-            "strengths": ["strength1", "strength2"],
-            "weaknesses": ["weakness1", "weakness2"],
-            "insights": ["insight1", "insight2"],
-            "reasoning": "Step-by-step reasoning for analysis"
-        }
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze this player data and return JSON: {json.dumps(data_summary, indent=2)}"}
+            {"role": "user", "content": f"Analyze this player data: {json.dumps(data_summary, indent=2)}"}
         ]
         
         response = await client.chat.completions.create(
@@ -531,18 +498,11 @@ class RouteAnalysisAgent:
         You are an expert route running analyst. Analyze the provided route running data and provide insights.
         Focus on identifying patterns, trends, and actionable recommendations.
         Provide step-by-step reasoning for your analysis.
-        
-        Return your response as a JSON object with the following structure:
-        {
-            "insights": ["insight1", "insight2"],
-            "recommendations": ["rec1", "rec2"],
-            "reasoning": "Step-by-step reasoning for analysis"
-        }
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze this route running data and return JSON: {json.dumps(data_summary, indent=2)}"}
+            {"role": "user", "content": f"Analyze this route running data: {json.dumps(data_summary, indent=2)}"}
         ]
         
         response = await client.chat.completions.create(
@@ -648,19 +608,11 @@ class MarketAgent:
         You are an expert fantasy football market analyst. Analyze the provided ADP and market data.
         Focus on identifying value picks, market trends, and strategic recommendations.
         Provide step-by-step reasoning for your analysis.
-        
-        Return your response as a JSON object with the following structure:
-        {
-            "value_picks": ["pick1", "pick2"],
-            "market_trends": ["trend1", "trend2"],
-            "recommendations": ["rec1", "rec2"],
-            "reasoning": "Step-by-step reasoning for analysis"
-        }
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze this market data and return JSON: {json.dumps(data_summary, indent=2)}"}
+            {"role": "user", "content": f"Analyze this market data: {json.dumps(data_summary, indent=2)}"}
         ]
         
         response = await client.chat.completions.create(
@@ -756,19 +708,11 @@ class StrategyAgent:
         You are an expert fantasy football strategist. Generate {strategy_type} strategy recommendations.
         Focus on actionable advice with clear reasoning and risk assessment.
         Provide step-by-step reasoning for your recommendations.
-        
-        Return your response as a JSON object with the following structure:
-        {{
-            "recommendations": ["rec1", "rec2"],
-            "reasoning": "Step-by-step reasoning for recommendations",
-            "risk_assessment": "Risk assessment of recommendations",
-            "confidence_level": "High|Medium|Low"
-        }}
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Generate {strategy_type} strategy and return JSON for: {query}"}
+            {"role": "user", "content": f"Generate {strategy_type} strategy for: {query}"}
         ]
         
         response = await client.chat.completions.create(
@@ -885,19 +829,11 @@ class ComparisonAgent:
         You are an expert fantasy football analyst. Compare two players comprehensively.
         Focus on key metrics, strengths/weaknesses, and provide a clear recommendation.
         Provide step-by-step reasoning for your comparison.
-        
-        Return your response as a JSON object with the following structure:
-        {
-            "comparison_metrics": {"metric1": "comparison", "metric2": "comparison"},
-            "winner_by_metric": {"category1": "player1", "category2": "player2"},
-            "overall_recommendation": "Overall recommendation with reasoning",
-            "reasoning": "Step-by-step reasoning for comparison"
-        }
         """
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Compare these players and return JSON: {json.dumps(comparison_data, indent=2)}"}
+            {"role": "user", "content": f"Compare these players: {json.dumps(comparison_data, indent=2)}"}
         ]
         
         response = await client.chat.completions.create(
@@ -984,9 +920,9 @@ def chat(db, verbose):
         console.print("Please set your OpenAI API key: export OPENAI_API_KEY='your-key-here'")
         return
     
-    db_url = f"sqlite:///../fantasy-etl/data/fantasy_{db}.db"
+    db_url = f"sqlite:///data/fantasy_{db}.db"
     
-    if not Path(f"../fantasy-etl/data/fantasy_{db}.db").exists():
+    if not Path(f"data/fantasy_{db}.db").exists():
         console.print(f"[red]Error: Database {db_url} not found[/red]")
         return
     
@@ -1050,9 +986,9 @@ def ask(query, db, verbose):
         console.print("[red]Error: OPENAI_API_KEY environment variable not set[/red]")
         return
     
-    db_url = f"sqlite:///../fantasy-etl/data/fantasy_{db}.db"
+    db_url = f"sqlite:///data/fantasy_{db}.db"
     
-    if not Path(f"../fantasy-etl/data/fantasy_{db}.db").exists():
+    if not Path(f"data/fantasy_{db}.db").exists():
         console.print(f"[red]Error: Database {db_url} not found[/red]")
         return
     
