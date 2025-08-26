@@ -122,7 +122,7 @@ class ModelManager:
             cost_per_1k_output=0.015,
             best_for=["balanced_tasks", "code_generation", "analysis"]
         ),
-        "claude-3-5-sonnet-4": ModelConfig(
+        "claude-sonnet-4": ModelConfig(
             provider=ModelProvider.ANTHROPIC,
             model_name="claude-3-5-sonnet-4-20241022",
             tier=ModelTier.STANDARD,
@@ -135,6 +135,7 @@ class ModelManager:
             cost_per_1k_output=0.015,
             best_for=["balanced_tasks", "code_generation", "analysis"]
         ),
+        # NOTE: The "-4" variant is not a valid public model name; using official 3.5 Sonnet
         "claude-3-haiku": ModelConfig(
             provider=ModelProvider.ANTHROPIC,
             model_name="claude-3-haiku-20240307",
@@ -203,7 +204,7 @@ class ModelManager:
         """Initialize model manager with optional custom config"""
         self.models = self.DEFAULT_MODELS.copy()
         self.clients = {}
-        self.current_model = "claude-3-5-sonnet-4"  # Default model
+        self.current_model = "claude-sonnet-4"  # Default model
         self.task_model_mapping = self._default_task_mapping()
         self.total_cost = 0.0
         self.usage_stats = {}
@@ -223,17 +224,17 @@ class ModelManager:
             # Task type -> Model name
             "research": "perplexity-sonar",
             "deep_research": "perplexity-sonar-pro",
-            "reasoning": "perplexity-sonar-reasoning",
+            "reasoning": "claude-sonnet-4",
             "comprehensive_research": "perplexity-sonar-deep-research",
             "analysis": "gpt-4o",
-            "code_generation": "claude-3-5-sonnet",
+            "code_generation": "claude-sonnet-4",
             "simple_query": "gpt-4o-mini",
             "data_extraction": "gpt-4o-mini",
             "complex_reasoning": "claude-3-opus",
             "optimization": "gpt-4o",
             "classification": "claude-3-haiku",
             "summarization": "gpt-4o-mini",
-            "default": "claude-3-5-sonnet-4"
+            "default": "claude-sonnet-4"
         }
     
     def load_config(self, config_path: Path):
@@ -463,10 +464,13 @@ class ModelManager:
             return "perplexity-sonar" if "deep" not in task_lower else "perplexity-sonar-pro"
         
         elif any(word in task_lower for word in ["code", "script", "function", "program"]):
-            return "claude-3-5-sonnet"
+            return "claude-sonnet-4"
         
         elif any(word in task_lower for word in ["complex", "detailed", "comprehensive"]):
             return "claude-3-opus" if "analysis" in task_lower else "gpt-4o"
+        
+        elif any(word in task_lower for word in ["reasoning", "logic", "think", "analyze"]):
+            return "claude-sonnet-4"
         
         elif any(word in task_lower for word in ["simple", "quick", "basic", "list"]):
             return "gpt-4o-mini"

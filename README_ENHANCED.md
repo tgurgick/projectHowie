@@ -4,7 +4,7 @@
 
 Howie CLI is an advanced, Claude-inspired AI assistant specifically designed for fantasy football analysis. It combines the power of GPT-4 with a comprehensive tool system to provide file operations, data visualization, code generation, real-time updates, and machine learning predictions.
 
-## 🚀 New Features (v2.0)
+## 🚀 New Features (v2.1)
 
 ### Core Capabilities
 - **🗂️ File Operations**: Read/write CSV, Excel, JSON files; import rosters from any platform
@@ -14,6 +14,9 @@ Howie CLI is an advanced, Claude-inspired AI assistant specifically designed for
 - **🤖 ML Predictions**: Advanced projections, lineup optimization, risk analysis
 - **💾 Context Persistence**: Maintains conversation context and session history
 - **🏗️ Workspace Management**: Organized file handling and report generation
+- **🎯 Multi-Model Support**: Automatic model selection based on task type
+- **📝 Enhanced Logging**: Detailed system event tracking and transparency
+- **🎨 Claude-like Interface**: Elegant ">" prompt with subtle command menu
 
 ## Installation
 
@@ -37,37 +40,101 @@ export OPENAI_API_KEY="your-api-key-here"
 ### Interactive Chat Mode (Default)
 ```bash
 # Start interactive chat
-python howie.py
+python howie_enhanced.py
 
 # Resume previous session
-python howie.py chat --resume
+python howie_enhanced.py chat --resume
 
 # Use specific model
-python howie.py chat --model gpt-4o
+python howie_enhanced.py chat --model claude-sonnet-4
+```
+
+### Enhanced Interface Features
+- **Claude-like Prompt**: Clean ">" input prompt
+- **Slash Commands**: Use `/` for system commands (e.g., `/model/info`, `/logs/info`)
+- **Multiple Exit Commands**: Use `end`, `e`, `/end`, or `/quit` to exit
+- **Real-time Logging**: See detailed processing information in medium grey
+- **Command Discovery**: Type `/` to see all available commands
+
+### Slash Commands (Interactive Mode)
+```bash
+# Model Management
+/model/info          # Show available models and usage
+/model/switch <name> # Switch to a different model
+/model/config <task> <model> # Configure model for task type
+/model/save          # Save model configuration
+
+# Cost Tracking
+/cost/info           # Show cost information and usage
+/cost/reset          # Reset cost tracking
+/cost/estimate <model> <tokens> # Estimate cost for a query
+
+# Agent Management
+/agent/info          # Show agent information and types
+/agent/spawn <type>  # Spawn a new agent (coming soon)
+/agent/list          # List active agents (coming soon)
+
+# System Information
+/logs/info           # Show recent system events
+/help                # Show detailed help
+
+# Exit Commands
+/end, /e, /quit      # Exit the application
 ```
 
 ### Single Commands
 ```bash
 # Ask a question
-python howie.py ask "Who should I start: Justin Jefferson or Tyreek Hill?"
+python howie_enhanced.py ask "Who should I start: Justin Jefferson or Tyreek Hill?"
 
 # Import roster
-python howie.py import-roster my_roster.csv --platform espn
+python howie_enhanced.py import-roster my_roster.csv --platform espn
 
 # Compare players
-python howie.py compare "CeeDee Lamb" "Ja'Marr Chase" --visual
+python howie_enhanced.py compare "CeeDee Lamb" "Ja'Marr Chase" --visual
 
 # Generate projections
-python howie.py project "Saquon Barkley" --weeks 3 --method ml
+python howie_enhanced.py project "Saquon Barkley" --weeks 3 --method ml
 
 # Optimize lineup
-python howie.py optimize --roster-file my_team.csv --method balanced
+python howie_enhanced.py optimize --roster-file my_team.csv --method balanced
 
 # Get live scores
-python howie.py live --week 10
+python howie_enhanced.py live --week 10
 
 # Generate analysis code
-python howie.py generate "analyze RB performance trends" --type script
+python howie_enhanced.py generate "analyze RB performance trends" --type script
+```
+
+## Enhanced Logging & Transparency
+
+### Real-time Processing Information
+The enhanced CLI provides detailed, non-intrusive logging of all system operations:
+
+- **🔍 Query Processing**: Shows when processing starts and model selection
+- **🔧 Tool Planning**: Displays tool usage decisions
+- **🛠️ Tool Execution**: Shows which tools are running and their results
+- **📊 Task Classification**: Reveals how queries are categorized
+- **🤖 Model Selection**: Shows which AI model is being used and why
+- **📡 API Calls**: Indicates when external API calls are made
+- **✅ Completion**: Confirms when processing is finished
+
+### System Event Logging
+Use `/logs/info` to view recent system events with:
+- **Timestamps**: When each event occurred
+- **Event Types**: Color-coded by category (user input, API calls, tool execution, etc.)
+- **Descriptions**: Clear explanations of what happened
+- **Non-intrusive Design**: All logging uses medium grey styling
+
+### Example Log Output
+```
+Recent System Events (Last 10):
+11:29:11 👤 user_input: User query: hello...
+11:29:12 📝 tool_decision: No tools needed
+11:29:12 📝 task_classification: Task classified as: default
+11:29:12 📝 model_selection: Selected model: claude-sonnet-4 (anthropic)
+11:29:12 📡 api_call: API call to claude-sonnet-4
+11:29:13 🤖 ai_response: Generated response (287 chars)
 ```
 
 ## Tool Categories

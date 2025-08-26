@@ -34,20 +34,12 @@ console = Console(style="green")
 __version__ = "2.1.0"
 
 
+
+
+
 def show_eagles_intro():
     """Display intro screen"""
     console.print("\n" * 2)
-    
-    # Title with subtle Eagles branding
-    title = Text("HOWIE", style="bold bright_green")
-    subtitle = Text("Fantasy Football AI Assistant", style="green")
-    tagline = Text("🦅 Powered by Claude Sonnet 4 🦅", style="bright_green")
-    
-    # Center the title
-    console.print(Align.center(title))
-    console.print(Align.center(subtitle))
-    console.print(Align.center(tagline))
-    console.print("\n")
     
     # Welcome panel
     welcome_text = (
@@ -57,7 +49,7 @@ def show_eagles_intro():
     
     console.print(Panel.fit(
         welcome_text,
-        title="🏈 WELCOME 🏈",
+        title="🦅 HOWIE 🦅",
         border_style="bright_green"
     ))
     console.print("\n")
@@ -105,8 +97,7 @@ def chat(model, config, resume, no_intro):
         console.print(Panel.fit(
             f"[bold bright_green]Howie Enhanced - AI Assistant[/bold bright_green]\n"
             f"Current Model: [bright_green]{agent.model_manager.current_model}[/bright_green]\n"
-            f"Type 'model:info' to see all models, 'model:switch <name>' to change\n"
-            f"Type 'help' for commands • Type 'quit' to exit",
+            f"Type '/' for commands • '?' for help • 'end' to exit",
             border_style="bright_green"
         ))
         
@@ -139,22 +130,53 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
     
     while True:
         try:
-            # Get user input
-            user_input = console.input("\n[bold bright_green]🏈 You:[/bold bright_green] ")
+            # Get user input with Claude-like prompt
+            user_input = console.input("\n[bold white]>[/bold white] ")
             
             # Check for special commands
-            if user_input.lower() in ['quit', 'exit', 'bye']:
+            if user_input.lower() in ['quit', 'exit', 'bye', 'end', 'e']:
                 console.print("[bright_green]🦅 Good luck with your fantasy team![/bright_green]")
                 break
             
-            elif user_input.lower() == 'help':
+            elif user_input.lower() in ['help', '?']:
                 show_enhanced_help()
+                console.print("\n[dim]? for help • / for commands • /quit to exit[/dim]")
                 continue
             
-            # Model-specific commands
-            elif user_input.lower().startswith('model:'):
-                handle_model_command(agent, user_input[6:])
-                continue
+            # Slash commands
+            elif user_input.startswith('/'):
+                if user_input == '/':
+                    # Show available slash commands
+                    console.print("\n[bold bright_green]Available Commands:[/bold bright_green]")
+                    console.print("  [bright_green]/model[/bright_green] - Model management (info, switch, config, save)")
+                    console.print("  [bright_green]/agent[/bright_green] - Agent management (spawn, list, stop)")
+                    console.print("  [bright_green]/cost[/bright_green] - Cost tracking and limits")
+                    console.print("  [bright_green]/logs[/bright_green] - Show recent system events")
+                    console.print("  [bright_green]/help[/bright_green] - Show detailed help")
+                    console.print("  [bright_green]/quit[/bright_green] - Exit the application")
+                    console.print("\n[dim]? for help • / for commands • /end to exit[/dim]")
+                    continue
+                elif user_input.lower().startswith('/model'):
+                    handle_model_command(agent, user_input[7:])  # Remove '/model' prefix
+                    continue
+                elif user_input.lower().startswith('/help'):
+                    show_enhanced_help()
+                    continue
+                elif user_input.lower().startswith('/cost'):
+                    handle_cost_command(agent, user_input[6:])  # Remove '/cost' prefix
+                    continue
+                elif user_input.lower().startswith('/agent'):
+                    handle_agent_command(agent, user_input[7:])  # Remove '/agent' prefix
+                    continue
+                elif user_input.lower().startswith('/logs'):
+                    handle_logs_command(agent, user_input[6:])  # Remove '/logs' prefix
+                    continue
+                elif user_input.lower().startswith('/quit') or user_input.lower().startswith('/end') or user_input.lower() == '/e':
+                    console.print("[bright_green]🦅 Good luck with your fantasy team![/bright_green]")
+                    break
+                else:
+                    console.print("[yellow]Unknown slash command. Type '/' to see available commands.[/yellow]")
+                    continue
             
             # Model override syntax: @model <query>
             elif user_input.startswith('@'):
@@ -174,12 +196,24 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     continue
             else:
                 # Normal query - use automatic model selection
+                console.print("\n[dim]🔍 Processing query...[/dim]")
+                
+                # Show model selection
+                recommended_model = agent.model_manager.recommend_model(user_input)
+                console.print(f"[dim]📋 Selected model: [grey]{recommended_model}[/grey][/dim]")
+                
+                # Process the message
                 response = await agent.process_message(user_input)
+                
+                console.print("[dim]✅ Query processed[/dim]")
             
             # Display response
             console.print("\n[bold bright_green]🦅 Howie:[/bold bright_green]")
             from rich.markdown import Markdown
             console.print(Markdown(response))
+            
+            # Show subtle menu below response
+            console.print("\n[dim]? for help • / for commands • /end to exit[/dim]")
             
         except KeyboardInterrupt:
             console.print("\n[dim yellow]Use 'quit' to exit properly[/dim yellow]")
@@ -220,7 +254,7 @@ def handle_model_command(agent: EnhancedHowieAgent, command: str):
         # Task mappings
         console.print("\n[bold bright_green]Task Mappings:[/bold bright_green]")
         for task, model in info['task_mappings'].items():
-            console.print(f"  [green]{task}[/green]: {model}")
+            console.print(f"  [bright_green]{task}[/bright_green]: [bright_green]{model}[/bright_green]")
         
         # Usage stats
         if info['usage']['by_model']:
@@ -228,6 +262,9 @@ def handle_model_command(agent: EnhancedHowieAgent, command: str):
             console.print(f"Total Cost: [green]${info['usage']['total_cost']:.4f}[/green]")
             for model, stats in info['usage']['by_model'].items():
                 console.print(f"  {model}: {stats['calls']} calls, [green]${stats.get('cost', 0):.4f}[/green]")
+        
+        # Show subtle menu
+        console.print("\n[dim]? for help • / for commands • /quit to exit[/dim]")
     
     elif parts[0] == 'switch' and len(parts) > 1:
         # Switch model
@@ -257,7 +294,139 @@ def handle_model_command(agent: EnhancedHowieAgent, command: str):
             console.print(f"[red]Error saving config: {e}[/red]")
     
     else:
-        console.print("[yellow]Unknown model command. Try 'model:info' or 'model:switch <name>'[/yellow]")
+        console.print("[yellow]Unknown model command. Try 'model/info' or 'model/switch <name>'[/yellow]")
+
+
+def handle_cost_command(agent: EnhancedHowieAgent, command: str):
+    """Handle cost-related commands"""
+    parts = command.split()
+    
+    if not parts or parts[0] == 'info':
+        # Show cost information
+        usage = agent.model_manager.get_usage_report()
+        
+        console.print(f"\n[bold bright_green]Cost Information:[/bold bright_green]")
+        console.print(f"Total Cost: [bright_green]${usage['total_cost']:.4f}[/bright_green]")
+        
+        if usage['by_model']:
+            console.print(f"\n[bold bright_green]Cost by Model:[/bold bright_green]")
+            for model, stats in usage['by_model'].items():
+                cost = stats.get('cost', 0)
+                calls = stats.get('calls', 0)
+                console.print(f"  [bright_green]{model}[/bright_green]: {calls} calls, [bright_green]${cost:.4f}[/bright_green]")
+        
+        # Show cost limits if configured
+        console.print(f"\n[bold bright_green]Cost Limits:[/bold bright_green]")
+        console.print(f"Daily Limit: [bright_green]$10.00[/bright_green] (default)")
+        console.print(f"Per Query Limit: [bright_green]$0.50[/bright_green] (default)")
+        console.print(f"Warning Threshold: [bright_green]$5.00[/bright_green] (default)")
+        
+        # Show subtle menu
+        console.print("\n[dim]? for help • / for commands • /quit to exit[/dim]")
+    
+    elif parts[0] == 'reset':
+        # Reset cost tracking
+        agent.model_manager.total_cost = 0.0
+        agent.model_manager.usage_stats = {}
+        console.print("[bright_green]Cost tracking reset[/bright_green]")
+    
+    elif parts[0] == 'estimate' and len(parts) > 2:
+        # Estimate cost for a specific model and token count
+        try:
+            model = parts[1]
+            input_tokens = int(parts[2])
+            output_tokens = int(parts[3]) if len(parts) > 3 else 1000
+            
+            cost = agent.model_manager.estimate_cost(model, input_tokens, output_tokens)
+            console.print(f"[bright_green]Estimated cost for {model}: ${cost:.4f}[/bright_green]")
+        except (ValueError, IndexError):
+            console.print("[red]Usage: /cost estimate <model> <input_tokens> [output_tokens][/red]")
+    
+    else:
+        console.print("[yellow]Unknown cost command. Try '/cost info', '/cost reset', or '/cost estimate <model> <tokens>'[/yellow]")
+
+
+def handle_agent_command(agent: EnhancedHowieAgent, command: str):
+    """Handle agent-related commands"""
+    parts = command.split()
+    
+    if not parts or parts[0] == 'info':
+        # Show agent information
+        console.print(f"\n[bold bright_green]Agent Information:[/bold bright_green]")
+        console.print(f"Current Agent: [bright_green]Enhanced Howie Agent[/bright_green]")
+        console.print(f"Model Manager: [bright_green]Active[/bright_green]")
+        console.print(f"Available Models: [bright_green]{len(agent.model_manager.models)}[/bright_green]")
+        console.print(f"Context Memory: [bright_green]Enabled[/bright_green]")
+        
+        # Show available agent types
+        console.print(f"\n[bold bright_green]Available Agent Types:[/bold bright_green]")
+        console.print("  [bright_green]research[/bright_green] - Research and data gathering")
+        console.print("  [bright_green]analysis[/bright_green] - Deep analysis and insights")
+        console.print("  [bright_green]code[/bright_green] - Code generation and scripts")
+        console.print("  [bright_green]optimization[/bright_green] - Lineup and strategy optimization")
+        
+        # Show subtle menu
+        console.print("\n[dim]? for help • / for commands • /quit to exit[/dim]")
+    
+    elif parts[0] == 'spawn' and len(parts) > 1:
+        # Spawn a new agent (placeholder for future implementation)
+        agent_type = parts[1]
+        console.print(f"[bright_green]Spawning {agent_type} agent...[/bright_green]")
+        console.print("[yellow]Agent spawning feature coming soon![/yellow]")
+    
+    elif parts[0] == 'list':
+        # List active agents (placeholder)
+        console.print(f"\n[bold bright_green]Active Agents:[/bold bright_green]")
+        console.print("  [bright_green]Main Agent[/bright_green] - Enhanced Howie Agent (active)")
+        console.print("[yellow]Multi-agent support coming soon![/yellow]")
+    
+    else:
+        console.print("[yellow]Unknown agent command. Try '/agent info', '/agent spawn <type>', or '/agent list'[/yellow]")
+
+
+def handle_logs_command(agent: EnhancedHowieAgent, command: str):
+    """Handle logs-related commands"""
+    parts = command.split()
+    
+    if not parts or parts[0] == 'info':
+        # Show recent logs
+        logs = agent.get_recent_logs(10)
+        
+        if not logs:
+            console.print("[dim]No recent events logged[/dim]")
+            return
+        
+        console.print(f"\n[bold bright_green]Recent System Events (Last 10):[/bold bright_green]")
+        
+        for log in logs:
+            timestamp = log['timestamp']
+            event_type = log['type']
+            description = log['description']
+            
+            # Color code different event types
+            if event_type == 'user_input':
+                icon = "👤"
+                color = "cyan"
+            elif event_type == 'api_call':
+                icon = "📡"
+                color = "yellow"
+            elif event_type == 'tool_execution':
+                icon = "🛠️"
+                color = "blue"
+            elif event_type == 'ai_response':
+                icon = "🤖"
+                color = "green"
+            else:
+                icon = "📝"
+                color = "white"
+            
+            console.print(f"[dim]{timestamp}[/dim] {icon} [{color}]{event_type}[/{color}]: [dim]{description}[/dim]")
+        
+        # Show subtle menu
+        console.print("\n[dim]? for help • / for commands • /quit to exit[/dim]")
+    
+    else:
+        console.print("[yellow]Unknown logs command. Try '/logs info'[/yellow]")
 
 
 def show_enhanced_help():
@@ -265,25 +434,48 @@ def show_enhanced_help():
     help_text = """
 # Enhanced Commands
 
-## Model Management
-- **model:info** - Show available models and usage
-- **model:switch <name>** - Switch to a different model
-- **model:config <task> <model>** - Configure model for task type
-- **model:save** - Save model configuration
+## Quick Help
+- **?** or **help** - Show this help message
+
+## Slash Commands
+- **/** - Show available commands
+- **/model** - Model management
+  - **/model/info** - Show available models and usage
+  - **/model/switch <name>** - Switch to a different model
+  - **/model/config <task> <model>** - Configure model for task type
+  - **/model/save** - Save model configuration
+- **/cost** - Cost tracking and limits
+  - **/cost/info** - Show cost information and usage
+  - **/cost/reset** - Reset cost tracking
+  - **/cost/estimate <model> <tokens>** - Estimate cost for a query
+- **/agent** - Agent management
+  - **/agent/info** - Show agent information and types
+  - **/agent/spawn <type>** - Spawn a new agent (coming soon)
+  - **/agent/list** - List active agents (coming soon)
+- **/logs** - System event logging
+  - **/logs/info** - Show recent system events
+- **/help** - Show detailed help
+- **/quit**, **/end**, **/e** - Exit the application
+
+## Model Override
 - **@model_name <query>** - Use specific model for one query
 
 ## Model Selection Examples
 - **@perplexity-sonar** Who won the NFL games yesterday?
-- **@claude-3-5-sonnet** Generate a Python script for analysis
+- **@claude-sonnet-4** Generate a Python script for analysis
 - **@gpt-4o-mini** List all QBs on the Cowboys
 - **@claude-3-opus** Complex analysis of playoff scenarios
 
 ## Automatic Model Selection
 The system automatically chooses the best model based on your query:
 - Research queries → Perplexity
-- Code generation → Claude Sonnet
+- Code generation → Claude Sonnet 4
 - Complex analysis → GPT-4o or Claude Opus
 - Simple queries → GPT-4o-mini or Claude Haiku
+
+## Command Style
+Commands use Claude-like syntax with slashes (/) for submenus and ? for help.
+Type "/" to see all available commands. Use 'end', 'e', or '/end' to exit.
 
 ## Task Types
 - **research**: Current events, player news

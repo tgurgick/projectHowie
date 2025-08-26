@@ -22,6 +22,9 @@ class EnhancedHowieAgent(HowieAgent):
         # Initialize model manager first
         self.model_manager = ModelManager(model_config_path)
         
+        # Initialize event log
+        self.event_log = []
+        
         # Set default model if provided
         if model:
             self.model_manager.set_model(model)
@@ -41,12 +44,19 @@ class EnhancedHowieAgent(HowieAgent):
     
     async def _generate_response(self, user_input: str, tool_results: List) -> str:
         """Generate AI response using appropriate model"""
+        from rich.console import Console
+        console = Console()
+        
         # Determine task type from user input
         task_type = self._classify_task(user_input)
+        console.print(f"[dim]📊 Task classified as: [grey]{task_type}[/grey][/dim]")
+        self.log_event("task_classification", f"Task classified as: {task_type}")
         
         # Get the model that will be used for this task
         model_name = self.model_manager.task_model_mapping.get(task_type, self.model_manager.current_model)
         model_config = self.model_manager.models.get(model_name)
+        console.print(f"[dim]🤖 Using model: [grey]{model_name}[/grey] ([grey]{model_config.provider.value}[/grey])[/dim]")
+        self.log_event("model_selection", f"Selected model: {model_name} ({model_config.provider.value})")
         
         # For research tasks, try to get current information first
         if task_type == "research":
@@ -98,8 +108,17 @@ class EnhancedHowieAgent(HowieAgent):
                 # Import the web search tool
                 from ..tools.realtime_tools import search_current_nfl_info
                 
+                # Enhance the query to be more specific to NFL/football
+                enhanced_query = user_input.strip()
+                
+                # Add NFL context if the query seems generic
+                if not any(term in enhanced_query.lower() for term in ['nfl', 'football', 'qb', 'rb', 'wr', 'te', 'defense', 'offense', 'coach', 'team', 'roster']):
+                    # Check if it's asking about a player or team
+                    if any(word in enhanced_query.lower() for word in ['project', 'season', 'stats', 'performance']):
+                        enhanced_query = f"NFL football {enhanced_query}"
+                
                 # Search for current information
-                current_info = await search_current_nfl_info(user_input)
+                current_info = await search_current_nfl_info(enhanced_query)
                 
                 # If we got current information, include it in the response
                 if current_info and "❌" not in current_info:
@@ -134,6 +153,8 @@ Please provide a detailed response that incorporates this current information an
                         {"role": "user", "content": enhanced_prompt}
                     ]
                     
+                    console.print(f"[dim]📡 Making API call to [grey]{model_name}[/grey]...[/dim]")
+                    self.log_event("api_call", f"API call to {model_name}")
                     response = await self.model_manager.complete(
                         messages=messages,
                         task_type=task_type,
@@ -141,6 +162,29 @@ Please provide a detailed response that incorporates this current information an
                         max_tokens=2000
                     )
                     return response
+                else:
+                    # Web search failed or returned no results, use database information if available
+                    if database_info:
+                        enhanced_prompt = f"""The user asked: "{user_input}"
+
+I couldn't find current web information, but I have database information available:
+
+{database_info}
+
+Please provide a helpful response based on the available database information. If the user is asking about current season information that might not be in the database, let them know that the database contains historical data and suggest they check official team sources for the most current information."""
+                        
+                        messages = [
+                            {"role": "system", "content": self.system_prompt},
+                            {"role": "user", "content": enhanced_prompt}
+                        ]
+                        
+                        response = await self.model_manager.complete(
+                            messages=messages,
+                            task_type=task_type,
+                            temperature=0.7,
+                            max_tokens=2000
+                        )
+                        return response
                     
             except Exception as e:
                 # If web search fails, fall back to normal processing
@@ -152,7 +196,7 @@ Please provide a detailed response that incorporates this current information an
             system_prompt = """You are a helpful AI assistant specializing in fantasy football and NFL information. 
 
 IMPORTANT GUIDELINES:
-1. Provide ONLY accurate, factual information
+1. Provide ONLY accurate, factual information about NFL football
 2. If you're unsure about specific details, say so rather than guessing
 3. For team rosters and depth charts, be extremely precise about which team each player belongs to
 4. If information seems contradictory or unclear, acknowledge the uncertainty
@@ -161,8 +205,11 @@ IMPORTANT GUIDELINES:
 7. IMPORTANT: 2024 was LAST SEASON. When users ask about "2024" rosters, provide CURRENT 2025 season information instead
 8. Always clarify if you're providing current season (2025) vs. historical information
 9. For depth charts and rosters, focus on the most recent, up-to-date information
+10. CRITICAL: Focus ONLY on NFL football. Do not provide information about MLB, NBA, or other sports
+11. If a query seems ambiguous, ask for clarification about which NFL player or team they're referring to
+12. For player projections and stats, ensure you're discussing NFL football players, not other sports
 
-Please provide accurate, current information when available."""
+Please provide accurate, current NFL football information when available."""
             
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -197,6 +244,8 @@ Please provide accurate, current information when available."""
         
         # Get response using model manager
         try:
+            console.print(f"[dim]📡 Making API call to [grey]{model_name}[/grey]...[/dim]")
+            self.log_event("api_call", f"API call to {model_name}")
             response = await self.model_manager.complete(
                 messages=messages,
                 task_type=task_type,
@@ -368,6 +417,70 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
         
         # Update system prompt to mention model
         self.system_prompt = self._build_system_prompt()
+    
+    async def process_message(self, user_input: str) -> str:
+        """Process a user message with enhanced logging"""
+        from rich.console import Console
+        from rich.panel import Panel
+        console = Console()
+        
+        # Add to context
+        self.context.add_message("user", user_input)
+        self.log_event("user_input", f"User query: {user_input[:50]}...")
+        
+        # Determine if tools are needed
+        console.print("[dim]🔧 Planning tool usage...[/dim]")
+        tool_calls = await self._plan_tool_usage(user_input)
+        
+        # Execute tools if needed
+        tool_results = []
+        if tool_calls:
+            console.print(f"[dim]🛠️  Executing {len(tool_calls)} tool(s)...[/dim]")
+            self.log_event("tool_execution", f"Executing {len(tool_calls)} tools")
+            
+            for i, tool_call in enumerate(tool_calls, 1):
+                tool_name = tool_call.get("tool", "unknown")
+                console.print(f"[dim]  [{i}/{len(tool_calls)}] Running: [grey]{tool_name}[/grey][/dim]")
+                
+                result = await self._execute_tool(tool_call)
+                tool_results.append(result)
+                
+                status = "✅" if result.status.value == "success" else "❌"
+                console.print(f"[dim]  [{i}/{len(tool_calls)}] {status} {tool_name}: {result.status.value}[/dim]")
+                self.log_event("tool_result", f"Tool {tool_name}: {result.status.value}")
+        else:
+            console.print("[dim]📝 No tools needed for this query[/dim]")
+            self.log_event("tool_decision", "No tools needed")
+        
+        # Generate response
+        console.print("[dim]🤖 Generating AI response...[/dim]")
+        response = await self._generate_response(user_input, tool_results)
+        
+        # Add to context
+        self.context.add_message("assistant", response)
+        self.log_event("ai_response", f"Generated response ({len(response)} chars)")
+        
+        return response
+    
+    def log_event(self, event_type: str, description: str, details: Optional[Dict] = None):
+        """Log a system event"""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        event = {
+            "timestamp": timestamp,
+            "type": event_type,
+            "description": description,
+            "details": details or {}
+        }
+        self.event_log.append(event)
+        
+        # Keep only last 50 events
+        if len(self.event_log) > 50:
+            self.event_log = self.event_log[-50:]
+    
+    def get_recent_logs(self, count: int = 10) -> List[Dict]:
+        """Get the most recent events"""
+        return self.event_log[-count:] if self.event_log else []
     
     def _build_system_prompt(self) -> str:
         """Build system prompt with model awareness"""
