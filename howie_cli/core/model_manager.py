@@ -124,7 +124,7 @@ class ModelManager:
         ),
         "claude-sonnet-4": ModelConfig(
             provider=ModelProvider.ANTHROPIC,
-            model_name="claude-3-5-sonnet-4-20241022",
+            model_name="claude-sonnet-4-20250514",
             tier=ModelTier.STANDARD,
             api_key_env="ANTHROPIC_API_KEY",
             max_tokens=8192,
@@ -349,6 +349,23 @@ class ModelManager:
         
         client, model_config = await self.get_client(model)
         
+        # Add system prompt for Perplexity models to maintain football context
+        if model_config.provider == ModelProvider.PERPLEXITY:
+            football_context = """You are Howie, an expert fantasy football AI assistant. Always maintain focus on NFL football and fantasy football context. If a query seems ambiguous, assume the user is asking about NFL football unless explicitly stated otherwise.
+
+For example:
+- "Who benefits most from the most recent cuts" = NFL roster cuts and fantasy football implications
+- "What are the latest updates" = NFL news and fantasy football updates
+- "Who is the best option" = Best fantasy football option for the context
+- "Recent cuts" = NFL roster cuts and fantasy football implications
+
+When searching for information, prioritize NFL football news, player updates, team changes, and fantasy football implications."""
+            
+            # Insert system prompt at the beginning
+            enhanced_messages = [{"role": "system", "content": football_context}] + messages
+        else:
+            enhanced_messages = messages
+        
         # Track usage
         if model not in self.usage_stats:
             self.usage_stats[model] = {"calls": 0, "tokens": 0}
@@ -359,7 +376,7 @@ class ModelManager:
                 # Anthropic API format
                 response = await client.messages.create(
                     model=model_config.model_name,
-                    messages=messages,
+                    messages=enhanced_messages,
                     max_tokens=kwargs.get("max_tokens", model_config.max_tokens),
                     temperature=kwargs.get("temperature", model_config.temperature)
                 )
@@ -375,7 +392,7 @@ class ModelManager:
                 # OpenAI-compatible API (OpenAI, Perplexity)
                 response = await client.chat.completions.create(
                     model=model_config.model_name,
-                    messages=messages,
+                    messages=enhanced_messages,
                     max_tokens=kwargs.get("max_tokens", model_config.max_tokens),
                     temperature=kwargs.get("temperature", model_config.temperature),
                     **{k: v for k, v in kwargs.items() if k not in ["max_tokens", "temperature"]}
@@ -391,10 +408,10 @@ class ModelManager:
             return content
             
         except Exception as e:
-            # Fallback to default model if specific model fails
-            if model != self.current_model:
-                print(f"Model {model} failed, falling back to {self.current_model}")
-                return await self.complete(messages, model=self.current_model, **kwargs)
+            # Fallback to gpt-4o if specific model fails
+            if model != "gpt-4o":
+                print(f"Model {model} failed, falling back to gpt-4o")
+                return await self.complete(messages, model="gpt-4o", **kwargs)
             raise e
     
     def _track_usage(self, model: str, input_tokens: int, output_tokens: int):

@@ -41,14 +41,21 @@ class EnhancedHowieAgent(HowieAgent):
         
         # Override client to use model manager
         self.client = None  # We'll use model_manager.complete instead
+        
+        # Ensure tool registry is properly initialized
+        if not hasattr(self, 'tool_registry') or not self.tool_registry:
+            self.tool_registry = global_registry
     
     async def _generate_response(self, user_input: str, tool_results: List) -> str:
         """Generate AI response using appropriate model"""
         from rich.console import Console
         console = Console()
         
-        # Determine task type from user input
-        task_type = self._classify_task(user_input)
+        # Add football context for ambiguous queries
+        enhanced_input = self._add_football_context(user_input)
+        
+        # Determine task type from enhanced input
+        task_type = self._classify_task(enhanced_input)
         console.print(f"[dim]📊 Task classified as: [grey]{task_type}[/grey][/dim]")
         self.log_event("task_classification", f"Task classified as: {task_type}")
         
@@ -109,7 +116,7 @@ class EnhancedHowieAgent(HowieAgent):
                 from ..tools.realtime_tools import search_current_nfl_info
                 
                 # Enhance the query to be more specific to NFL/football
-                enhanced_query = user_input.strip()
+                enhanced_query = enhanced_input.strip()
                 
                 # Add NFL context if the query seems generic
                 if not any(term in enhanced_query.lower() for term in ['nfl', 'football', 'qb', 'rb', 'wr', 'te', 'defense', 'offense', 'coach', 'team', 'roster']):
@@ -129,7 +136,7 @@ class EnhancedHowieAgent(HowieAgent):
                     is_outdated_query = any(word in user_input.lower() for word in ["2024", "last season", "previous season"])
                     
                     if is_outdated_query:
-                        enhanced_prompt = f"""The user is asking about {user_input}, but this appears to be about the 2024 season (last season). 
+                        enhanced_prompt = f"""The user is asking about {enhanced_input}, but this appears to be about the 2024 season (last season). 
 
 Current Information for 2025 season:
 {current_info}{database_info}
@@ -141,7 +148,7 @@ Please provide:
 
 Focus on current 2025 season information rather than historical 2024 data."""
                     else:
-                        enhanced_prompt = f"""Based on the current information below, provide a comprehensive answer to the user's question: "{user_input}"
+                        enhanced_prompt = f"""Based on the current information below, provide a comprehensive answer to the user's question: "{enhanced_input}"
 
 Current Information:
 {current_info}{database_info}
@@ -222,7 +229,8 @@ Please provide accurate, current NFL football information when available."""
             ]
             
             # Add conversation context
-            for msg in self.context.get_recent_messages(10):
+            recent_messages = self.context.get_recent_messages(10)
+            for msg in recent_messages:
                 if msg.role in ["user", "assistant"]:
                     messages.append({
                         "role": msg.role,
@@ -231,13 +239,29 @@ Please provide accurate, current NFL football information when available."""
             
             # Add current query with tool results
             current_content = user_input
+            
+            # If this is a follow-up query like "Let's try that", add context about what we were discussing
+            if user_input.lower() in ["let's try that", "try that", "do that", "go ahead", "yes", "ok", "okay"]:
+                # Find the last substantive query
+                for msg in reversed(recent_messages):
+                    if msg.role == "user" and msg.content.lower() not in ["let's try that", "try that", "do that", "go ahead", "yes", "ok", "okay"]:
+                        context_note = f"\n\nContext: You're asking me to proceed with the previous query: '{msg.content}'"
+                        current_content = context_note + "\n\n" + current_content
+                        break
+            successful_tools = 0
             if tool_results:
                 tool_summary = "\n\nTool Results:\n"
                 for i, result in enumerate(tool_results, 1):
                     if result.status.value == "success":
                         tool_summary += f"{i}. Success: {str(result.data)[:500]}...\n"
+                        successful_tools += 1
                     else:
                         tool_summary += f"{i}. Error: {result.error}\n"
+                
+                # If no tools succeeded, provide a helpful response without relying on tools
+                if successful_tools == 0:
+                    current_content += f"\n\nNote: I attempted to use tools to help answer your question, but they encountered errors. I'll provide a comprehensive response based on my knowledge of NFL football and fantasy football. Please provide a detailed analysis without saying 'hold on' or 'please wait'."
+                
                 current_content += tool_summary
             
             messages.append({"role": "user", "content": current_content})
@@ -262,6 +286,10 @@ Please provide accurate, current NFL football information when available."""
             if "Database Roster Information:" in response:
                 response += "\n\n✅ **Database Verified**: This response has been cross-referenced with our internal database for accuracy."
             
+            # If tools failed, add a note about providing general information
+            if tool_results and all(result.status.value == "error" for result in tool_results):
+                response += "\n\n📝 **Note**: I attempted to use tools to gather specific data, but they encountered errors. This response is based on my general knowledge of NFL football and fantasy football."
+            
             return response
             
         except Exception as e:
@@ -269,9 +297,14 @@ Please provide accurate, current NFL football information when available."""
     
     async def _plan_tool_usage(self, user_input: str) -> List[Dict]:
         """Use appropriate model for planning"""
+        # Get available tools from registry
+        available_tools = self.tool_registry.list_tools() if hasattr(self, 'tool_registry') and self.tool_registry else []
+        
         planning_prompt = f"""Based on this user request, determine which tools to use:
 
 User request: {user_input}
+
+Available tools: {available_tools}
 
 Available tool categories:
 - file_operations: Read/write files, import rosters
@@ -282,11 +315,13 @@ Available tool categories:
 - database: Query existing databases
 - agents: Spawn autonomous agents
 
+IMPORTANT: For queries about NFL rosters, cuts, players, teams, or fantasy football analysis, you should use relevant tools to gather data.
+
 Return a JSON list of tool calls needed, or empty list if no tools needed.
 Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]"""
         
         messages = [
-            {"role": "system", "content": "You are a tool planning assistant."},
+            {"role": "system", "content": "You are a tool planning assistant for a fantasy football AI. When users ask about NFL rosters, cuts, players, teams, or fantasy football analysis, you should recommend using relevant tools to gather data. Be proactive about using tools for football-related queries."},
             {"role": "user", "content": planning_prompt}
         ]
         
@@ -344,24 +379,27 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
         # Research keywords - should use Perplexity for real-time info
         research_keywords = [
             "research", "find out", "search", "latest", "current", "recent",
-            "2024", "2025", "this season", "this year", "new", "update", "news",
-            "coach", "coordinator", "draft", "trade", "signing", "injury",
+            "new", "update", "news", "coach", "coordinator", "draft", "trade", "signing", "injury",
             "schedule", "playoff", "super bowl", "championship", "offensive coordinator",
             "defensive coordinator", "head coach", "fired", "hired", "retired",
-            "free agency", "contract", "extension"
+            "free agency", "contract", "extension", "cuts"
         ]
         
+        # If it's a specific factual query about rosters/players, use reasoning model
+        if any(word in input_lower for word in factual_queries):
+            return "reasoning"
+        # Only classify as research if it explicitly mentions research terms AND football context
+        elif any(word in input_lower for word in research_keywords) and any(word in input_lower for word in ["football", "nfl", "fantasy", "player", "team", "coach", "draft", "trade", "injury", "roster", "cut", "signing"]):
+            return "research"
         # If it contains outdated indicators, prioritize research for current info
-        if any(word in input_lower for word in outdated_indicators):
+        elif any(word in input_lower for word in outdated_indicators):
             return "research"
         # If it contains current time indicators, prioritize research
         elif any(word in input_lower for word in current_time_indicators):
             return "research"
-        # If it's a specific factual query about rosters/players, use reasoning model
-        elif any(word in input_lower for word in factual_queries):
-            return "reasoning"
-        elif any(word in input_lower for word in research_keywords):
-            return "research"
+        # For ambiguous queries without clear football context, default to reasoning
+        elif any(word in input_lower for word in ["cuts", "benefits", "who", "what", "when", "where", "why", "how"]):
+            return "default"
         elif any(word in input_lower for word in ["analyze", "compare", "evaluate", "analysis"]):
             return "analysis"
         elif any(word in input_lower for word in ["code", "script", "generate", "create", "program"]):
@@ -442,12 +480,23 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
                 tool_name = tool_call.get("tool", "unknown")
                 console.print(f"[dim]  [{i}/{len(tool_calls)}] Running: [grey]{tool_name}[/grey][/dim]")
                 
-                result = await self._execute_tool(tool_call)
-                tool_results.append(result)
-                
-                status = "✅" if result.status.value == "success" else "❌"
-                console.print(f"[dim]  [{i}/{len(tool_calls)}] {status} {tool_name}: {result.status.value}[/dim]")
-                self.log_event("tool_result", f"Tool {tool_name}: {result.status.value}")
+                try:
+                    result = await self._execute_tool(tool_call)
+                    tool_results.append(result)
+                    
+                    status = "✅" if result.status.value == "success" else "❌"
+                    console.print(f"[dim]  [{i}/{len(tool_calls)}] {status} {tool_name}: {result.status.value}[/dim]")
+                    self.log_event("tool_result", f"Tool {tool_name}: {result.status.value}")
+                except Exception as e:
+                    # Create a failed result
+                    from ..core.base_tool import ToolResult, ToolStatus
+                    failed_result = ToolResult(
+                        status=ToolStatus.ERROR,
+                        error=f"Tool execution failed: {str(e)}"
+                    )
+                    tool_results.append(failed_result)
+                    console.print(f"[dim]  [{i}/{len(tool_calls)}] ❌ {tool_name}: error[/dim]")
+                    self.log_event("tool_result", f"Tool {tool_name}: execution failed")
         else:
             console.print("[dim]📝 No tools needed for this query[/dim]")
             self.log_event("tool_decision", "No tools needed")
@@ -481,6 +530,27 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
     def get_recent_logs(self, count: int = 10) -> List[Dict]:
         """Get the most recent events"""
         return self.event_log[-count:] if self.event_log else []
+    
+    def _add_football_context(self, user_input: str) -> str:
+        """Add football context to ambiguous queries"""
+        input_lower = user_input.lower()
+        
+        # Check if this is an ambiguous query that could benefit from football context
+        ambiguous_terms = ["cuts", "benefits", "who", "what", "when", "where", "why", "how"]
+        football_terms = ["nfl", "football", "fantasy", "player", "team", "coach", "roster", "depth chart"]
+        
+        # If it contains ambiguous terms but no clear football context, add context
+        if any(term in input_lower for term in ambiguous_terms) and not any(term in input_lower for term in football_terms):
+            if "cuts" in input_lower:
+                return f"NFL roster cuts and fantasy football implications: {user_input}"
+            elif "benefits" in input_lower:
+                return f"NFL football benefits and fantasy football implications: {user_input}"
+            elif "who" in input_lower:
+                return f"NFL football context: {user_input}"
+            else:
+                return f"NFL football: {user_input}"
+        
+        return user_input
     
     def _build_system_prompt(self) -> str:
         """Build system prompt with model awareness"""

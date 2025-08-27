@@ -179,23 +179,57 @@ class WebSearchTool:
 
 async def search_current_nfl_info(query: str) -> str:
     """Search for current NFL information and return formatted results"""
+    # Enhance query with NFL-specific terms to avoid other sports
+    enhanced_query = query.strip()
+    
+    # Add NFL context if not already present
+    if not any(term in enhanced_query.lower() for term in ['nfl', 'football', 'qb', 'rb', 'wr', 'te', 'defense', 'offense']):
+        enhanced_query = f"NFL football {enhanced_query}"
+    
+    # Add current season context
+    if '2025' in enhanced_query or 'current' in enhanced_query.lower():
+        enhanced_query += " 2025 season"
+    
     async with WebSearchTool() as search_tool:
-        results = await search_tool.search_nfl_news(query)
+        results = await search_tool.search_nfl_news(enhanced_query)
         
         if not results['success']:
             return f"❌ Error searching for current information: {results.get('error', 'Unknown error')}"
         
         if not results['sources']:
-            return "❌ No current information found for your query."
+            return "❌ No current NFL information found for your query."
+        
+        # Filter results to ensure they're NFL-related
+        filtered_results = {}
+        for source, articles in results['sources'].items():
+            nfl_articles = []
+            for article in articles:
+                title = article.get('title', '').lower()
+                # Filter out non-NFL content
+                if any(nfl_term in title for nfl_term in ['nfl', 'football', 'qb', 'rb', 'wr', 'te', 'defense', 'offense', 'coach', 'draft', 'free agency']):
+                    nfl_articles.append(article)
+                elif any(baseball_term in title for baseball_term in ['mlb', 'baseball', 'pitcher', 'hitter', 'home run', 'inning']):
+                    continue  # Skip baseball content
+                elif any(basketball_term in title for basketball_term in ['nba', 'basketball', 'point guard', 'shooting guard']):
+                    continue  # Skip basketball content
+                else:
+                    # If unclear, include it but mark as potentially mixed
+                    nfl_articles.append(article)
+            
+            if nfl_articles:
+                filtered_results[source] = nfl_articles[:3]  # Top 3 per source
+        
+        if not filtered_results:
+            return "❌ No relevant NFL information found. Please try a more specific NFL-related query."
         
         # Format the results
         response = f"🔍 **Current NFL Information for: {query}**\n\n"
         response += f"*Last updated: {results['timestamp']}*\n\n"
         
-        for source, articles in results['sources'].items():
+        for source, articles in filtered_results.items():
             if articles:
                 response += f"**{source}:**\n"
-                for i, article in enumerate(articles[:3], 1):  # Top 3 per source
+                for i, article in enumerate(articles, 1):
                     response += f"{i}. [{article['title']}]({article['url']})\n"
                 response += "\n"
         
