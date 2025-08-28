@@ -238,6 +238,20 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
         tool_name = tool_call.get("tool")
         params = tool_call.get("params", {})
         
+        # Log tool execution details (verbose details go to logs only)
+        # Removed console debug output for cleaner interface
+        
+        # Check if tool exists
+        if not self.tool_registry.get_tool(tool_name):
+            from rich.console import Console
+            console = Console()
+            available_tools = self.tool_registry.list_tools()
+            console.print(f"[dim]Tool '{tool_name}' not found. Available tools: {available_tools}[/dim]")
+            return ToolResult(
+                status=ToolStatus.ERROR,
+                error=f"Tool '{tool_name}' not found. Available tools: {available_tools}"
+            )
+        
         # Execute tool
         result = await self.tool_registry.execute(tool_name, **params)
         
@@ -300,9 +314,9 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
     async def chat_loop(self):
         """Interactive chat loop"""
         console.print(Panel.fit(
-            "[bold cyan]Howie - Fantasy Football AI Assistant[/bold cyan]\n"
+            "[bold bright_green]Howie - Fantasy Football AI Assistant[/bold bright_green]\n"
             "Type 'help' for commands, 'quit' to exit",
-            border_style="cyan"
+            border_style="dim"
         ))
         
         while True:
@@ -341,7 +355,7 @@ Example: [{{"tool": "read_file", "params": {{"file_path": "roster.csv"}}}}, ...]
                 response = await self.process_message(user_input)
                 
                 # Display response
-                console.print("\n[bold blue]Howie:[/bold blue]")
+                console.print("\n[bold bright_green]Howie:[/bold bright_green]")
                 console.print(Markdown(response))
                 
             except KeyboardInterrupt:

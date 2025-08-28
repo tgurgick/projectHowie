@@ -158,33 +158,34 @@ class PlayerProjectionTool(BaseTool):
     
     async def _prepare_features(self, player_name: str, factors: List[str]) -> np.ndarray:
         """Prepare feature vector for prediction"""
-        features = []
+        # Always return exactly 10 features to match training data
+        features = np.zeros(10)
         
-        # Recent form (last 4 games average)
+        # Recent form (last 4 games average) - features 0-2
         if "recent_form" in factors:
-            features.extend([15.5, 0.75, 0.85])  # Simulated: avg points, trend, consistency
+            features[0] = 15.5  # avg points
+            features[1] = 0.75  # trend
+            features[2] = 0.85  # consistency
         
-        # Opponent strength
+        # Opponent strength - features 3-4
         if "opponent" in factors:
-            features.extend([0.6, -2.5])  # Simulated: defense rating, points allowed diff
+            features[3] = 0.6   # defense rating
+            features[4] = -2.5  # points allowed diff
         
-        # Weather impact
+        # Weather impact - features 5-6
         if "weather" in factors:
-            features.extend([0.0, 0.0])  # Simulated: wind impact, precipitation impact
+            features[5] = 0.0   # wind impact
+            features[6] = 0.0   # precipitation impact
         
-        # Injury status
+        # Injury status - feature 7
         if "injuries" in factors:
-            features.append(1.0)  # Simulated: health score (0-1)
+            features[7] = 1.0   # health score (0-1)
         
-        # Additional features
-        features.extend([
-            0.65,  # Snap share
-            0.22,  # Target share
-            8.5,   # aDOT
-            5.2    # YAC
-        ])
+        # Additional features - features 8-9
+        features[8] = 0.65  # Snap share
+        features[9] = 0.22  # Target share
         
-        return np.array(features)
+        return features
     
     def _adjust_features_for_week(self, features: np.ndarray, week: int) -> np.ndarray:
         """Adjust features for future week projection"""

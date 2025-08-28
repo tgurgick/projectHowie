@@ -76,9 +76,9 @@ class ToolRegistry:
     
     def display_tools(self):
         """Display all tools in a formatted table"""
-        table = Table(title="Available Tools", show_header=True, header_style="bold magenta")
-        table.add_column("Tool", style="cyan", no_wrap=True)
-        table.add_column("Category", style="green")
+        table = Table(title="Available Tools", show_header=True, header_style="bright_green")
+        table.add_column("Tool", style="bright_green", no_wrap=True)
+        table.add_column("Category", style="dim")
         table.add_column("Description", style="white")
         table.add_column("Aliases", style="yellow")
         

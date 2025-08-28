@@ -23,19 +23,27 @@ class ReadFileTool(BaseTool):
             ToolParameter(
                 name="file_path",
                 type="string",
-                description="Path to the file to read",
+                description="Path to the file to read (alias: filename)",
                 required=True
             ),
             ToolParameter(
                 name="file_type",
                 type="string",
                 description="File type (csv, json, excel, txt, etc.)",
-                required=False
+                required=False,
+                default="auto"
+            ),
+            ToolParameter(
+                name="encoding",
+                type="string",
+                description="File encoding",
+                required=False,
+                default="utf-8"
             )
         ]
         self.workspace = WorkspaceManager()
     
-    async def execute(self, file_path: str, file_type: Optional[str] = None, **kwargs) -> ToolResult:
+    async def execute(self, file_path: str, file_type: Optional[str] = None, encoding: str = "utf-8", **kwargs) -> ToolResult:
         """Execute file read operation"""
         try:
             data = self.workspace.read_file(file_path, file_type)
@@ -80,33 +88,43 @@ class WriteFileTool(BaseTool):
             ToolParameter(
                 name="data",
                 type="any",
-                description="Data to write to file",
+                description="Data to write to file (alias: content)",
                 required=True
             ),
             ToolParameter(
                 name="file_name",
                 type="string",
-                description="Name of the file to create",
+                description="Name of the file to create (alias: filename)",
                 required=True
             ),
             ToolParameter(
                 name="file_type",
                 type="string",
                 description="File type (csv, json, excel, txt, etc.)",
-                required=False
+                required=False,
+                default="txt"
             ),
             ToolParameter(
                 name="subfolder",
                 type="string",
                 description="Subfolder within workspace",
-                required=False
+                required=False,
+                default=""
+            ),
+            ToolParameter(
+                name="overwrite",
+                type="boolean",
+                description="Whether to overwrite existing files",
+                required=False,
+                default=True
             )
         ]
         self.workspace = WorkspaceManager()
     
     async def execute(self, data: Any, file_name: str, 
                      file_type: Optional[str] = None,
-                     subfolder: Optional[str] = None, **kwargs) -> ToolResult:
+                     subfolder: Optional[str] = None,
+                     overwrite: bool = True, **kwargs) -> ToolResult:
         """Execute file write operation"""
         try:
             file_path = self.workspace.write_file(
@@ -146,8 +164,14 @@ class ImportRosterTool(BaseTool):
             ToolParameter(
                 name="file_path",
                 type="string",
-                description="Path to the roster file",
-                required=True
+                description="Path to the roster file (alias: roster_data)",
+                required=False
+            ),
+            ToolParameter(
+                name="roster_data",
+                type="string",
+                description="CSV roster data as string",
+                required=False
             ),
             ToolParameter(
                 name="platform",
@@ -156,14 +180,42 @@ class ImportRosterTool(BaseTool):
                 required=False,
                 default="generic",
                 choices=["espn", "yahoo", "sleeper", "generic"]
+            ),
+            ToolParameter(
+                name="format",
+                type="string",
+                description="Data format (csv, json, excel)",
+                required=False,
+                default="csv"
+            ),
+            ToolParameter(
+                name="team_name",
+                type="string",
+                description="Team name for the roster",
+                required=False,
+                default="My Team"
             )
         ]
         self.workspace = WorkspaceManager()
     
-    async def execute(self, file_path: str, platform: str = "generic", **kwargs) -> ToolResult:
+    async def execute(self, file_path: Optional[str] = None, roster_data: Optional[str] = None, 
+                     platform: str = "generic", format: str = "csv", team_name: str = "My Team", **kwargs) -> ToolResult:
         """Import and parse roster file"""
         try:
-            roster_df = self.workspace.import_roster(file_path, platform)
+            # Handle either file_path or roster_data
+            if roster_data:
+                # Parse CSV data from string
+                import io
+                import pandas as pd
+                roster_df = pd.read_csv(io.StringIO(roster_data))
+            elif file_path:
+                # Import from file
+                roster_df = self.workspace.import_roster(file_path, platform)
+            else:
+                return ToolResult(
+                    status=ToolStatus.ERROR,
+                    error="Either file_path or roster_data must be provided"
+                )
             
             # Extract roster information
             roster_info = {

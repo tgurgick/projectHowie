@@ -243,17 +243,35 @@ class CheckAgentTool(BaseTool):
         """Get or create agent manager"""
         if not self.agent_manager:
             import os
-            from openai import AsyncOpenAI
             from ..tools.registry import global_registry
             
-            client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            self.agent_manager = AgentManager(global_registry, client)
+            # Check if API key is available
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                # Return None to indicate no API key available
+                return None
+            
+            try:
+                from openai import AsyncOpenAI
+                client = AsyncOpenAI(api_key=api_key)
+                self.agent_manager = AgentManager(global_registry, client)
+            except Exception as e:
+                # If there's an issue with the client, return None
+                return None
         return self.agent_manager
     
     async def execute(self, agent_id: str, **kwargs) -> ToolResult:
         """Check agent status"""
         try:
             manager = self._get_manager()
+            
+            # Check if manager is available
+            if manager is None:
+                return ToolResult(
+                    status=ToolStatus.ERROR,
+                    error="Agent manager not available - API key not configured"
+                )
+            
             result = await manager.get_agent_result(agent_id)
             
             if result:

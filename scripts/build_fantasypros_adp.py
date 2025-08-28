@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.build_fantasy_db import (
-    FantasyMarket, Base, ensure_dt,
+    FantasyMarket, ADPData, Base, ensure_dt,
     DEFAULT_DB_URL
 )
 
@@ -57,7 +57,7 @@ class FantasyProsADPScraper:
         base_url = f"{self.base_url}/{scoring_map[scoring]}"
         
         # Add year parameter for historical data
-        if year and year != 2024:  # 2024 is current year
+        if year and year != 2025:  # 2025 is current year
             base_url += f"?year={year}"
         
         return base_url
@@ -84,41 +84,62 @@ class FantasyProsADPScraper:
             
             for row in rows:
                 cells = row.find_all('td')
-                if len(cells) >= 6:
+                if len(cells) >= 8:  # Need at least 8 columns for full data
                     try:
                         rank = int(cells[0].get_text(strip=True))
                         player_info = cells[1].get_text(strip=True)
                         position = cells[2].get_text(strip=True)
-                        team = cells[3].get_text(strip=True)
-                        adp_overall = float(cells[4].get_text(strip=True)) if cells[4].get_text(strip=True) else np.nan
-                        adp_position = int(cells[5].get_text(strip=True)) if cells[5].get_text(strip=True) else np.nan
                         
-                        # Extract player name from "PlayerNameTEAM(bye)" format
+                        # Extract ADP values from all sources
+                        espn_adp = float(cells[3].get_text(strip=True)) if cells[3].get_text(strip=True) and cells[3].get_text(strip=True) != '' else np.nan
+                        sleeper_adp = float(cells[4].get_text(strip=True)) if cells[4].get_text(strip=True) and cells[4].get_text(strip=True) != '' else np.nan
+                        cbs_adp = float(cells[5].get_text(strip=True)) if cells[5].get_text(strip=True) and cells[5].get_text(strip=True) != '' else np.nan
+                        nfl_adp = float(cells[6].get_text(strip=True)) if cells[6].get_text(strip=True) and cells[6].get_text(strip=True) != '' else np.nan
+                        rtsports_adp = float(cells[7].get_text(strip=True)) if cells[7].get_text(strip=True) and cells[7].get_text(strip=True) != '' else np.nan
+                        fantrax_adp = float(cells[8].get_text(strip=True)) if cells[8].get_text(strip=True) and cells[8].get_text(strip=True) != '' else np.nan
+                        avg_adp = float(cells[9].get_text(strip=True)) if cells[9].get_text(strip=True) and cells[9].get_text(strip=True) != '' else np.nan
+                        
+                        # Extract player name and team from "PlayerNameTEAM(bye)" format
                         player_name = player_info
+                        team = ''
+                        bye_week = ''
+                        
                         if '(' in player_info:
+                            # Extract bye week
+                            bye_part = player_info.split('(')[1].split(')')[0]
+                            if bye_part.isdigit():
+                                bye_week = bye_part
                             player_name = player_info.split('(')[0]
                         
-                        # Remove team abbreviation from player name (e.g., "Ja'Marr ChaseCIN" -> "Ja'Marr Chase")
-                        # Look for 2-3 letter team abbreviations at the end
-                        player_name = re.sub(r'([A-Z]{2,3})$', '', player_name)
+                        # Extract team from player name (look for 2-3 letter team abbreviation at the end)
+                        team_match = re.search(r'([A-Z]{2,3})$', player_name)
+                        if team_match:
+                            team = team_match.group(1)
+                            player_name = re.sub(r'([A-Z]{2,3})$', '', player_name)
                         
-                        # Extract team from position if team is empty
-                        if not team and '(' in player_info:
-                            team_part = player_info.split('(')[1].split(')')[0]
-                            if len(team_part) <= 3:  # Likely a team abbreviation
-                                team = team_part
+                        # Clean position (remove rank numbers like WR1 -> WR)
+                        clean_position = re.sub(r'(\d+)$', '', position).upper()
                         
-                        # Skip rows with missing ADP data
-                        if pd.isna(adp_overall) or pd.isna(adp_position):
-                            continue
+                        # Use average ADP as the primary ADP value
+                        adp_overall = avg_adp if not pd.isna(avg_adp) else np.nan
+                        adp_position = np.nan  # We'll calculate this based on position
                         
+                        # Include all players, even if they don't have ADP data from all sources
                         data.append({
                             'rank': rank,
                             'player_name': player_name,
-                            'position': position,
+                            'position': clean_position,
                             'team': team,
+                            'bye_week': bye_week,
                             'adp_overall': adp_overall,
-                            'adp_position': adp_position
+                            'adp_position': adp_position,
+                            'espn_adp': espn_adp,
+                            'sleeper_adp': sleeper_adp,
+                            'cbs_adp': cbs_adp,
+                            'nfl_adp': nfl_adp,
+                            'rtsports_adp': rtsports_adp,
+                            'fantrax_adp': fantrax_adp,
+                            'avg_adp': avg_adp
                         })
                     except (ValueError, IndexError) as e:
                         print(f"  Warning: Could not parse row: {e}")
@@ -158,11 +179,17 @@ class FantasyProsADPScraper:
             return df
         
         # Get players from our database
-        with engine.connect() as conn:
-            players = pd.read_sql(text("SELECT player_id, name, position, team FROM players"), conn)
-        
-        if players.empty:
-            print("  ❌ No players found in database")
+        try:
+            with engine.connect() as conn:
+                players = pd.read_sql(text("SELECT player_id, name, position, team FROM players"), conn)
+            
+            print(f"  📊 Retrieved {len(players)} players from database")
+            
+            if players.empty:
+                print("  ❌ No players found in database")
+                return df
+        except Exception as e:
+            print(f"  ❌ Error querying players: {e}")
             return df
         
         # Create mapping dictionaries for faster lookup
@@ -193,12 +220,24 @@ class FantasyProsADPScraper:
                     player_id = name_map[key2]
             
             if player_id is not None:
-                mapped_players.append({
+                mapped_row = {
                     'player_id': player_id,
                     'rank': row['rank'],
+                    'player_name': row['player_name'],
+                    'position': row['position'],
+                    'team': row['team'],
+                    'bye_week': row['bye_week'],
                     'adp_overall': row['adp_overall'],
-                    'adp_position': row['adp_position']
-                })
+                    'adp_position': row['adp_position'],
+                    'espn_adp': row['espn_adp'],
+                    'sleeper_adp': row['sleeper_adp'],
+                    'cbs_adp': row['cbs_adp'],
+                    'nfl_adp': row['nfl_adp'],
+                    'rtsports_adp': row['rtsports_adp'],
+                    'fantrax_adp': row['fantrax_adp'],
+                    'avg_adp': row['avg_adp']
+                }
+                mapped_players.append(mapped_row)
         
         result = pd.DataFrame(mapped_players)
         
@@ -251,62 +290,42 @@ def build_fantasypros_adp(args: Args):
     # Clean data
     adp_df = scraper.clean_player_data(adp_df)
     
-    # Map to player IDs
-    adp_df = scraper.map_to_player_ids(adp_df, engine)
-    
-    if adp_df.empty:
-        print("❌ No players mapped to database IDs")
-        return
-    
-    # Prepare for database insertion
+    # Add metadata
+    from datetime import datetime
     adp_df['season'] = args.season
-    adp_df['week'] = 0  # ADP is season-level data
-    adp_df['ecr_rank'] = np.nan  # We'll keep existing ECR data
+    adp_df['scoring_format'] = args.scoring
+    adp_df['scraped_at'] = datetime.now().isoformat()
+    adp_df['source_url'] = url
     
-    # Remove rank column as it's not in the database schema
-    adp_df = adp_df.drop(columns=['rank'])
+    # Remove any existing data for this season/scoring format
+    if not args.test:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                DELETE FROM adp_data 
+                WHERE season = :season AND scoring_format = :scoring_format
+            """), {
+                'season': args.season,
+                'scoring_format': args.scoring
+            })
+            conn.commit()
+        print(f"🗑️  Cleared existing {args.scoring} ADP data for {args.season}")
     
-    # Check for existing data
-    with engine.connect() as conn:
-        existing = pd.read_sql(
-            text(f"SELECT COUNT(*) FROM fantasy_market WHERE season = {args.season} AND adp_overall IS NOT NULL"),
-            conn
-        )
-        existing_count = existing.iloc[0, 0]
-    
-    if existing_count > 0:
-        print(f"⚠️  Found {existing_count} existing ADP records for {args.season}")
-        if not args.test:
-            # Update existing records
-            with engine.connect() as conn:
-                for _, row in adp_df.iterrows():
-                    conn.execute(text("""
-                        UPDATE fantasy_market 
-                        SET adp_overall = :adp_overall, adp_position = :adp_position
-                        WHERE season = :season AND player_id = :player_id
-                    """), {
-                        'adp_overall': row['adp_overall'],
-                        'adp_position': row['adp_position'],
-                        'season': row['season'],
-                        'player_id': row['player_id']
-                    })
-                conn.commit()
-            print(f"✅ Updated {len(adp_df)} ADP records")
-        else:
-            print("🧪 Test mode: Would update existing records")
+    # Insert all ADP data into the dedicated table
+    if not args.test:
+        adp_df.to_sql(ADPData.__tablename__, engine, if_exists="append", index=False)
+        print(f"✅ Inserted {len(adp_df)} ADP records")
     else:
-        # Insert new records
-        if not args.test:
-            adp_df.to_sql(FantasyMarket.__tablename__, engine, if_exists="append", index=False)
-            print(f"✅ Inserted {len(adp_df)} new ADP records")
-        else:
-            print(f"🧪 Test mode: Would insert {len(adp_df)} new ADP records")
+        print(f"🧪 Test mode: Would insert {len(adp_df)} ADP records")
     
     # Show sample data
     print("\n📊 Sample ADP Data:")
     sample = adp_df.head(10)
     for i, row in enumerate(sample.iterrows(), 1):
-        print(f"  {i:3d}. ADP: {row[1]['adp_overall']:5.1f} (Pos: {row[1]['adp_position']:3d})")
+        adp_val = row[1]['adp_overall']
+        pos_val = row[1]['adp_position']
+        adp_str = f"{adp_val:.1f}" if pd.notna(adp_val) else "N/A"
+        pos_str = f"{pos_val:.0f}" if pd.notna(pos_val) else "N/A"
+        print(f"  {i:3d}. {row[1]['player_name']:<20} ({row[1]['position']}) - ADP: {adp_str:>5} (Pos: {pos_str:>3})")
     
     engine.dispose()
 

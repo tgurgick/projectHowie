@@ -1,10 +1,22 @@
-# Howie CLI - Claude-like Fantasy Football AI Assistant
+# Howie CLI - Advanced Fantasy Football AI Assistant
 
 ## Overview
 
-Howie CLI is an advanced, Claude-inspired AI assistant specifically designed for fantasy football analysis. It combines the power of GPT-4 with a comprehensive tool system to provide file operations, data visualization, code generation, real-time updates, and machine learning predictions.
+Howie CLI is an advanced AI assistant specifically designed for fantasy football analysis. Version 2.2 introduces a comprehensive search workflow with multi-model support, detailed logging, and real-time data verification for maximum accuracy.
 
-## 🚀 New Features (v2.1)
+## 🚀 Latest Features (v2.2)
+
+### 🔍 Comprehensive Search Workflow
+- **Plan → Search → Verify → Reflect**: Multi-step data gathering and verification
+- **Multi-source validation**: Database + real-time + verification searches  
+- **Quality scoring**: Confidence levels and data completeness metrics
+- **Smart fallbacks**: Automatic additional searches when gaps detected
+
+### 📊 Enhanced Logging & Transparency
+- **Complete event tracking**: Every prompt, response, and decision logged
+- **`/logs detailed`**: Full context for all 12+ event types
+- **Tool execution tracing**: Parameters, results, and error details
+- **Search reasoning**: Why specific tools and data sources were chosen
 
 ### Core Capabilities
 - **🗂️ File Operations**: Read/write CSV, Excel, JSON files; import rosters from any platform

@@ -56,12 +56,56 @@ class BaseTool(ABC):
         """Execute the tool with given parameters"""
         pass
     
-    async def validate_params(self, **kwargs) -> bool:
-        """Validate parameters before execution"""
-        required_params = [p.name for p in self.parameters if p.required]
-        for param in required_params:
-            if param not in kwargs:
-                return False
+    async def validate_params(self, **kwargs) -> Dict[str, Any]:
+        """Validate parameters and apply defaults"""
+        validated_params = {}
+        
+        # Handle parameter aliases
+        param_aliases = {
+            'content': 'data',
+            'filename': 'file_name',
+            'filepath': 'file_path',
+            'query': 'sql_query',
+            'sql': 'sql_query',
+            'team_name': 'team',
+            'player_name': 'player',
+            'analysis_type': 'type',
+            'model': 'model_name',
+            'provider': 'model_provider'
+        }
+        
+        # Apply aliases
+        for alias, param_name in param_aliases.items():
+            if alias in kwargs and param_name not in kwargs:
+                kwargs[param_name] = kwargs[alias]
+        
+        # Apply defaults and validate
+        for param in self.parameters:
+            param_name = param.name
+            
+            if param_name in kwargs:
+                # Parameter provided, validate type if needed
+                validated_params[param_name] = kwargs[param_name]
+            elif param.required:
+                # Required parameter missing
+                if param.default is not None:
+                    # Use default value
+                    validated_params[param_name] = param.default
+                else:
+                    # No default, this will cause validation to fail
+                    validated_params[param_name] = None
+            else:
+                # Optional parameter with default
+                validated_params[param_name] = param.default
+        
+        return validated_params
+    
+    def validate_required_params(self, params: Dict[str, Any]) -> bool:
+        """Check if all required parameters are present and not None"""
+        for param in self.parameters:
+            if param.required:
+                if param.name not in params or params[param.name] is None:
+                    return False
         return True
     
     async def run(self, **kwargs) -> ToolResult:
@@ -69,15 +113,23 @@ class BaseTool(ABC):
         start_time = datetime.now()
         
         try:
-            # Validate parameters
-            if not await self.validate_params(**kwargs):
+            # Validate parameters and apply defaults
+            validated_params = await self.validate_params(**kwargs)
+            
+            # Check if all required parameters are present
+            if not self.validate_required_params(validated_params):
+                missing_params = []
+                for param in self.parameters:
+                    if param.required and (param.name not in validated_params or validated_params[param.name] is None):
+                        missing_params.append(param.name)
+                
                 return ToolResult(
                     status=ToolStatus.ERROR,
-                    error=f"Missing required parameters for {self.name}"
+                    error=f"Missing required parameters for {self.name}: {', '.join(missing_params)}"
                 )
             
-            # Execute the tool
-            result = await self.execute(**kwargs)
+            # Execute the tool with validated parameters
+            result = await self.execute(**validated_params)
             
             # Add execution time
             execution_time = (datetime.now() - start_time).total_seconds()

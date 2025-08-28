@@ -373,13 +373,29 @@ When searching for information, prioritize NFL football news, player updates, te
         
         try:
             if model_config.provider == ModelProvider.ANTHROPIC:
-                # Anthropic API format
-                response = await client.messages.create(
-                    model=model_config.model_name,
-                    messages=enhanced_messages,
-                    max_tokens=kwargs.get("max_tokens", model_config.max_tokens),
-                    temperature=kwargs.get("temperature", model_config.temperature)
-                )
+                # Anthropic API format - separate system messages from user/assistant messages
+                system_message = None
+                user_messages = []
+                
+                for msg in enhanced_messages:
+                    if msg["role"] == "system":
+                        system_message = msg["content"]
+                    else:
+                        user_messages.append(msg)
+                
+                # Create the API call with proper Anthropic format
+                api_params = {
+                    "model": model_config.model_name,
+                    "messages": user_messages,
+                    "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
+                    "temperature": kwargs.get("temperature", model_config.temperature)
+                }
+                
+                # Add system message if present
+                if system_message:
+                    api_params["system"] = system_message
+                
+                response = await client.messages.create(**api_params)
                 content = response.content[0].text
                 
                 # Track tokens and cost
@@ -410,7 +426,7 @@ When searching for information, prioritize NFL football news, player updates, te
         except Exception as e:
             # Fallback to gpt-4o if specific model fails
             if model != "gpt-4o":
-                print(f"Model {model} failed, falling back to gpt-4o")
+                print(f"Model {model} failed with error: {str(e)[:200]}, falling back to gpt-4o")
                 return await self.complete(messages, model="gpt-4o", **kwargs)
             raise e
     

@@ -93,6 +93,30 @@ class FantasyMarket(Base):
     ecr_rank = Column(Integer)
     __table_args__ = (PrimaryKeyConstraint('season', 'week', 'player_id'),)
 
+class ADPData(Base):
+    __tablename__ = "adp_data"
+    season = Column(Integer)
+    scoring_format = Column(String)  # 'ppr', 'half_ppr', 'standard'
+    player_name = Column(String)
+    position = Column(String)
+    team = Column(String)
+    bye_week = Column(Integer, nullable=True)
+    rank = Column(Integer)
+    adp_overall = Column(Float)
+    adp_position = Column(Float)
+    # Individual source ADPs
+    espn_adp = Column(Float, nullable=True)
+    sleeper_adp = Column(Float, nullable=True)
+    cbs_adp = Column(Float, nullable=True)
+    nfl_adp = Column(Float, nullable=True)
+    rtsports_adp = Column(Float, nullable=True)
+    fantrax_adp = Column(Float, nullable=True)
+    avg_adp = Column(Float, nullable=True)
+    # Metadata
+    scraped_at = Column(String)  # ISO timestamp
+    source_url = Column(String)
+    __table_args__ = (PrimaryKeyConstraint('season', 'scoring_format', 'player_name'),)
+
 class DraftScenarios(Base):
     __tablename__ = "draft_scenarios"
     sim_id = Column(Integer, primary_key=True, autoincrement=True)

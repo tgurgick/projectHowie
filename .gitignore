@@ -51,6 +51,14 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# Tool testing files
+test_all_tools.py
+test_all_tools_fixed.py
+tool_test_report.json
+improved_tool_test_report.json
+TOOL_TESTING_SUMMARY.md
+TOOL_TESTING_FINAL_SUMMARY.md
+
 # Translations
 *.mo
 *.pot

@@ -538,3 +538,246 @@ class DatabaseInfoTool(BaseTool):
                 status=ToolStatus.ERROR,
                 error=f"Failed to get database info: {str(e)}"
             )
+
+
+class TopPlayersTool(BaseTool):
+    """Get top players by position and season"""
+    
+    def __init__(self):
+        super().__init__()
+        self.name = "top_players"
+        self.category = "database"
+        self.description = "Get top players by position, season, and scoring type"
+        self.parameters = [
+            ToolParameter(
+                name="position",
+                type="string",
+                description="Position to rank (QB, RB, WR, TE, K, DEF)",
+                required=True,
+                choices=["QB", "RB", "WR", "TE", "K", "DEF"]
+            ),
+            ToolParameter(
+                name="season",
+                type="int",
+                description="Season year",
+                required=False,
+                default=2025
+            ),
+            ToolParameter(
+                name="limit",
+                type="int",
+                description="Number of top players to return",
+                required=False,
+                default=10
+            ),
+            ToolParameter(
+                name="scoring_type",
+                type="string",
+                description="Scoring system to use",
+                required=False,
+                default="ppr",
+                choices=["ppr", "half_ppr", "standard"]
+            ),
+            ToolParameter(
+                name="metric",
+                type="string",
+                description="Metric to rank by",
+                required=False,
+                default="fantasy_points",
+                choices=["fantasy_points", "total_yards", "touchdowns", "receptions"]
+            )
+        ]
+    
+    async def execute(self, position: str, season: int = 2024, limit: int = 10,
+                     scoring_type: str = "ppr", metric: str = "fantasy_points", **kwargs) -> ToolResult:
+        """Get top players by position"""
+        try:
+            # Map scoring type to database
+            db_mapping = {
+                "ppr": "fantasy_ppr.db",
+                "half_ppr": "fantasy_halfppr.db", 
+                "standard": "fantasy_standard.db"
+            }
+            
+            db_name = db_mapping.get(scoring_type, "fantasy_ppr.db")
+            
+            # Find the database file relative to the project root
+            import os
+            current_dir = Path(__file__).parent  # howie_cli/tools/
+            project_root = current_dir.parent.parent  # project root
+            db_path = project_root / "data" / db_name
+            
+            if not db_path.exists():
+                return ToolResult(
+                    status=ToolStatus.ERROR,
+                    error=f"Database not found: {db_path}"
+                )
+            
+            conn = sqlite3.connect(db_path)
+            
+            # Build query based on position and metric
+            if position == "QB":
+                query = """
+                SELECT p.name, p.team, p.position,
+                       SUM(pgs.fantasy_points) as total_points,
+                       AVG(pgs.fantasy_points) as avg_points,
+                       COUNT(*) as games_played,
+                       SUM(pgs.pass_yards) as total_passing_yards,
+                       SUM(pgs.pass_tds) as total_passing_tds,
+                       SUM(pgs.rush_yards) as total_rushing_yards,
+                       SUM(pgs.rush_tds) as total_rushing_tds
+                FROM players p
+                JOIN player_game_stats pgs ON p.player_id = pgs.player_id
+                JOIN games g ON pgs.game_id = g.game_id
+                WHERE p.position = 'QB' AND g.season = ?
+                GROUP BY p.player_id, p.name, p.team, p.position
+                ORDER BY total_points DESC
+                LIMIT ?
+                """
+            elif position == "RB":
+                query = """
+                SELECT p.name, p.team, p.position,
+                       SUM(pgs.fantasy_points) as total_points,
+                       AVG(pgs.fantasy_points) as avg_points,
+                       COUNT(*) as games_played,
+                       SUM(pgs.rush_yards) as total_rushing_yards,
+                       SUM(pgs.rush_tds) as total_rushing_tds,
+                       SUM(pgs.rec_yards) as total_receiving_yards,
+                       SUM(pgs.rec_tds) as total_receiving_tds,
+                       SUM(pgs.receptions) as total_receptions
+                FROM players p
+                JOIN player_game_stats pgs ON p.player_id = pgs.player_id
+                JOIN games g ON pgs.game_id = g.game_id
+                WHERE p.position = 'RB' AND g.season = ?
+                GROUP BY p.player_id, p.name, p.team, p.position
+                ORDER BY total_points DESC
+                LIMIT ?
+                """
+            elif position == "WR":
+                query = """
+                SELECT p.name, p.team, p.position,
+                       SUM(pgs.fantasy_points) as total_points,
+                       AVG(pgs.fantasy_points) as avg_points,
+                       COUNT(*) as games_played,
+                       SUM(pgs.rec_yards) as total_receiving_yards,
+                       SUM(pgs.rec_tds) as total_receiving_tds,
+                       SUM(pgs.receptions) as total_receptions,
+                       SUM(pgs.rush_yards) as total_rushing_yards,
+                       SUM(pgs.rush_tds) as total_rushing_tds
+                FROM players p
+                JOIN player_game_stats pgs ON p.player_id = pgs.player_id
+                JOIN games g ON pgs.game_id = g.game_id
+                WHERE p.position = 'WR' AND g.season = ?
+                GROUP BY p.player_id, p.name, p.team, p.position
+                ORDER BY total_points DESC
+                LIMIT ?
+                """
+            elif position == "TE":
+                query = """
+                SELECT p.name, p.team, p.position,
+                       SUM(pgs.fantasy_points) as total_points,
+                       AVG(pgs.fantasy_points) as avg_points,
+                       COUNT(*) as games_played,
+                       SUM(pgs.rec_yards) as total_receiving_yards,
+                       SUM(pgs.rec_tds) as total_receiving_tds,
+                       SUM(pgs.receptions) as total_receptions
+                FROM players p
+                JOIN player_game_stats pgs ON p.player_id = pgs.player_id
+                JOIN games g ON pgs.game_id = g.game_id
+                WHERE p.position = 'TE' AND g.season = ?
+                GROUP BY p.player_id, p.name, p.team, p.position
+                ORDER BY total_points DESC
+                LIMIT ?
+                """
+            else:
+                # For K and DEF, use simpler query
+                query = """
+                SELECT p.name, p.team, p.position,
+                       SUM(pgs.fantasy_points) as total_points,
+                       AVG(pgs.fantasy_points) as avg_points,
+                       COUNT(*) as games_played
+                FROM players p
+                JOIN player_game_stats pgs ON p.player_id = pgs.player_id
+                JOIN games g ON pgs.game_id = g.game_id
+                WHERE p.position = ? AND g.season = ?
+                GROUP BY p.player_id, p.name, p.team, p.position
+                ORDER BY total_points DESC
+                LIMIT ?
+                """
+            
+            # Execute query
+            if position in ["QB", "RB", "WR", "TE"]:
+                df = pd.read_sql_query(query, conn, params=[season, limit])
+            else:
+                df = pd.read_sql_query(query, conn, params=[position, season, limit])
+            
+            conn.close()
+            
+            # Format results
+            players = []
+            for _, row in df.iterrows():
+                player_data = {
+                    "name": row["name"],
+                    "team": row["team"],
+                    "position": row["position"],
+                    "total_points": round(row["total_points"], 2),
+                    "avg_points": round(row["avg_points"], 2),
+                    "games_played": int(row["games_played"])
+                }
+                
+                # Add position-specific stats
+                if position == "QB":
+                    player_data.update({
+                        "passing_yards": int(row["total_passing_yards"]),
+                        "passing_tds": int(row["total_passing_tds"]),
+                        "rushing_yards": int(row["total_rushing_yards"]),
+                        "rushing_tds": int(row["total_rushing_tds"])
+                    })
+                elif position == "RB":
+                    player_data.update({
+                        "rushing_yards": int(row["total_rushing_yards"]),
+                        "rushing_tds": int(row["total_rushing_tds"]),
+                        "receiving_yards": int(row["total_receiving_yards"]),
+                        "receiving_tds": int(row["total_receiving_tds"]),
+                        "receptions": int(row["total_receptions"])
+                    })
+                elif position == "WR":
+                    player_data.update({
+                        "receiving_yards": int(row["total_receiving_yards"]),
+                        "receiving_tds": int(row["total_receiving_tds"]),
+                        "receptions": int(row["total_receptions"]),
+                        "rushing_yards": int(row["total_rushing_yards"]),
+                        "rushing_tds": int(row["total_rushing_tds"])
+                    })
+                elif position == "TE":
+                    player_data.update({
+                        "receiving_yards": int(row["total_receiving_yards"]),
+                        "receiving_tds": int(row["total_receiving_tds"]),
+                        "receptions": int(row["total_receptions"])
+                    })
+                
+                players.append(player_data)
+            
+            return ToolResult(
+                status=ToolStatus.SUCCESS,
+                data={
+                    "position": position,
+                    "season": season,
+                    "scoring_type": scoring_type,
+                    "players": players,
+                    "total_players": len(players)
+                },
+                metadata={
+                    "position": position,
+                    "season": season,
+                    "scoring_type": scoring_type,
+                    "metric": metric,
+                    "limit": limit
+                }
+            )
+            
+        except Exception as e:
+            return ToolResult(
+                status=ToolStatus.ERROR,
+                error=f"Failed to get top players: {str(e)}"
+            )

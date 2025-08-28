@@ -1,8 +1,10 @@
-# Deployment Guide: Moving Enhanced Howie Across Computers
+# Deployment Guide: Howie CLI v2.2
 
-## 🎯 Recommended Strategy: GitHub + Separate Data Migration
+## 🎯 Version 2.2 Features
 
-This approach keeps your code and data properly separated while making both easily accessible.
+Howie CLI v2.2 introduces a comprehensive search workflow with enhanced logging and multi-model support for maximum accuracy in fantasy football analysis.
+
+## 🚀 Deployment Strategy: GitHub + Data Migration
 
 ### **Step 1: Push Enhanced Code to GitHub**
 
@@ -13,13 +15,14 @@ cd /Users/trevor.gurgick/projectHowie
 # Initialize git if not already done
 git init
 git add .
-git commit -m "Enhanced Howie CLI with multi-model support
+git commit -m "Howie CLI v2.2: Comprehensive Search Workflow
 
-- Added tool-based architecture similar to Claude
-- Implemented multi-model support (OpenAI, Anthropic, Perplexity)
-- Added autonomous agent system
-- Enhanced file operations and visualization tools
-- Full backward compatibility with existing databases"
+- Implemented Plan → Search → Verify → Reflect workflow
+- Added multi-source validation with quality scoring
+- Enhanced logging with complete event tracking
+- Improved tool execution and error handling
+- Real-time data verification and smart fallbacks
+- Cost optimization and performance improvements"
 
 # Push to GitHub
 git remote add origin https://github.com/yourusername/projectHowie.git
@@ -203,7 +206,7 @@ howie ask "Test installation"
 
 1. **Version Control**: Use git tags for releases
    ```bash
-   git tag -a v2.0.0 -m "Enhanced multi-model version"
+   git tag -a v2.2.0 -m "Comprehensive search workflow version"
    git push --tags
    ```
 
