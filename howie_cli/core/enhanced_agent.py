@@ -10,6 +10,7 @@ from .agent import HowieAgent
 from .model_manager import ModelManager, ModelTier
 from .context import ConversationContext
 from .workspace import WorkspaceManager
+from .tool_manager import FantasyToolManager, ModelSelector, PerformanceTracker, WorkflowType
 from ..tools.registry import global_registry
 
 
@@ -24,6 +25,11 @@ class EnhancedHowieAgent(HowieAgent):
         
         # Initialize event log
         self.event_log = []
+        
+        # Initialize tool management systems
+        self.tool_manager = FantasyToolManager()
+        self.model_selector = ModelSelector()
+        self.performance_tracker = PerformanceTracker()
         
         # Set default model if provided
         if model:
@@ -923,6 +929,15 @@ ALWAYS provide the required parameters for each tool. Be specific and accurate i
         # Show execution summary box
         self._display_execution_summary(user_input, tool_results)
         
+        # Track performance if using hierarchical selection
+        if hasattr(self, '_current_workflow'):
+            successful_tools = [tr for tr in tool_results if hasattr(tr, 'status') and tr.status.value == "success"]
+            self.performance_tracker.track_tool_selection(
+                user_input, self._current_workflow, 
+                [getattr(tr, 'tool_name', 'unknown') for tr in successful_tools],
+                success=len(successful_tools) > 0
+            )
+        
         # Add to context
         self.context.add_message("assistant", response)
         self.log_event("ai_response", f"Generated response ({len(response)} chars)", {
@@ -1148,6 +1163,29 @@ ALWAYS provide the required parameters for each tool. Be specific and accurate i
         ))
     
     async def _plan_comprehensive_search(self, user_input: str) -> dict:
+        """Step 1: Plan comprehensive search with hierarchical tool selection"""
+        # Use hierarchical tool selection
+        selected_workflow = self.tool_manager.select_workflow(user_input)
+        workflow_tools = self.tool_manager.get_workflow_tools(selected_workflow)
+        complexity = self.tool_manager.analyze_query_complexity(user_input)
+        
+        # Log workflow selection
+        self.log_event("workflow_selected", f"Selected workflow: {selected_workflow.value}", {
+            "workflow": selected_workflow.value,
+            "available_tools": workflow_tools,
+            "complexity": complexity,
+            "description": self.tool_manager.get_workflow_description(selected_workflow)
+        })
+        
+        # Store workflow context for later use
+        self._current_workflow = selected_workflow
+        self._current_complexity = complexity
+        
+        # Continue with original search planning but use filtered tools
+        return await self._plan_comprehensive_search_original(user_input, workflow_tools, selected_workflow, complexity)
+    
+    async def _plan_comprehensive_search_original(self, user_input: str, available_tools: List[str], 
+                                                workflow: WorkflowType, complexity: dict) -> dict:
         """Step 1: Plan comprehensive search strategy"""
         search_plan = {
             "primary_searches": [],
@@ -1246,7 +1284,7 @@ ALWAYS provide the required parameters for each tool. Be specific and accurate i
                     "search_index": i+1,
                     "tool_name": tool_name,
                     "status": result.status.value if hasattr(result, 'status') else "unknown",
-                    "has_data": bool(getattr(result, 'data', None)),
+                    "has_data": getattr(result, 'data', None) is not None,
                     "data_preview": str(getattr(result, 'data', ''))[:200] if getattr(result, 'data', None) else None,
                     "error": getattr(result, 'error', None)
                 })
