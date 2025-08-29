@@ -271,6 +271,22 @@ Please provide accurate, current NFL football information when available."""
             # Add current query with tool results
             current_content = user_input
             
+            # INJECT DATABASE AND CONVERSATION CONTEXT
+            database_context = await self._inject_database_context(user_input)
+            conversation_context = await self._inject_conversation_context(user_input)
+            
+            # Log context injection
+            if database_context:
+                self.log_event("database_context_injected", f"Injected database context: {len(database_context)} chars")
+            if conversation_context:
+                self.log_event("conversation_context_injected", f"Injected conversation context: {len(conversation_context)} chars")
+            
+            # Add contexts to the content (database context first, then conversation)
+            if database_context:
+                current_content += database_context
+            if conversation_context:
+                current_content += conversation_context
+            
             # If this is a follow-up query, add context about what we were discussing
             follow_up_indicators = ["let's try that", "try that", "do that", "go ahead", "yes", "ok", "okay", "what about", "how about", "and", "also", "this was", "but we're", "I want to look", "look ahead", "this season", "next season"]
             is_follow_up = any(indicator in user_input.lower() for indicator in follow_up_indicators)
@@ -611,6 +627,174 @@ ALWAYS provide the required parameters for each tool. Be specific and accurate i
         # Update system prompt to mention model
         self.system_prompt = self._build_system_prompt()
     
+    async def _inject_database_context(self, user_input: str) -> str:
+        """Inject relevant database context based on user query"""
+        try:
+            import sqlite3
+            import os
+            
+            # Get database path
+            script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_path = os.path.join(script_dir, "data", "fantasy_ppr.db")
+            
+            if not os.path.exists(db_path):
+                return ""
+            
+            context_parts = []
+            
+            # Extract player names from query (improved pattern matching)
+            import re
+            # Pattern for proper names (including hyphenated names, Jr., etc.)
+            potential_players = re.findall(r'\b[A-Z][a-z]*(?:[.\-\'][A-Z][a-z]*)*(?:\s+[A-Z][a-z]*(?:[.\-\'][A-Z][a-z]*)*)+(?:\s+(?:Jr\.?|Sr\.?|III|II))?', user_input)
+            
+            # Also check for common fantasy football player patterns
+            fantasy_patterns = [
+                r'(?:compare|vs\.?|versus)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',  # "compare Player1"
+                r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+(?:vs\.?|versus)',        # "Player1 vs"
+                r'(?:about|on)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',             # "about Player1"
+            ]
+            
+            for pattern in fantasy_patterns:
+                matches = re.findall(pattern, user_input, re.IGNORECASE)
+                potential_players.extend(matches)
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            potential_players = [p for p in potential_players if not (p in seen or seen.add(p))]
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # Add relevant database context
+            for player in potential_players[:3]:  # Limit to 3 players to avoid overwhelming
+                # Check if player exists in projections
+                cursor.execute('''
+                    SELECT player_name, position, team_name, fantasy_points, bye_week
+                    FROM player_projections 
+                    WHERE season = 2025 AND projection_type = 'preseason'
+                    AND (LOWER(player_name) LIKE LOWER(?) OR LOWER(player_name) = LOWER(?))
+                    LIMIT 1
+                ''', (f'%{player}%', player))
+                
+                result = cursor.fetchone()
+                if result:
+                    context_parts.append(f"Database Context for {result[0]}: {result[1]}, {result[2]}, {result[3]:.1f} projected fantasy points, bye week {int(result[4]) if result[4] else 'TBD'}")
+                
+                # Check ADP data
+                cursor.execute('''
+                    SELECT adp_overall, adp_position
+                    FROM adp_data 
+                    WHERE season = 2025 AND LOWER(player_name) = LOWER(?)
+                    LIMIT 1
+                ''', (player,))
+                
+                adp_result = cursor.fetchone()
+                if adp_result:
+                    context_parts.append(f"ADP Context for {player}: Overall ADP {adp_result[0]:.1f}, Position ADP {adp_result[1]:.1f}")
+            
+            # Add position-based context if no specific players mentioned
+            if not potential_players:
+                positions = re.findall(r'\b(QB|RB|WR|TE|DEF|DST|K)\b', user_input.upper())
+                for pos in positions[:2]:  # Limit to 2 positions
+                    cursor.execute('''
+                        SELECT COUNT(*), AVG(fantasy_points)
+                        FROM player_projections 
+                        WHERE season = 2025 AND projection_type = 'preseason' AND position = ?
+                    ''', (pos.lower(),))
+                    
+                    result = cursor.fetchone()
+                    if result and result[0] > 0:
+                        context_parts.append(f"Database Context for {pos}: {result[0]} players projected, avg {result[1]:.1f} fantasy points")
+            
+            # Add team intelligence context if teams mentioned
+            teams = re.findall(r'\b([A-Z]{2,3})\b', user_input)
+            for team in teams[:2]:  # Limit to 2 teams
+                cursor.execute('''
+                    SELECT position, confidence_score, last_updated
+                    FROM team_position_intelligence 
+                    WHERE team = ? AND season = 2025
+                    LIMIT 3
+                ''', (team,))
+                
+                results = cursor.fetchall()
+                if results:
+                    intel_summary = f"Team Intelligence for {team}: " + ", ".join([f"{r[0]} ({r[1]:.0f}% confidence)" for r in results])
+                    context_parts.append(intel_summary)
+            
+            conn.close()
+            
+            if context_parts:
+                return "\n\nRELEVANT DATABASE CONTEXT:\n" + "\n".join(context_parts) + "\n"
+            
+            return ""
+            
+        except Exception as e:
+            self.log_event("context_injection_error", f"Failed to inject database context: {str(e)}")
+            return ""
+
+    async def _inject_conversation_context(self, user_input: str) -> str:
+        """Inject relevant conversation history context"""
+        try:
+            recent_messages = self.context.get_recent_messages(5)
+            
+            if not recent_messages:
+                return ""
+            
+            context_parts = []
+            
+            # Extract players, teams, and topics from recent conversation
+            players_mentioned = set()
+            teams_mentioned = set()
+            topics = set()
+            
+            for msg in recent_messages:
+                if msg.role in ["user", "assistant"]:
+                    # Extract player names (simple pattern)
+                    import re
+                    potential_players = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', msg.content)
+                    players_mentioned.update(potential_players)
+                    
+                    # Extract team abbreviations
+                    teams = re.findall(r'\b([A-Z]{2,3})\b', msg.content)
+                    teams_mentioned.update([t for t in teams if len(t) <= 3])
+                    
+                    # Extract topics
+                    if any(word in msg.content.lower() for word in ['draft', 'adp', 'tier']):
+                        topics.add('draft_analysis')
+                    if any(word in msg.content.lower() for word in ['projection', 'predict', 'fantasy']):
+                        topics.add('projections')
+                    if any(word in msg.content.lower() for word in ['trade', 'lineup', 'start']):
+                        topics.add('roster_management')
+            
+            # Build context summary
+            if players_mentioned:
+                context_parts.append(f"Recently discussed players: {', '.join(list(players_mentioned)[:5])}")
+            
+            if teams_mentioned:
+                context_parts.append(f"Recently mentioned teams: {', '.join(list(teams_mentioned)[:5])}")
+            
+            if topics:
+                context_parts.append(f"Recent topics: {', '.join(topics)}")
+            
+            # Find the most recent substantial query for continuity
+            last_query = None
+            for msg in reversed(recent_messages):
+                if msg.role == "user" and len(msg.content) > 20:
+                    last_query = msg.content
+                    break
+            
+            if last_query and len(user_input) < 50:  # Short query might be follow-up
+                context_parts.append(f"Previous query context: {last_query[:100]}...")
+            
+            if context_parts:
+                return "\n\nCONVERSATION CONTEXT:\n" + "\n".join(context_parts) + "\n"
+            
+            return ""
+            
+        except Exception as e:
+            self.log_event("conversation_context_error", f"Failed to inject conversation context: {str(e)}")
+            return ""
+
     async def process_message(self, user_input: str) -> str:
         """Process a user message with enhanced logging"""
         from rich.console import Console
