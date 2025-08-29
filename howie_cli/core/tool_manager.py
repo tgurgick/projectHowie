@@ -31,14 +31,14 @@ class FantasyToolManager:
             },
             WorkflowType.PLAYER_ANALYSIS: {
                 "description": "Compare players, analyze trends, get projections",
-                "tools": ["top_players", "player_lookup", "database_query", "player_projection", "create_visualization"],
-                "keywords": ["compare", "vs", "versus", "analyze", "trends", "better", "rank", "projection", "reliable"],
+                "tools": ["smart_player_search", "contextual_search", "top_players", "player_projection", "create_visualization"],
+                "keywords": ["compare", "vs", "versus", "analyze", "trends", "better", "rank", "projection", "reliable", "injury", "hurt"],
                 "cost_tier": "analysis",
                 "priority": 2
             },
             WorkflowType.QUICK_STATS: {
                 "description": "Quick stats, rankings, and basic information",
-                "tools": ["top_players", "database_query", "team"],
+                "tools": ["quick_stats_lookup", "top_players", "team"],
                 "keywords": ["stats", "rank", "top", "best", "fantasy points", "season", "who", "how many"],
                 "cost_tier": "simple",  # Low cost
                 "priority": 3
@@ -105,7 +105,9 @@ class FantasyToolManager:
                 r'(compare|vs\.?|versus)',
                 r'(better|worse) than',
                 r'who (should|to|is)',
-                r'how (reliable|good|consistent)'
+                r'how (reliable|good|consistent)',
+                r'(injury|injuries|hurt|health)',
+                r'(reliable|consistent|safe)'
             ],
             WorkflowType.QUICK_STATS: [
                 r'top \d+',

@@ -44,6 +44,9 @@ from ..tools.database_tools import (
     DatabaseQueryTool, PlayerStatsTool, TeamAnalysisTool,
     HistoricalTrendsTool, DatabaseInfoTool, TopPlayersTool
 )
+from ..tools.smart_search_tools import (
+    SmartPlayerSearchTool, ContextualSearchTool, QuickStatsLookupTool
+)
 from ..tools.agent_tools import (
     SpawnAgentTool, ParallelAgentsTool, CheckAgentTool, WorkflowTool
 )
@@ -110,6 +113,11 @@ class HowieAgent:
         self.tool_registry.register(HistoricalTrendsTool(), aliases=["trends", "history"])
         self.tool_registry.register(DatabaseInfoTool(), aliases=["db_info"])
         self.tool_registry.register(TopPlayersTool(), aliases=["top_players", "rankings"])
+        
+        # Smart search tools (DataFrame-safe)
+        self.tool_registry.register(SmartPlayerSearchTool(), aliases=["smart_search", "player_search"])
+        self.tool_registry.register(ContextualSearchTool(), aliases=["context_search", "contextual"])
+        self.tool_registry.register(QuickStatsLookupTool(), aliases=["quick_stats", "fast_lookup"])
         
         # Agent spawning (like Claude's Task tool)
         self.tool_registry.register(SpawnAgentTool(), aliases=["agent", "task"])
