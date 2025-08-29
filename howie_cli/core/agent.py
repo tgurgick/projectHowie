@@ -42,7 +42,7 @@ from ..tools.ml_projection_tools import (
 )
 from ..tools.database_tools import (
     DatabaseQueryTool, PlayerStatsTool, TeamAnalysisTool,
-    HistoricalTrendsTool, DatabaseInfoTool
+    HistoricalTrendsTool, DatabaseInfoTool, TopPlayersTool
 )
 from ..tools.agent_tools import (
     SpawnAgentTool, ParallelAgentsTool, CheckAgentTool, WorkflowTool
@@ -109,6 +109,7 @@ class HowieAgent:
         self.tool_registry.register(TeamAnalysisTool(), aliases=["team"])
         self.tool_registry.register(HistoricalTrendsTool(), aliases=["trends", "history"])
         self.tool_registry.register(DatabaseInfoTool(), aliases=["db_info"])
+        self.tool_registry.register(TopPlayersTool(), aliases=["top_players", "rankings"])
         
         # Agent spawning (like Claude's Task tool)
         self.tool_registry.register(SpawnAgentTool(), aliases=["agent", "task"])

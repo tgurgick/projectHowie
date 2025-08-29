@@ -588,7 +588,7 @@ class TopPlayersTool(BaseTool):
             )
         ]
     
-    async def execute(self, position: str, season: int = 2024, limit: int = 10,
+    async def execute(self, position: str, season: int = 2025, limit: int = 10,
                      scoring_type: str = "ppr", metric: str = "fantasy_points", **kwargs) -> ToolResult:
         """Get top players by position"""
         try:
@@ -615,7 +615,50 @@ class TopPlayersTool(BaseTool):
             
             conn = sqlite3.connect(db_path)
             
-            # Build query based on position and metric
+            # For 2025+ seasons, use projections data instead of historical game stats
+            if season >= 2025:
+                query = """
+                SELECT player_name as name, team_name as team, position,
+                       fantasy_points as total_points,
+                       fantasy_points as avg_points,
+                       games as games_played,
+                       bye_week
+                FROM player_projections 
+                WHERE season = ? AND projection_type = 'preseason'
+                AND position = ?
+                ORDER BY fantasy_points DESC
+                LIMIT ?
+                """
+                df = pd.read_sql_query(query, conn, params=[season, position.lower(), limit])
+                
+                # Format results for 2025 projections
+                players = []
+                for _, row in df.iterrows():
+                    player_info = {
+                        "name": row["name"],
+                        "team": row["team"],
+                        "position": row["position"],
+                        "total_points": row["total_points"],
+                        "avg_points": row["avg_points"],
+                        "games_played": row["games_played"],
+                        "bye_week": row.get("bye_week", "N/A")
+                    }
+                    players.append(player_info)
+                
+                conn.close()
+                
+                return ToolResult(
+                    status=ToolStatus.SUCCESS,
+                    data={
+                        "players": players,
+                        "season": season,
+                        "position": position,
+                        "scoring_type": scoring_type,
+                        "total_found": len(players)
+                    }
+                )
+            
+            # Build query based on position and metric (historical data)
             if position == "QB":
                 query = """
                 SELECT p.name, p.team, p.position,
