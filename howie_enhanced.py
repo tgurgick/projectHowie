@@ -34,6 +34,25 @@ console = Console(style="green")
 __version__ = "2.3.0"
 
 
+def get_database_path():
+    """Get the correct path to the fantasy database"""
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, "data", "fantasy_ppr.db")
+    
+    # Check if database exists at the expected location
+    if os.path.exists(db_path):
+        return db_path
+    
+    # Fallback to current directory (for backward compatibility)
+    fallback_path = "data/fantasy_ppr.db"
+    if os.path.exists(fallback_path):
+        return fallback_path
+    
+    # If neither exists, return the expected path (will show clear error)
+    return db_path
+
+
 def detect_accidental_rapid_stats(user_input: str) -> bool:
     """
     Detect if user accidentally typed a rapid stats command without the leading slash.
@@ -352,7 +371,7 @@ async def handle_update_command(agent: EnhancedHowieAgent, command: str):
                 season=2025,
                 scoring='ppr',
                 test=False,
-                db_url="sqlite:///data/fantasy_ppr.db"
+                db_url=f"sqlite:///{get_database_path()}"
             )
             
             # Run the ADP update
@@ -1186,7 +1205,7 @@ def update_adp(season, scoring, test):
             args.season = season
             args.scoring = scoring
             args.test = test
-            args.db_url = "sqlite:///data/fantasy_ppr.db"
+            args.db_url = f"sqlite:///{get_database_path()}"
             
             # Run the ADP update
             build_fantasypros_adp(args)
@@ -2029,7 +2048,7 @@ def handle_adp_rankings():
         from rich.table import Table
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2100,7 +2119,7 @@ def handle_adp_rankings_with_league_size(league_size: int):
         from rich.table import Table
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2271,7 +2290,7 @@ def handle_positional_tiers():
         from rich.panel import Panel
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2379,7 +2398,7 @@ def handle_specific_position_tiers(position: str):
         from rich.panel import Panel
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2471,7 +2490,7 @@ def get_draft_round_analysis():
         import numpy as np
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2567,7 +2586,7 @@ def get_position_adp_analysis(position: str, players: list):
         import numpy as np
         
         # Connect to database
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -2723,7 +2742,7 @@ async def run_team_intelligence_workflow(agent):
     console.print(f"[bright_green]Starting intelligence gathering for {len(nfl_teams)} teams × {len(positions)} positions = {total_tasks} analyses[/bright_green]")
     
     # Database setup
-    db_path = "data/fantasy_ppr.db"
+    db_path = get_database_path()
     
     # Create the table if it doesn't exist
     try:
@@ -3133,7 +3152,7 @@ async def get_player_basic_info(player_name: str) -> dict:
     try:
         import sqlite3
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3181,7 +3200,7 @@ async def get_player_projections(player_name: str, position: str) -> dict:
     try:
         import sqlite3
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3222,7 +3241,7 @@ async def get_player_adp_data(player_name: str) -> dict:
     try:
         import sqlite3
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3265,7 +3284,7 @@ async def get_player_tier_info(player_name: str, position: str) -> dict:
         import sqlite3
         import numpy as np
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3334,7 +3353,7 @@ async def get_player_sos_data(team: str, position: str) -> dict:
     try:
         import sqlite3
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3384,7 +3403,7 @@ async def get_team_intelligence(team: str, position: str) -> dict:
     try:
         import sqlite3
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3629,7 +3648,7 @@ def show_available_intelligence():
         import sqlite3
         from rich.table import Table
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
@@ -3706,7 +3725,7 @@ def show_team_position_intelligence(team: str, position: str):
         from rich.panel import Panel
         from rich.columns import Columns
         
-        db_path = "data/fantasy_ppr.db"
+        db_path = get_database_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
