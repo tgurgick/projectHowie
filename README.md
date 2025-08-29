@@ -1,376 +1,349 @@
-# Howie CLI - Advanced Fantasy Football AI Assistant
+# 🏈 Howie CLI - Fantasy Football AI Command Center
 
-## Overview
+> **Transform your fantasy football strategy with AI-powered analysis, real-time intelligence, and comprehensive draft tools.**
 
-Howie CLI is an advanced AI assistant specifically designed for fantasy football analysis. Version 2.2 introduces a comprehensive search workflow with multi-model support, detailed logging, and real-time data verification for maximum accuracy.
+[![Version](https://img.shields.io/badge/version-2.3.0-brightgreen.svg)](https://github.com/tgurgick/projectHowie)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 
-## 🚀 Latest Features (v2.2)
+## 🚀 What's New in v2.3.0
 
-### 🔍 Comprehensive Search Workflow
-- **Plan → Search → Verify → Reflect**: Multi-step data gathering and verification
-- **Multi-source validation**: Database + real-time + verification searches  
-- **Quality scoring**: Confidence levels and data completeness metrics
-- **Smart fallbacks**: Automatic additional searches when gaps detected
+### 🎯 **Complete Player Evaluation System**
+- **`/player/Name`** - Comprehensive player analysis in vertical format
+- **All-in-one reports**: Projections, ADP, tiers, SoS, team intelligence, draft recommendations
+- **Mobile-optimized**: Perfect for narrow screens and draft apps
 
-### 📊 Enhanced Logging & Transparency
-- **Complete event tracking**: Every prompt, response, and decision logged
-- **`/logs detailed`**: Full context for all 12+ event types
-- **Tool execution tracing**: Parameters, results, and error details
-- **Search reasoning**: Why specific tools and data sources were chosen
+### 📊 **Advanced Draft Tools**  
+- **`/adp`** - ADP rankings with multi-league round projections
+- **`/adp/10`, `/adp/12`** - League-specific round targeting
+- **`/tiers`** - Positional tier analysis with marginal value drops
+- **Round-based strategy**: Know exactly when tiers typically get drafted
 
-### Core Capabilities
-- **🗂️ File Operations**: Read/write CSV, Excel, JSON files; import rosters from any platform
-- **📊 Visualization**: Generate charts, comparisons, trends (both image and ASCII)
-- **💻 Code Generation**: Create Python analysis scripts and SQL queries on demand
-- **📡 Real-time Data**: Live scores, player news, weather updates, fantasy tracking
-- **🤖 ML Predictions**: Advanced projections, lineup optimization, risk analysis
-- **💾 Context Persistence**: Maintains conversation context and session history
-- **🏗️ Workspace Management**: Organized file handling and report generation
-- **🎯 Multi-Model Support**: Automatic model selection based on task type
-- **📝 Enhanced Logging**: Detailed system event tracking and transparency
-- **🎨 Claude-like Interface**: Elegant ">" prompt with subtle command menu
+### 🤖 **AI-Powered Team Intelligence**
+- **`/intel/team/position`** - Real-time scouting reports for every team/position
+- **Claude + Perplexity workflow**: Web search → analysis → fact-checking
+- **`/update intelligence`** - Refresh all 32 teams × 5 positions = 160 analyses
+- **95%+ confidence scoring**: Verified by beat reporters and analysts
 
-## Installation
+### ⚡ **Enhanced CLI Experience**
+- **Fixed database paths**: Works from any directory
+- **Early termination**: Prevents expensive API calls on typos
+- **Bye week integration**: Complete schedule awareness
+- **Clean color scheme**: Optimized for readability
 
+## 📋 Quick Reference
+
+### **🔍 Player Analysis**
 ```bash
-# Clone the repository
+/player                       # Show help
+/player/Christian McCaffrey   # Complete CMC evaluation
+/player/A.J. Brown           # Full WR analysis with all data
+```
+
+### **🎯 Draft Preparation**
+```bash
+/adp                         # ADP with round estimates
+/adp/12                      # 12-team league targeting
+/tiers                       # All position tier analysis
+/tiers/rb                    # RB-specific tier breakdown
+```
+
+### **🧠 Team Intelligence**
+```bash
+/intel/list                  # Available intelligence data
+/intel/SF/rb                 # 49ers RB situation analysis
+/intel/PHI/wr               # Eagles WR depth chart insights
+```
+
+### **📊 Rapid Stats (All Positions)**
+```bash
+# 2025 Projections
+/qb/projections  /rb/projections  /wr/projections  /te/projections
+
+# Historical Stats (2018-2024)
+/qb/td/2024     /rb/yards/2023   /wr/targets/2022  /te/rec/2021
+
+# Strength of Schedule
+/rb/sos/season  /wr/sos/playoffs  /qb/sos/all
+
+# Special Stats
+/def/sacks/2024  /k/fg/2023  /bye/12  /bye/7
+```
+
+## 🏆 Complete Feature Overview
+
+### **🎯 Draft Command Center**
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/adp` | ADP rankings with round estimates | Shows top 50 with 10/12-team projections |
+| `/adp/10` | League-specific rounds | ADP table + projected round for 10-team |
+| `/tiers` | Tier value analysis | Marginal points between position tiers |
+| `/tiers/rb` | Position-specific tiers | Detailed RB tier breakdown |
+| `/player/Name` | Complete evaluation | All data points in mobile format |
+
+### **🧠 Intelligence System**
+| Command | Description | Coverage |
+|---------|-------------|----------|
+| `/intel/list` | Available data | All teams/positions with update times |
+| `/intel/team/pos` | Detailed report | Usage, injuries, depth chart, coaching |
+| `/update intelligence` | Refresh all data | 32 teams × 5 positions with fact-checking |
+
+### **📊 Comprehensive Stats (All Positions)**
+| Position | Commands | Data Range |
+|----------|----------|------------|
+| **QB** | `/qb/td`, `/qb/yards`, `/qb/projections` | 2018-2025 |
+| **RB** | `/rb/td`, `/rb/yards`, `/rb/projections` | 2018-2025 |
+| **WR** | `/wr/td`, `/wr/yards`, `/wr/targets` | 2018-2025 |
+| **TE** | `/te/td`, `/te/yards`, `/te/targets` | 2018-2025 |
+| **DEF** | `/def/sacks`, `/def/int`, `/def/projections` | 2018-2025 |
+| **K** | `/k/fg`, `/k/xp`, `/k/projections` | 2025 |
+
+### **📅 Schedule Intelligence**
+- **Bye weeks**: `/bye/7`, `/bye/12` - All players on bye
+- **Strength of Schedule**: `/pos/sos/season`, `/pos/sos/playoffs`
+- **ADP integration**: Bye weeks shown in all draft displays
+
+## 🔧 Installation & Setup
+
+### **📦 Quick Install**
+```bash
+# Clone repository
 git clone https://github.com/tgurgick/projectHowie.git
 cd projectHowie
 
-# Install enhanced version
+# Install dependencies
 pip install -r requirements_enhanced.txt
 
-# Or install as package
-python setup.py install
+# Set up API keys (required)
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export PERPLEXITY_API_KEY="your-perplexity-key"
 
-# Set up OpenAI API key
-export OPENAI_API_KEY="your-api-key-here"
+# Build databases (one-time setup)
+python scripts/build_fantasy_db.py
+python scripts/build_pff_projections.py
+python scripts/build_defensive_stats.py
 ```
 
-## Quick Start
-
-### Interactive Chat Mode (Default)
+### **🗄️ Database Setup**
 ```bash
-# Start interactive chat
-python howie_enhanced.py
+# Import 2025 projections and SoS
+python scripts/build_pff_projections.py
 
-# Resume previous session
-python howie_enhanced.py chat --resume
+# Import historical defensive stats (2018-2024)
+python scripts/build_defensive_stats.py
 
-# Use specific model
-python howie_enhanced.py chat --model claude-sonnet-4
+# Import ADP data
+python scripts/build_fantasypros_adp.py
+
+# Verify all databases
+python tests/verify_all_databases.py
 ```
 
-### Enhanced Interface Features
-- **Claude-like Prompt**: Clean ">" input prompt
-- **Slash Commands**: Use `/` for system commands (e.g., `/model/info`, `/logs/info`)
-- **Multiple Exit Commands**: Use `end`, `e`, `/end`, or `/quit` to exit
-- **Real-time Logging**: See detailed processing information in medium grey
-- **Command Discovery**: Type `/` to see all available commands
+## 🎮 Usage Examples
 
-### Slash Commands (Interactive Mode)
+### **🔍 Complete Player Evaluation**
 ```bash
-# Model Management
-/model/info          # Show available models and usage
-/model/switch <name> # Switch to a different model
-/model/config <task> <model> # Configure model for task type
-/model/save          # Save model configuration
+> /player/Saquon Barkley
 
-# Cost Tracking
-/cost/info           # Show cost information and usage
-/cost/reset          # Reset cost tracking
-/cost/estimate <model> <tokens> # Estimate cost for a query
+🔍 Comprehensive Analysis: Saquon Barkley
+════════════════════════════════════════════════════════════
+📋 Saquon Barkley (RB, PHI)
 
-# Agent Management
-/agent/info          # Show agent information and types
-/agent/spawn <type>  # Spawn a new agent (coming soon)
-/agent/list          # List active agents (coming soon)
+📊 2025 Projections          🎯 Draft Position (ADP)
+Fantasy Points: 251.3        Overall ADP: 12.4
+Games: 17                    10-team: 2.02
+Rush TD: 11.2                12-team: 2.00
+Rush Yards: 1,247            14-team: 1.14
 
-# System Information
-/logs/info           # Show recent system events
-/help                # Show detailed help
+🏆 Positional Tier          📅 Strength of Schedule (RB)
+Tier: Tier 1 (Elite)       Season: Easy (7.2)
+Rank: #6 of 120 RBs         Playoffs: Average (5.8)
 
-# Exit Commands
-/end, /e, /quit      # Exit the application
+🧠 Team Intelligence (PHI RB)
+Confidence: 92%
+Key Players: Saquon Barkley, Kenneth Gainwell, Will Shipley
+Usage: Expects 280+ carries in Sirianni's RB-friendly offense
+
+💡 Draft Recommendation
+Action: TARGET EARLY
+Confidence: High
+Reasoning: Elite tier player, favorable team situation, strong ADP value
 ```
 
-### Single Commands
+### **🎯 Draft Strategy Session**
 ```bash
-# Ask a question
-python howie_enhanced.py ask "Who should I start: Justin Jefferson or Tyreek Hill?"
+> /tiers
 
-# Import roster
-python howie_enhanced.py import-roster my_roster.csv --platform espn
+📊 Positional Tier Analysis - Marginal Value Drops
+════════════════════════════════════════════════════════════
+Position    Tier 1→2   Tier 2→3   Tier 3→4   Tier 4→5
+────────────────────────────────────────────────────────────
+QB          -18.3      -12.1      -8.4       -6.2
+RB          -31.7      -19.4      -14.8      -11.2
+WR          -24.1      -16.3      -12.7      -9.8
+TE          -28.9      -15.2      -8.1       -4.3
 
-# Compare players
-python howie_enhanced.py compare "CeeDee Lamb" "Ja'Marr Chase" --visual
+📋 Draft Strategy Insights:
+• RB scarcity most pronounced - secure elite talent early
+• TE shows elite-or-bust pattern - target Tier 1 or wait
+• QB depth allows streaming - safe to wait until mid-rounds
+• WR talent distributed - multiple tiers offer value
 
-# Generate projections
-python howie_enhanced.py project "Saquon Barkley" --weeks 3 --method ml
-
-# Optimize lineup
-python howie_enhanced.py optimize --roster-file my_team.csv --method balanced
-
-# Get live scores
-python howie_enhanced.py live --week 10
-
-# Generate analysis code
-python howie_enhanced.py generate "analyze RB performance trends" --type script
+Round Analysis (10-team/12-team):
+• RB Tier 1: Rounds 1-2, gone by Round 4
+• TE Tier 1: Round 3-5, wait for Tier 3 in Round 10+
+• QB Tier 1: Round 4-6, Tier 2 still available Round 10+
 ```
 
-## Enhanced Logging & Transparency
-
-### Real-time Processing Information
-The enhanced CLI provides detailed, non-intrusive logging of all system operations:
-
-- **🔍 Query Processing**: Shows when processing starts and model selection
-- **🔧 Tool Planning**: Displays tool usage decisions
-- **🛠️ Tool Execution**: Shows which tools are running and their results
-- **📊 Task Classification**: Reveals how queries are categorized
-- **🤖 Model Selection**: Shows which AI model is being used and why
-- **📡 API Calls**: Indicates when external API calls are made
-- **✅ Completion**: Confirms when processing is finished
-
-### System Event Logging
-Use `/logs/info` to view recent system events with:
-- **Timestamps**: When each event occurred
-- **Event Types**: Color-coded by category (user input, API calls, tool execution, etc.)
-- **Descriptions**: Clear explanations of what happened
-- **Non-intrusive Design**: All logging uses medium grey styling
-
-### Example Log Output
-```
-Recent System Events (Last 10):
-11:29:11 👤 user_input: User query: hello...
-11:29:12 📝 tool_decision: No tools needed
-11:29:12 📝 task_classification: Task classified as: default
-11:29:12 📝 model_selection: Selected model: claude-sonnet-4 (anthropic)
-11:29:12 📡 api_call: API call to claude-sonnet-4
-11:29:13 🤖 ai_response: Generated response (287 chars)
-```
-
-## Tool Categories
-
-### 1. File Operations
-- **read_file**: Read CSV, Excel, JSON, text files
-- **write_file**: Save data in various formats
-- **import_roster**: Import fantasy rosters from any platform
-- **create_report**: Generate formatted analysis reports
-- **list_files**: Browse workspace files
-
-### 2. Visualization
-- **create_chart**: Bar, line, scatter, heatmap charts
-- **player_comparison_chart**: Visual player comparisons
-- **season_trend_chart**: Trend analysis over time
-- **ascii_chart**: Terminal-friendly visualizations
-
-### 3. Code Generation
-- **generate_analysis_script**: Create Python analysis scripts
-- **generate_sql_query**: Build SQL queries from natural language
-
-### 4. Real-time Data
-- **live_scores**: Current NFL game scores
-- **player_news**: Latest injury and trade updates
-- **weather_updates**: Game-time weather conditions
-- **live_fantasy_tracker**: Track your roster's live points
-
-### 5. ML Predictions
-- **player_projection**: Advanced ML-based projections
-- **lineup_optimizer**: Optimize lineups using multiple strategies
-
-## Example Workflows
-
-### Complete Roster Analysis
-```python
-# In chat mode
-> Import my roster from espn_roster.csv
-> Analyze my RB depth
-> Project my team's total points for week 10
-> Suggest lineup optimizations
-> Create a visual report of my team's strengths and weaknesses
-```
-
-### Player Research
-```python
-# In chat mode
-> Compare Garrett Wilson vs Chris Olave for the rest of season
-> Show me their target share trends
-> Generate a chart comparing their performances
-> What are the weather conditions for their next games?
-> Give me ML projections for both players
-```
-
-### Custom Analysis Script
-```python
-# In chat mode
-> Generate a Python script to analyze WR performance against zone coverage
-> Modify it to include slot vs outside alignment
-> Save the script as wr_zone_analysis.py
-> Run the script on 2024 data
-```
-
-### Live Game Tracking
-```python
-# In chat mode
-> Show me live scores for all games
-> Track my roster's live fantasy points
-> Alert me to any injury updates
-> How is weather affecting the GB vs CHI game?
-```
-
-## Advanced Features
-
-### Context Management
-- Sessions are automatically saved
-- Resume previous conversations with `--resume`
-- View context with `context` command in chat
-- Export session history for analysis
-
-### Workspace Organization
-```
-~/.howie/
-├── workspace/         # Working files
-│   ├── session_*/     # Per-session files
-│   ├── charts/        # Generated visualizations
-│   ├── reports/       # Analysis reports
-│   └── scripts/       # Generated code
-└── sessions/          # Saved conversations
-```
-
-### ML Model Types
-- **Linear**: Fast, simple projections
-- **Random Forest**: Robust predictions with uncertainty
-- **Gradient Boosting**: High-accuracy predictions
-- **Ensemble**: Combines multiple models for best results
-
-## Architecture
-
-```
-howie_cli/
-├── core/
-│   ├── agent.py           # Main AI agent
-│   ├── context.py         # Conversation context
-│   ├── workspace.py       # File management
-│   └── base_tool.py       # Tool framework
-├── tools/
-│   ├── file_tools.py      # File operations
-│   ├── visualization_tools.py
-│   ├── code_generation_tools.py
-│   ├── realtime_tools.py
-│   └── ml_projection_tools.py
-└── __init__.py
-```
-
-## Configuration
-
-### Environment Variables
+### **🧠 Team Intelligence Deep Dive**
 ```bash
+> /intel/SF/rb
+
+SF RB Intelligence Report
+Status: verified | Confidence: 95% | Updated: 2025-08-28
+╭─────────────────────── 📊 Analysis Summary ────────────────────────╮
+│ The San Francisco 49ers RB room is anchored by Christian McCaffrey │
+│ with Jordan Mason as the primary backup. Shanahan's zone scheme     │
+│ creates opportunities for any back, but CMC's versatility makes     │
+│ him irreplaceable in the offensive system.                         │
+╰─────────────────────────────────────────────────────────────────────╯
+
+👥 Key Players: Christian McCaffrey, Jordan Mason, Isaac Guerendo
+📈 Usage: CMC 85% snaps, 22+ touches/game in healthy games
+🎯 Coaching: Shanahan zone scheme, heavy RB utilization
+🏥 Injuries: CMC managing Achilles; expected full workload
+```
+
+## 🔧 Advanced Features
+
+### **🤖 Multi-Model AI System**
+- **Claude Sonnet 4**: Complex analysis, team intelligence, web search
+- **GPT-4o**: General queries, rapid stats, cost-effective operations  
+- **Perplexity Pro**: Real-time research, fact-checking, injury updates
+- **Automatic routing**: Best model selected for each task type
+
+### **📊 Data Sources**
+- **PFF Projections**: 2025 player projections and strength of schedule
+- **FantasyPros ADP**: Real-time average draft position data
+- **NFL Historical**: Complete stats 2018-2024 via nfl_data_py
+- **Real-time Intelligence**: Live injury reports, depth chart changes
+
+### **💾 Database Architecture**
+```
+data/fantasy_ppr.db
+├── player_projections      # 2025 PFF projections
+├── adp_data                # FantasyPros ADP 
+├── strength_of_schedule    # PFF SoS by position
+├── player_defensive_stats  # Historical defense (2018-2024)
+├── team_defensive_stats    # Team defense stats
+└── team_position_intelligence # AI scouting reports
+```
+
+## 🛠️ Configuration
+
+### **⚙️ Environment Setup**
+```bash
+# Required API Keys
 export OPENAI_API_KEY="sk-..."
-export HOWIE_MODEL="gpt-4o"  # Default model
-export HOWIE_WORKSPACE="~/fantasy_analysis"  # Custom workspace
+export ANTHROPIC_API_KEY="sk-ant-..."
+export PERPLEXITY_API_KEY="pplx-..."
+
+# Optional Configuration
+export HOWIE_MODEL="claude-sonnet-4"    # Default model
+export HOWIE_WORKSPACE="~/fantasy"      # Custom workspace
 ```
 
-### Settings File
-Create `~/.howie/config.json`:
-```json
-{
-  "model": "gpt-4o",
-  "scoring_type": "ppr",
-  "risk_tolerance": "balanced",
-  "favorite_teams": ["SF", "BUF"],
-  "analysis_depth": "detailed"
-}
-```
-
-## Comparison to Original
-
-| Feature | Original | Enhanced (v2.0) |
-|---------|----------|-----------------|
-| Core Function | Q&A Chatbot | Full AI Assistant |
-| File Operations | ❌ | ✅ Read/Write/Import |
-| Visualizations | ❌ | ✅ Charts & Graphs |
-| Code Generation | ❌ | ✅ Scripts & SQL |
-| Real-time Data | ❌ | ✅ Live Updates |
-| ML Predictions | Basic | Advanced Multi-model |
-| Context Memory | ❌ | ✅ Persistent Sessions |
-| Tool System | ❌ | ✅ Extensible Framework |
-| Workspace | ❌ | ✅ Organized Files |
-
-## Development
-
-### Adding New Tools
-```python
-from howie_cli.core.base_tool import BaseTool, ToolResult, ToolStatus
-
-class MyCustomTool(BaseTool):
-    def __init__(self):
-        super().__init__()
-        self.name = "my_tool"
-        self.category = "custom"
-        self.description = "Does something useful"
-        
-    async def execute(self, **kwargs) -> ToolResult:
-        # Tool logic here
-        return ToolResult(
-            status=ToolStatus.SUCCESS,
-            data={"result": "success"}
-        )
-```
-
-### Running Tests
+### **🎛️ Model Configuration**
 ```bash
-pytest tests/
+# In Howie CLI
+> /model/info                    # Show available models
+> /model/switch gpt-4o          # Switch current model  
+> @claude-sonnet-4 <query>      # Use specific model once
+> /cost/info                    # Show usage and costs
 ```
 
-## Troubleshooting
+## 📈 Performance & Reliability
 
-### Common Issues
+### **✅ Quality Assurance**
+- **Fact-checking**: Perplexity Pro verifies AI analysis
+- **Confidence scoring**: 0-100% reliability metrics
+- **Data validation**: Multiple source cross-referencing
+- **Error handling**: Graceful fallbacks and clear error messages
 
-1. **OpenAI API Key Error**
-   ```bash
-   export OPENAI_API_KEY="your-key-here"
-   ```
+### **⚡ Speed Optimizations**
+- **Database caching**: Instant rapid stats lookup
+- **Parallel tool execution**: Multiple operations simultaneously  
+- **Smart model routing**: Cost-effective model selection
+- **Path resolution**: Works from any directory
 
-2. **Module Import Errors**
-   ```bash
-   pip install -r requirements_enhanced.txt
-   ```
+### **💰 Cost Management**
+- **Usage tracking**: Real-time cost monitoring per model
+- **Smart routing**: Expensive models only when needed
+- **Efficient caching**: Reduce redundant API calls
+- **Budget alerts**: Cost estimation and warnings
 
-3. **Database Connection Issues**
-   ```bash
-   # Rebuild databases
-   python scripts/build_fantasy_db.py
-   ```
+## 🔮 Roadmap & Future Features
 
-## Contributing
+### **📅 Coming Soon**
+- **Live draft assistant**: Real-time pick recommendations
+- **Trade analyzer**: Multi-team trade evaluation
+- **Waiver wire AI**: Priority recommendations with reasoning
+- **League-specific analysis**: Custom scoring and roster settings
+- **Mobile app**: Native iOS/Android companion
 
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Submit a pull request
+### **🎯 Planned Enhancements**
+- **Dynasty league support**: Multi-year player valuations
+- **Playoff optimizer**: Week 15-17 specific strategies
+- **Injury impact analysis**: Replacement value calculations
+- **Weather integration**: Game condition impact analysis
 
-## License
+## 🤝 Contributing
 
-MIT License - see LICENSE file
+### **🔧 Development Setup**
+```bash
+# Clone and setup development environment
+git clone https://github.com/tgurgick/projectHowie.git
+cd projectHowie
+pip install -r requirements_enhanced.txt
+python -m pytest tests/
+```
 
-## Acknowledgments
+### **📝 Contributing Guidelines**
+1. **Fork** the repository
+2. **Create** feature branch: `git checkout -b feature/amazing-feature`
+3. **Add tests** for new functionality
+4. **Update documentation** for new commands
+5. **Submit** pull request with detailed description
 
-- Inspired by Anthropic's Claude
-- Built on OpenAI's GPT-4
-- Fantasy data from nfl_data_py
-- Original projectHowie concept by Trevor Gurgick
+### **🐛 Bug Reports**
+- Use GitHub Issues with detailed reproduction steps
+- Include Howie version (`/version` command)
+- Attach relevant log output (`/logs detailed`)
 
-## Roadmap
+## 📄 License & Acknowledgments
 
-- [ ] Voice interface
-- [ ] Web UI companion
-- [ ] Mobile app
-- [ ] Multi-league portfolio management
-- [ ] DFS optimization
-- [ ] Betting insights integration
-- [ ] Community tool marketplace
+### **📋 License**
+MIT License - see [LICENSE](LICENSE) file for details
+
+### **🙏 Acknowledgments**
+- **AI Models**: OpenAI GPT-4o, Anthropic Claude Sonnet 4, Perplexity Pro
+- **Data Sources**: nfl_data_py, FantasyPros, Pro Football Focus (PFF)
+- **Inspiration**: Anthropic's Claude interface design
+- **Creator**: Trevor Gurgick ([@tgurgick](https://github.com/tgurgick))
 
 ---
 
-**Note**: This is a significant enhancement over the original projectHowie, transforming it from a Q&A chatbot into a comprehensive AI assistant with Claude-like capabilities tailored for fantasy football.
+## 🎯 Transform Your Fantasy Strategy
+
+**Howie CLI v2.3.0** isn't just a tool—it's your complete fantasy football command center. From comprehensive player analysis to AI-powered team intelligence, every feature is designed to give you the competitive edge.
+
+**Ready to dominate your league?** 
+
+```bash
+git clone https://github.com/tgurgick/projectHowie.git && cd projectHowie
+pip install -r requirements_enhanced.txt
+python howie_enhanced.py
+```
+
+> 🏆 **Join the Howie community** and revolutionize your fantasy football strategy with AI-powered analysis.
