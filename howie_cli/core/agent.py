@@ -146,6 +146,12 @@ For example:
 - "Recent cuts" = NFL roster cuts and fantasy football implications
 - "The cuts" = NFL roster cuts and fantasy football implications
 
+FANTASY RANKING GUIDELINES:
+- For BROAD fantasy rankings (e.g., "top 20 prospects", "best players to draft"), provide LEAGUE-WIDE analysis covering ALL teams
+- DO NOT focus on just one team unless specifically asked - cover multiple teams and positions
+- When ranking players, consider multiple teams and provide diverse options across the league
+- If tool data seems limited to one team, supplement with league-wide knowledge to provide comprehensive rankings
+
 When in doubt, ask for clarification about which NFL player, team, or fantasy football aspect they're referring to.
 
 RESPONSE GUIDELINES:

@@ -236,10 +236,16 @@ IMPORTANT GUIDELINES:
 6. For current season information, prioritize official team announcements and reliable sports news sources
 7. IMPORTANT: 2024 was LAST SEASON. When users ask about "2024" rosters, provide CURRENT 2025 season information instead
 8. Always clarify if you're providing current season (2025) vs. historical information
-9. For depth charts and rosters, focus on the most recent, up-to-date information
-10. CRITICAL: Focus ONLY on NFL football. Do not provide information about MLB, NBA, or other sports
-11. If a query seems ambiguous, ask for clarification about which NFL player or team they're referring to
-12. For player projections and stats, ensure you're discussing NFL football players, not other sports
+
+FANTASY RANKING GUIDELINES:
+9. For BROAD fantasy rankings (e.g., "top 20 prospects", "best players to draft"), provide LEAGUE-WIDE analysis covering ALL teams
+10. DO NOT focus on just one team unless specifically asked - cover multiple teams and positions
+11. When ranking players, consider multiple teams and provide diverse options across the league
+12. If tool data seems limited to one team, supplement with league-wide knowledge to provide comprehensive rankings
+13. For depth charts and rosters, focus on the most recent, up-to-date information
+14. CRITICAL: Focus ONLY on NFL football. Do not provide information about MLB, NBA, or other sports
+15. If a query seems ambiguous, ask for clarification about which NFL player or team they're referring to
+16. For player projections and stats, ensure you're discussing NFL football players, not other sports
 
 Please provide accurate, current NFL football information when available."""
             
@@ -357,27 +363,32 @@ User request: {user_input}
 Available tools: {available_tools}
 
 TOOL SELECTION GUIDE:
-1. For "top players by position" queries (e.g., "top WRs", "best QBs"):
+1. For BROAD FANTASY RANKINGS queries (e.g., "top 20 prospects", "best players to draft", "league rankings"):
+   - Use: top_players (with appropriate position or ALL for league-wide)
+   - Use: realtime_search (for current season context, injuries, trades)
+   - DO NOT limit to specific teams - get league-wide data
+
+2. For "top players by position" queries (e.g., "top WRs", "best QBs"):
    - Use: top_players (with position parameter)
 
-2. For specific player stats (e.g., "Ja'Marr Chase stats"):
+3. For specific player stats (e.g., "Ja'Marr Chase stats"):
    - Use: player_stats (with player_name parameter)
 
-3. For team analysis (e.g., "Cowboys roster", "team analysis"):
+4. For team analysis (e.g., "Cowboys roster", "team analysis"):
    - Use: team_analysis (with team parameter)
 
-4. For ADP/draft position queries (e.g., "top ADP", "draft rankings"):
+5. For ADP/draft position queries (e.g., "top ADP", "draft rankings"):
    - Use: database_query (with SQL joining fantasy_market and players tables)
    - IMPORTANT: ADP season mapping - 2025 data = 2025-2026 NFL season, 2024 data = 2024-2025 NFL season
    - Example: "SELECT p.name, p.position, p.team, fm.adp_overall FROM fantasy_market fm JOIN players p ON fm.player_id = p.player_id WHERE fm.season = 2025 AND p.position = 'WR' ORDER BY fm.adp_overall ASC LIMIT 10"
 
-5. For database queries (e.g., "players with 1000+ yards"):
+6. For database queries (e.g., "players with 1000+ yards"):
    - Use: database_query (with SQL or natural language)
 
-6. For current news/info (e.g., "latest cuts", "recent trades"):
+7. For current news/info (e.g., "latest cuts", "recent trades"):
    - Use: realtime_search
 
-7. For player projections:
+8. For player projections:
    - Use: player_projection ONLY with specific player_name (e.g., "A.J. Brown")
    - Do NOT use for team-based queries or multiple players
 
@@ -680,12 +691,16 @@ ALWAYS provide the required parameters for each tool. Be specific and accurate i
                         error_msg = result.error[:100] + "..." if result.error and len(result.error) > 100 else (result.error or "unknown error")
                         console.print(f"[dim]  [{i}/{len(tool_calls)}] {tool_name}: Error - {error_msg}[/dim]")
                     
+                    # Safe way to check if data exists without DataFrame ambiguity
+                    data_obj = getattr(result, 'data', None)
+                    has_data = data_obj is not None
+                    
                     self.log_event("tool_result", f"Tool {tool_name}: {result.status.value}", {
                         "tool_name": tool_name,
                         "status": result.status.value,
-                        "has_data": bool(getattr(result, 'data', None)),
-                        "data_type": type(getattr(result, 'data', None)).__name__,
-                        "result_preview": str(getattr(result, 'data', ''))[:200] if getattr(result, 'data', None) else None,
+                        "has_data": has_data,
+                        "data_type": type(data_obj).__name__,
+                        "result_preview": str(data_obj)[:200] if has_data else None,
                         "error": getattr(result, 'error', None),
                         "execution_index": i,
                         "total_tools": len(tool_calls)

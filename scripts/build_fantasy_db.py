@@ -117,6 +117,116 @@ class ADPData(Base):
     source_url = Column(String)
     __table_args__ = (PrimaryKeyConstraint('season', 'scoring_format', 'player_name'),)
 
+class PlayerProjections(Base):
+    __tablename__ = "player_projections"
+    season = Column(Integer)
+    projection_type = Column(String)  # 'preseason', 'midseason', etc.
+    player_name = Column(String)
+    team_name = Column(String)
+    position = Column(String)
+    bye_week = Column(Integer, nullable=True)
+    games = Column(Integer, nullable=True)
+    fantasy_points = Column(Float, nullable=True)
+    fantasy_points_rank = Column(Integer, nullable=True)
+    auction_value = Column(Float, nullable=True)
+    # Passing stats
+    pass_comp = Column(Float, nullable=True)
+    pass_att = Column(Float, nullable=True)
+    pass_yds = Column(Float, nullable=True)
+    pass_td = Column(Float, nullable=True)
+    pass_int = Column(Float, nullable=True)
+    pass_sacked = Column(Float, nullable=True)
+    # Rushing stats
+    rush_att = Column(Float, nullable=True)
+    rush_yds = Column(Float, nullable=True)
+    rush_td = Column(Float, nullable=True)
+    # Receiving stats
+    recv_targets = Column(Float, nullable=True)
+    recv_receptions = Column(Float, nullable=True)
+    recv_yds = Column(Float, nullable=True)
+    recv_td = Column(Float, nullable=True)
+    # Other stats
+    fumbles = Column(Float, nullable=True)
+    fumbles_lost = Column(Float, nullable=True)
+    two_pt = Column(Float, nullable=True)
+    # Kicking stats
+    fg_made_0_19 = Column(Float, nullable=True)
+    fg_att_0_19 = Column(Float, nullable=True)
+    fg_made_20_29 = Column(Float, nullable=True)
+    fg_att_20_29 = Column(Float, nullable=True)
+    fg_made_30_39 = Column(Float, nullable=True)
+    fg_att_30_39 = Column(Float, nullable=True)
+    fg_made_40_49 = Column(Float, nullable=True)
+    fg_att_40_49 = Column(Float, nullable=True)
+    fg_made_50_plus = Column(Float, nullable=True)
+    fg_att_50_plus = Column(Float, nullable=True)
+    pat_made = Column(Float, nullable=True)
+    pat_att = Column(Float, nullable=True)
+    # Defense stats
+    dst_sacks = Column(Float, nullable=True)
+    dst_safeties = Column(Float, nullable=True)
+    dst_int = Column(Float, nullable=True)
+    dst_fumbles_forced = Column(Float, nullable=True)
+    dst_fumbles_recovered = Column(Float, nullable=True)
+    dst_td = Column(Float, nullable=True)
+    dst_return_yds = Column(Float, nullable=True)
+    dst_return_td = Column(Float, nullable=True)
+    dst_pts_0 = Column(Float, nullable=True)
+    dst_pts_1_6 = Column(Float, nullable=True)
+    dst_pts_7_13 = Column(Float, nullable=True)
+    dst_pts_14_20 = Column(Float, nullable=True)
+    dst_pts_21_27 = Column(Float, nullable=True)
+    dst_pts_28_34 = Column(Float, nullable=True)
+    dst_pts_35_plus = Column(Float, nullable=True)
+    __table_args__ = (PrimaryKeyConstraint('season', 'projection_type', 'player_name'),)
+
+class StrengthOfSchedule(Base):
+    __tablename__ = "strength_of_schedule"
+    season = Column(Integer)
+    position = Column(String)  # 'qb', 'rb', 'wr', 'te', 'dst'
+    team = Column(String)
+    week_1 = Column(Float, nullable=True)
+    week_2 = Column(Float, nullable=True)
+    week_3 = Column(Float, nullable=True)
+    week_4 = Column(Float, nullable=True)
+    week_5 = Column(Float, nullable=True)
+    week_6 = Column(Float, nullable=True)
+    week_7 = Column(Float, nullable=True)
+    week_8 = Column(Float, nullable=True)
+    week_9 = Column(Float, nullable=True)
+    week_10 = Column(Float, nullable=True)
+    week_11 = Column(Float, nullable=True)
+    week_12 = Column(Float, nullable=True)
+    week_13 = Column(Float, nullable=True)
+    week_14 = Column(Float, nullable=True)
+    week_15 = Column(Float, nullable=True)
+    week_16 = Column(Float, nullable=True)
+    week_17 = Column(Float, nullable=True)
+    season_games = Column(Integer, nullable=True)
+    season_sos = Column(Float, nullable=True)
+    playoffs_games = Column(Integer, nullable=True)
+    playoffs_sos = Column(Float, nullable=True)
+    all_games = Column(Integer, nullable=True)
+    all_sos = Column(Float, nullable=True)
+    __table_args__ = (PrimaryKeyConstraint('season', 'position', 'team'),)
+
+class TeamPositionIntelligence(Base):
+    __tablename__ = "team_position_intelligence"
+    team = Column(String)
+    position = Column(String)  # 'qb', 'rb', 'wr', 'te', 'def'
+    season = Column(Integer)
+    last_updated = Column(String)  # ISO timestamp
+    intelligence_summary = Column(Text)  # Main analysis summary
+    key_players = Column(Text, nullable=True)  # JSON list of key players
+    usage_notes = Column(Text, nullable=True)  # Snap counts, target share, etc.
+    coaching_style = Column(Text, nullable=True)  # Offensive/defensive philosophy 
+    injury_updates = Column(Text, nullable=True)  # Current injury status
+    recent_changes = Column(Text, nullable=True)  # Trades, signings, cuts
+    fact_check_status = Column(String, default='pending')  # 'pending', 'verified', 'flagged'
+    fact_check_notes = Column(Text, nullable=True)  # Perplexity fact-check results
+    confidence_score = Column(Float, nullable=True)  # 0-100 confidence in accuracy
+    __table_args__ = (PrimaryKeyConstraint('team', 'position', 'season'),)
+
 class DraftScenarios(Base):
     __tablename__ = "draft_scenarios"
     sim_id = Column(Integer, primary_key=True, autoincrement=True)

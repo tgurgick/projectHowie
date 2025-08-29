@@ -99,23 +99,30 @@ class FantasyProsADPScraper:
                         fantrax_adp = float(cells[8].get_text(strip=True)) if cells[8].get_text(strip=True) and cells[8].get_text(strip=True) != '' else np.nan
                         avg_adp = float(cells[9].get_text(strip=True)) if cells[9].get_text(strip=True) and cells[9].get_text(strip=True) != '' else np.nan
                         
-                        # Extract player name and team from "PlayerNameTEAM(bye)" format
+                        # Extract player name, team, and bye week from "PlayerNameTEAM(bye)" format
                         player_name = player_info
                         team = ''
-                        bye_week = ''
+                        bye_week = None
                         
-                        if '(' in player_info:
+                        # First extract bye week if present
+                        if '(' in player_info and ')' in player_info:
                             # Extract bye week
                             bye_part = player_info.split('(')[1].split(')')[0]
                             if bye_part.isdigit():
-                                bye_week = bye_part
-                            player_name = player_info.split('(')[0]
+                                bye_week = int(bye_part)
+                            # Remove bye week part
+                            player_info_no_bye = player_info.split('(')[0]
+                        else:
+                            player_info_no_bye = player_info
                         
-                        # Extract team from player name (look for 2-3 letter team abbreviation at the end)
-                        team_match = re.search(r'([A-Z]{2,3})$', player_name)
+                        # Extract team from the end of player name (look for 2-3 letter team abbreviation)
+                        team_match = re.search(r'([A-Z]{2,3})$', player_info_no_bye)
                         if team_match:
                             team = team_match.group(1)
-                            player_name = re.sub(r'([A-Z]{2,3})$', '', player_name)
+                            # Remove team from player name
+                            player_name = re.sub(r'([A-Z]{2,3})$', '', player_info_no_bye).strip()
+                        else:
+                            player_name = player_info_no_bye.strip()
                         
                         # Clean position (remove rank numbers like WR1 -> WR)
                         clean_position = re.sub(r'(\d+)$', '', position).upper()
@@ -167,9 +174,8 @@ class FantasyProsADPScraper:
         # Clean position names (remove rank numbers like WR1 -> WR, RB2 -> RB)
         df['position'] = df['position'].str.replace(r'(\d+)$', '', regex=True).str.upper()
         
-        # The 'team' column from FantasyPros is actually the bye week, not team
-        # We'll need to get team info from our database or leave it empty
-        df['team'] = ''  # Clear team column as it's actually bye week
+        # Team data is now properly extracted from the player name format
+        # Keep the team data as extracted
         
         return df
     
@@ -325,7 +331,8 @@ def build_fantasypros_adp(args: Args):
         pos_val = row[1]['adp_position']
         adp_str = f"{adp_val:.1f}" if pd.notna(adp_val) else "N/A"
         pos_str = f"{pos_val:.0f}" if pd.notna(pos_val) else "N/A"
-        print(f"  {i:3d}. {row[1]['player_name']:<20} ({row[1]['position']}) - ADP: {adp_str:>5} (Pos: {pos_str:>3})")
+        team_str = row[1]['team'] if row[1]['team'] else 'N/A'
+        print(f"  {i:3d}. {row[1]['player_name']:<20} ({team_str:>3} {row[1]['position']}) - ADP: {adp_str:>5} (Pos: {pos_str:>3})")
     
     engine.dispose()
 

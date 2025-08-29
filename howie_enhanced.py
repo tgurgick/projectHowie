@@ -34,6 +34,67 @@ console = Console(style="green")
 __version__ = "2.2.0"
 
 
+def detect_accidental_rapid_stats(user_input: str) -> bool:
+    """
+    Detect if user accidentally typed a rapid stats command without the leading slash.
+    This prevents expensive API calls for common typos like 'wr/td' instead of '/wr/td'.
+    
+    Returns True if an accidental pattern is detected and handled.
+    """
+    if not user_input or user_input.startswith('/'):
+        return False
+    
+    # Define patterns that look like rapid stats commands
+    # position/stat[/season] format
+    parts = user_input.strip().split('/')
+    
+    if len(parts) < 2 or len(parts) > 3:
+        return False
+    
+    # Check if first part looks like a position
+    valid_positions = ['qb', 'rb', 'wr', 'te', 'k', 'def', 'dst']
+    if parts[0].lower() not in valid_positions:
+        return False
+    
+    # Check if second part looks like a stat
+    valid_stats = [
+        'adp', 'td', 'yards', 'targets', 'rec', 'rush_td', 'rec_td', 'pass_td',
+        'fantasy', 'points', 'sacks', 'int', 'projections', 'sos', 'bye',
+        'pass_yards', 'rec_yards', 'rush_yards', 'pass_att', 'rush_att',
+        'pass_comp', 'receptions', 'fumbles'
+    ]
+    if parts[1].lower() not in valid_stats:
+        return False
+    
+    # If we have a third part, validate based on the stat type
+    if len(parts) == 3:
+        if parts[1].lower() == 'bye':
+            # For bye weeks, third part should be week number (1-18)
+            try:
+                week = int(parts[2])
+                if week < 1 or week > 18:
+                    return False
+            except ValueError:
+                return False
+        else:
+            # For other stats, third part should be a year
+            try:
+                year = int(parts[2])
+                if year < 2018 or year > 2030:
+                    return False
+            except ValueError:
+                return False
+    
+    # Pattern detected! Show helpful message and suggest the correct command
+    suggested_command = f"/{user_input}"
+    
+    console.print(f"[yellow]⚠️  Did you mean [bright_green]{suggested_command}[/bright_green]?[/yellow]")
+    console.print(f"[dim]Rapid stats commands need a leading slash to work properly.[/dim]")
+    console.print(f"[dim]Type [bright_green]{suggested_command}[/bright_green] or [bright_green]?[/bright_green] for help.[/dim]")
+    
+    return True
+
+
 
 
 
@@ -133,6 +194,10 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
             # Get user input with Claude-like prompt
             user_input = console.input("\n[bold white]>[/bold white] ")
             
+            # Early detection for accidental rapid stats patterns (missing leading slash)
+            if detect_accidental_rapid_stats(user_input):
+                continue
+            
             # Check for special commands
             if user_input.lower() in ['quit', 'exit', 'bye', 'end', 'e']:
                 console.print("[bright_green]Good luck with your fantasy team![/bright_green]")
@@ -160,9 +225,20 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     console.print("  [bright_green]/qb/td[/bright_green] - Top 50 QBs by total TDs")
                     console.print("  [bright_green]/rb/yards[/bright_green] - Top 50 RBs by total yards")
                     console.print("  [bright_green]/te/rec[/bright_green] - Top 50 TEs by receptions")
+                    console.print("  [bright_green]/k/points[/bright_green] - Top 50 Ks by fantasy points")
+                    console.print("  [bright_green]/def/sacks[/bright_green] - Top 50 DEFs by sacks")
                     console.print("  [bright_green]/qb/stats[/bright_green] - Show all QB stats available")
                     console.print("  [dim]More: /qb/pass_td, /rb/rush_yards, /wr/targets, /qb/fantasy[/dim]")
+                    console.print("  [dim]New: /wr/projections, /qb/sos, /def/sos/playoffs[/dim]")
                     console.print("  [dim]Format: /position/stat/season (e.g., /qb/td/2024)[/dim]")
+                    console.print("\n[bright_green]ADP & Draft Tools:[/bright_green]")
+                    console.print("  [dim]/adp - Show ADP rankings with 10-team and 12-team round estimates[/dim]")
+                    console.print("  [dim]/adp/10 - Show ADP rankings with projected rounds for 10-team league[/dim]")
+                    console.print("  [dim]/adp/12 - Show ADP rankings with projected rounds for 12-team league[/dim]")
+                    console.print("  [bright_green]/tiers[/bright_green] - Show positional tier analysis and marginal value drops")
+                    console.print("  [dim]/tiers/te - Detailed tier breakdown for specific position[/dim]")
+                    console.print("  [bright_green]/intel[/bright_green] - Team position intelligence system")
+                    console.print("  [dim]/intel/PHI/wr - Get Eagles WR intelligence report[/dim]")
                     console.print("\n[dim]? for help • / for commands • /end to exit[/dim]")
                     continue
                 elif user_input.lower().startswith('/model'):
@@ -181,9 +257,21 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     handle_logs_command(agent, user_input[6:])  # Remove '/logs' prefix
                     continue
                 elif user_input.lower().startswith('/update'):
-                    handle_update_command(agent, user_input[8:])  # Remove '/update' prefix
+                    await handle_update_command(agent, user_input[8:])  # Remove '/update' prefix
                     continue
-                elif user_input.lower().startswith('/wr/') or user_input.lower().startswith('/qb/') or user_input.lower().startswith('/rb/') or user_input.lower().startswith('/te/'):
+                elif user_input.lower().startswith('/adp'):
+                    handle_adp_command(user_input[1:])  # Remove '/' prefix
+                    continue
+                elif user_input.lower().startswith('/tiers'):
+                    handle_tiers_command(user_input[1:])  # Remove '/' prefix
+                    continue
+                elif user_input.lower().startswith('/intel'):
+                    handle_intel_command(user_input[1:])  # Remove '/' prefix
+                    continue
+                elif (user_input.lower().startswith('/wr/') or user_input.lower().startswith('/qb/') or 
+                      user_input.lower().startswith('/rb/') or user_input.lower().startswith('/te/') or 
+                      user_input.lower().startswith('/k/') or user_input.lower().startswith('/def/') or 
+                      user_input.lower().startswith('/dst/')):
                     handle_rapid_stats_command(user_input[1:])  # Remove '/' prefix
                     continue
                 elif user_input.lower().startswith('/quit') or user_input.lower().startswith('/end') or user_input.lower() == '/e':
@@ -236,7 +324,7 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
             console.print(f"[red]Error: {e}[/red]")
 
 
-def handle_update_command(agent: EnhancedHowieAgent, command: str):
+async def handle_update_command(agent: EnhancedHowieAgent, command: str):
     """Handle update-related commands"""
     parts = command.split()
     
@@ -255,11 +343,12 @@ def handle_update_command(agent: EnhancedHowieAgent, command: str):
             from build_fantasypros_adp import build_fantasypros_adp, Args
             
             # Create args object for 2025 season (current)
-            args = Args()
-            args.season = 2025
-            args.scoring = 'ppr'
-            args.test = False
-            args.db_url = "sqlite:///data/fantasy_ppr.db"
+            args = Args(
+                season=2025,
+                scoring='ppr',
+                test=False,
+                db_url="sqlite:///data/fantasy_ppr.db"
+            )
             
             # Run the ADP update
             build_fantasypros_adp(args)
@@ -303,10 +392,25 @@ def handle_update_command(agent: EnhancedHowieAgent, command: str):
         except Exception as e:
             console.print(f"[red]Error updating rosters: {e}[/red]")
     
+    elif parts[0] == 'intelligence':
+        # Update team position intelligence
+        console.print("[bright_green]Starting Team Position Intelligence Update...[/bright_green]")
+        console.print("[dim]This process will analyze each team's positional groups using Claude + web search + fact-checking[/dim]")
+        
+        try:
+            # Since this function is now async, we can directly await
+            await run_team_intelligence_workflow(agent)
+            
+        except Exception as e:
+            console.print(f"[red]Error updating team intelligence: {e}[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+    
     else:
         console.print("[yellow]Available update commands:[/yellow]")
         console.print("  [bright_green]/update adp[/bright_green] - Update ADP data from FantasyPros")
         console.print("  [bright_green]/update rosters[/bright_green] - Update NFL roster information")
+        console.print("  [bright_green]/update intelligence[/bright_green] - Update team position intelligence (AI-powered analysis)")
 
 
 def handle_model_command(agent: EnhancedHowieAgent, command: str):
@@ -938,6 +1042,17 @@ def show_enhanced_help():
   - **/logs/tools** - Show detailed tool execution trace
   - **/logs/agent** - Show agent decision trace
   - **/logs/session** - Show session information
+- **/adp** - ADP rankings and draft tools
+  - **/adp** - Show ADP rankings with 10-team and 12-team round estimates
+  - **/adp/10** - Show ADP rankings with projected rounds for 10-team league
+  - **/adp/12** - Show ADP rankings with projected rounds for 12-team league
+- **/tiers** - Positional tier analysis and marginal value
+  - **/tiers** - Show marginal value drops between all position tiers
+  - **/tiers/te** - Detailed tier breakdown for specific position
+- **/intel** - Team position intelligence system
+  - **/intel** - Show help and usage examples
+  - **/intel/list** - Show available intelligence data
+  - **/intel/PHI/wr** - Get detailed Eagles WR intelligence report
 - **/help** - Show detailed help
 - **/quit**, **/end**, **/e** - Exit the application
 
@@ -1271,13 +1386,19 @@ def show_available_stats(position: str):
             'Other': ['fumbles']
         },
         'K': {
-            'Kicking Stats': ['fantasy']  # Kickers only have fantasy points
+            'Kicking Stats': ['fg_made', 'fg_att', 'fg_pct', 'pat_made', 'pat_att', 'pat_pct', 'points', 'fantasy']
+        },
+        'DEF': {
+            'Defense Stats': ['sacks', 'int', 'fumbles_forced', 'fumbles_rec', 'def_td', 'safeties', 'return_td', 'return_yds', 'points', 'fantasy']
+        },
+        'DST': {
+            'Defense Stats': ['sacks', 'int', 'fumbles_forced', 'fumbles_rec', 'def_td', 'safeties', 'return_td', 'return_yds', 'points', 'fantasy']
         }
     }
     
     # Get stats for the position
     if position not in position_stats:
-        console.print(f"[red]Invalid position: {position}. Valid positions: QB, RB, WR, TE, K[/red]")
+        console.print(f"[red]Invalid position: {position}. Valid positions: QB, RB, WR, TE, K, DEF, DST[/red]")
         return
     
     stats = position_stats[position]
@@ -1297,14 +1418,33 @@ def show_available_stats(position: str):
     console.print(table)
     
     # Show ADP info if applicable
-    if position in ['QB', 'RB', 'WR', 'TE']:
+    if position in ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DST']:
         console.print(f"\n[bold bright_green]ADP Data:[/bold bright_green]")
         console.print(f"  [bright_green]/{position.lower()}/adp[/bright_green] - Current ADP rankings")
         console.print(f"  [bright_green]/{position.lower()}/adp/2024[/bright_green] - Historical ADP")
     
+    # Show projections info
+    console.print(f"\n[bold bright_green]Projections Data (2025):[/bold bright_green]")
+    console.print(f"  [bright_green]/{position.lower()}/projections[/bright_green] - 2025 preseason projections")
+    console.print(f"  [bright_green]/{position.lower()}/projections/2025[/bright_green] - 2025 season projections")
+    
+    # Show strength of schedule info
+    if position in ['QB', 'RB', 'WR', 'TE', 'DEF', 'DST']:
+        pos_lower = 'dst' if position in ['DEF', 'DST'] else position.lower()
+        console.print(f"\n[bold bright_green]Strength of Schedule (SoS):[/bold bright_green]")
+        console.print(f"  [bright_green]/{position.lower()}/sos[/bright_green] - Season SoS rankings")
+        console.print(f"  [bright_green]/{position.lower()}/sos/playoffs[/bright_green] - Playoff SoS rankings")
+        console.print(f"  [bright_green]/{position.lower()}/sos/1-4[/bright_green] - Weeks 1-4 SoS rankings")
+    
+    # Show bye week info
+    console.print(f"\n[bold bright_green]Bye Weeks (2025):[/bold bright_green]")
+    console.print(f"  [bright_green]/{position.lower()}/bye[/bright_green] - All {position}s with bye weeks")
+    console.print(f"  [bright_green]/{position.lower()}/bye/5[/bright_green] - {position}s with Week 5 bye")
+    console.print(f"  [bright_green]/{position.lower()}/bye/14[/bright_green] - {position}s with Week 14 bye")
+    
     # Show season info
     console.print(f"\n[bold bright_green]Season Support:[/bold bright_green]")
-    console.print(f"  Available seasons: 2018-2024")
+    console.print(f"  Available seasons: 2018-2025")
     console.print(f"  Format: /{position.lower()}/stat/season (e.g., /{position.lower()}/fantasy/2024)")
     console.print(f"  Default: Current season (2025) if no season specified")
 
@@ -1314,25 +1454,37 @@ def handle_rapid_stats_command(command: str):
     try:
         # Parse command: position/stat[/season]
         parts = command.split('/')
+        # Remove empty string if command starts with /
+        if parts and parts[0] == '':
+            parts = parts[1:]
+        
         if len(parts) < 2:
             console.print("[red]Invalid format. Use: /position/stat[/season] (e.g., /wr/adp, /qb/td/2024)[/red]")
             return
         
         position = parts[0].upper()
         stat = parts[1].lower()
-        season = parts[2] if len(parts) > 2 else "2025"  # Default to current season
+        
+        # Special handling for SoS - third parameter is period, not season
+        if stat == 'sos':
+            season = 2025  # SoS is always current season
+        elif stat == 'bye':
+            # Handle bye week queries
+            handle_bye_week_command(position, parts)
+            return
+        else:
+            season = parts[2] if len(parts) > 2 else "2025"  # Default to current season
+            # Validate season
+            try:
+                season = int(season)
+            except ValueError:
+                console.print(f"[red]Invalid season: {season}. Must be a year (e.g., 2024, 2025)[/red]")
+                return
         
         # Validate position
-        valid_positions = ['WR', 'RB', 'QB', 'TE', 'K']
+        valid_positions = ['WR', 'RB', 'QB', 'TE', 'K', 'DEF', 'DST']
         if position not in valid_positions:
             console.print(f"[red]Invalid position: {position}. Valid positions: {', '.join(valid_positions)}[/red]")
-            return
-        
-        # Validate season
-        try:
-            season = int(season)
-        except ValueError:
-            console.print(f"[red]Invalid season: {season}. Must be a year (e.g., 2024, 2025)[/red]")
             return
         
         console.print(f"[bright_green]Fetching top 50 {position}s by {stat} for {season}...[/bright_green]")
@@ -1356,15 +1508,21 @@ def handle_rapid_stats_command(command: str):
         
         # Build query based on stat type
         if stat == 'adp':
-            # Query ADP data from the new adp_data table
+            # Normalize position for ADP query (DEF -> DST)
+            adp_position = 'DST' if position in ['DEF', 'DST'] else position
+            
+            # Query ADP data joined with projections for bye week info
+            # Handle case differences between ADP (uppercase) and projections (lowercase) positions
             query = """
-                SELECT player_name, position, team, adp_overall, espn_adp, sleeper_adp, avg_adp
-                FROM adp_data 
-                WHERE season = ? AND scoring_format = 'ppr' AND position = ?
-                ORDER BY adp_overall ASC
+                SELECT a.player_name, a.position, a.team, a.adp_overall, a.espn_adp, a.sleeper_adp, a.avg_adp, p.bye_week
+                FROM adp_data a
+                LEFT JOIN player_projections p ON a.player_name = p.player_name 
+                    AND LOWER(a.position) = p.position AND p.season = 2025 AND p.projection_type = 'preseason'
+                WHERE a.season = ? AND a.scoring_format = 'ppr' AND a.position = ?
+                ORDER BY a.adp_overall ASC
                 LIMIT 50
             """
-            cursor.execute(query, (season, position))
+            cursor.execute(query, (season, adp_position))
             results = cursor.fetchall()
             
             if not results:
@@ -1375,8 +1533,9 @@ def handle_rapid_stats_command(command: str):
             from rich.table import Table
             table = Table(title=f"Top 50 {position}s by ADP ({season})", show_header=True, header_style="bold bright_green")
             table.add_column("Rank", style="bright_green", width=6)
-            table.add_column("Player", style="bright_green", width=25)
+            table.add_column("Player", style="bright_green", width=22)
             table.add_column("Team", style="bright_green", width=6)
+            table.add_column("Bye", style="bright_green", width=5)
             table.add_column("Overall ADP", style="bright_green", width=12)
             table.add_column("ESPN", style="bright_green", width=8)
             table.add_column("Sleeper", style="bright_green", width=8)
@@ -1387,11 +1546,139 @@ def handle_rapid_stats_command(command: str):
                     str(i),
                     row[0],  # player_name
                     row[2] or "FA",  # team
+                    f"{int(row[7])}" if row[7] else "N/A",  # bye_week
                     f"{row[3]:.1f}" if row[3] else "N/A",  # adp_overall
                     f"{row[4]:.0f}" if row[4] else "N/A",  # espn_adp
                     f"{row[5]:.0f}" if row[5] else "N/A",  # sleeper_adp
                     f"{row[6]:.0f}" if row[6] else "N/A"   # avg_adp
                 )
+            
+            console.print(table)
+            
+        elif stat == 'projections':
+            # Query projections data
+            position_db = 'dst' if position in ['DEF', 'DST'] else position.lower()
+            query = """
+                SELECT player_name, team_name, fantasy_points, games, bye_week, auction_value
+                FROM player_projections 
+                WHERE season = ? AND position = ? AND projection_type = 'preseason'
+                ORDER BY fantasy_points DESC
+                LIMIT 50
+            """
+            cursor.execute(query, (season, position_db))
+            results = cursor.fetchall()
+            
+            if not results:
+                console.print(f"[yellow]No projection data found for {position}s in {season}[/yellow]")
+                return
+            
+            # Display results
+            from rich.table import Table
+            table = Table(title=f"Top 50 {position}s by 2025 Projections", show_header=True, header_style="bold bright_green")
+            table.add_column("Rank", style="bright_green", width=6)
+            table.add_column("Player", style="bright_green", width=25)
+            table.add_column("Team", style="bright_green", width=6)
+            table.add_column("Fantasy Pts", style="bright_green", width=12)
+            table.add_column("Games", style="bright_green", width=8)
+            table.add_column("Bye", style="bright_green", width=6)
+            table.add_column("Auction $", style="bright_green", width=10)
+            
+            for i, row in enumerate(results, 1):
+                table.add_row(
+                    str(i),
+                    row[0],  # player_name
+                    row[1] or "N/A",  # team_name
+                    f"{row[2]:.1f}" if row[2] else "N/A",  # fantasy_points
+                    str(row[3]) if row[3] else "N/A",  # games
+                    str(row[4]) if row[4] else "N/A",  # bye_week
+                    f"${row[5]:.0f}" if row[5] else "N/A"   # auction_value
+                )
+            
+            console.print(table)
+            
+        elif stat == 'sos':
+            # Query strength of schedule data
+            position_db = 'dst' if position in ['DEF', 'DST'] else position.lower()
+            
+            # For SoS, the third part is the period, not season (SoS is always 2025)
+            period = parts[2] if len(parts) > 2 else 'season'
+            
+            if period == 'season':
+                order_col = 'season_sos'
+                select_cols = 'team, season_sos as sos_value, season_games as games'
+                desc = 'Season'
+            elif period == 'playoffs':
+                order_col = 'playoffs_sos'
+                select_cols = 'team, playoffs_sos as sos_value, playoffs_games as games'
+                desc = 'Playoffs'
+            elif '-' in period:
+                # Week range like "1-4"
+                try:
+                    start_week, end_week = map(int, period.split('-'))
+                    week_cols = [f'week_{i}' for i in range(start_week, end_week + 1)]
+                    avg_expr = f"({' + '.join([f'COALESCE({col}, 0)' for col in week_cols])}) / {len(week_cols)}"
+                    select_cols = f'team, {avg_expr} as sos_value, {end_week - start_week + 1} as games'
+                    order_col = 'sos_value'
+                    desc = f'Weeks {start_week}-{end_week}'
+                except:
+                    console.print(f"[red]Invalid week range: {period}. Use format like '1-4'[/red]")
+                    return
+            else:
+                console.print(f"[red]Invalid SoS period: {period}. Use 'season', 'playoffs', or week range like '1-4'[/red]")
+                return
+            
+            query = f"""
+                SELECT {select_cols}
+                FROM strength_of_schedule 
+                WHERE season = 2025 AND position = ? AND {order_col} IS NOT NULL
+                ORDER BY {order_col} ASC
+                LIMIT 32
+            """
+            cursor.execute(query, (position_db,))
+            results = cursor.fetchall()
+            
+            if not results:
+                console.print(f"[yellow]No SoS data found for {position}s[/yellow]")
+                return
+            
+            # Display results
+            from rich.table import Table
+            table = Table(title=f"{position} Strength of Schedule - {desc} (2025)", show_header=True, header_style="bold bright_green")
+            table.add_column("Rank", style="bright_green", width=6)
+            table.add_column("Team", style="bright_green", width=8)
+            table.add_column("SoS Rating", style="bright_green", width=12)
+            table.add_column("Games", style="bright_green", width=8)
+            table.add_column("Difficulty", style="bright_green", width=12)
+            
+            for i, row in enumerate(results, 1):
+                sos_val = row[1]
+                if sos_val is not None:
+                    # Lower SoS values = HARDER schedule, Higher values = EASIER schedule
+                    # Scale: 0.0 (hardest) to 10.0 (easiest)
+                    # Create 5 balanced tiers: 0-2, 2-4, 4-6, 6-8, 8-10
+                    if sos_val <= 2.0:
+                        difficulty = "Hardest"
+                        diff_color = "red"
+                    elif sos_val <= 4.0:
+                        difficulty = "Hard"
+                        diff_color = "red" 
+                    elif sos_val <= 6.0:
+                        difficulty = "Average"
+                        diff_color = "yellow"
+                    elif sos_val <= 8.0:
+                        difficulty = "Easy"
+                        diff_color = "bright_green"
+                    else:  # 8.0+
+                        difficulty = "Easiest"
+                        diff_color = "bright_green"
+                    
+                    table.add_row(
+                        str(i),
+                        row[0],  # team
+                        f"{sos_val:.1f}",  # sos_value
+                        str(row[2]) if row[2] else "N/A",  # games
+                        difficulty
+                    )
             
             console.print(table)
             
@@ -1429,7 +1716,27 @@ def handle_rapid_stats_command(command: str):
                 'targets': 'targets',
                 
                 # General stats
-                'fumbles': 'fumbles'
+                'fumbles': 'fumbles',
+                
+                # Kicker stats (2025 projections)
+                'fg_made': 'fg_made_total',
+                'fg_att': 'fg_att_total', 
+                'fg_pct': 'fg_percentage',
+                'pat_made': 'pat_made',
+                'pat_att': 'pat_att',
+                'pat_pct': 'pat_percentage',
+                'points': 'fantasy_points',
+                
+                # Defense stats (2025 projections)
+                'sacks': 'dst_sacks',
+                'int': 'dst_int',
+                'fumbles_forced': 'dst_fumbles_forced',
+                'fumbles_rec': 'dst_fumbles_recovered',
+                'def_td': 'dst_td',
+                'safeties': 'dst_safeties',
+                'return_td': 'dst_return_td',
+                'return_yds': 'dst_return_yds',
+                'pts_allowed': 'dst_pts_allowed'
             }
             
             # PFF Advanced Stats mapping (for WR/TE)
@@ -1508,30 +1815,139 @@ def handle_rapid_stats_command(command: str):
                     ORDER BY {pff_column} DESC
                     LIMIT 50
                 """
+            elif (position in ['K', 'DEF', 'DST']) and stat in stat_mapping:
+                if position == 'K':
+                    # Use 2025 projections table for kickers only
+                    position = 'k'  # Normalize to lowercase
+                    proj_column = stat_mapping[stat]
+                    query = f"""
+                        SELECT player_name, team_name, {proj_column} as total_{stat}
+                        FROM player_projections 
+                        WHERE season = ? AND position = ? AND projection_type = 'preseason' AND {proj_column} IS NOT NULL
+                        ORDER BY {proj_column} DESC
+                        LIMIT 50
+                    """
+                elif position in ['DEF', 'DST']:
+                    # Use historical team defensive stats for 2018-2024, projections for 2025+
+                    if season >= 2025:
+                        # Use projections for future seasons
+                        position = 'dst'  # Normalize to dst for database
+                        proj_column = stat_mapping[stat]
+                        query = f"""
+                            SELECT player_name, team_name, {proj_column} as total_{stat}
+                            FROM player_projections 
+                            WHERE season = ? AND position = ? AND projection_type = 'preseason' AND {proj_column} IS NOT NULL
+                            ORDER BY {proj_column} DESC
+                            LIMIT 50
+                        """
+                    else:
+                        # Use historical defensive stats for 2018-2024
+                        team_column_mapping = {
+                            'sacks': 'total_sacks',
+                            'int': 'total_interceptions',
+                            'def_td': 'total_tds_allowed',
+                            'fumbles_forced': 'total_hurries',  # Using hurries as proxy
+                            'fumbles_rec': 'total_qb_hits',     # Using QB hits as proxy
+                        }
+                        
+                        if stat not in team_column_mapping:
+                            console.print(f"[red]Stat '{stat}' not available for historical defensive data. Available: {', '.join(team_column_mapping.keys())}[/red]")
+                            return
+                        
+                        hist_column = team_column_mapping[stat]
+                        query = f"""
+                            SELECT team as player_name, team as team_name, {hist_column} as total_{stat}
+                            FROM team_defensive_stats 
+                            WHERE season = ? AND {hist_column} IS NOT NULL
+                            ORDER BY {hist_column} DESC
+                            LIMIT 50
+                        """
             elif stat not in stat_mapping:
                 console.print(f"[red]Invalid stat: {stat}. Valid stats: {', '.join(stat_mapping.keys())}[/red]")
                 return
             else:
-                # Build the query for regular stats
-                if stat in ['td', 'yards']:
-                    # Combined stats across all categories
-                    select_clause = f"SUM({stat_mapping[stat]}) as total_{stat}"
+                # Check if we should use projections for 2025
+                if season >= 2025:
+                    # Use 2025 projections for all positions
+                    proj_stat_mapping = {
+                        # QB stats
+                        'pass_td': 'pass_td',
+                        'pass_yards': 'pass_yds', 
+                        'pass_att': 'pass_att',
+                        'pass_comp': 'pass_comp',
+                        'int': 'pass_int',
+                        
+                        # Rushing stats (QB, RB)
+                        'rush_td': 'rush_td',
+                        'rush_yards': 'rush_yds',
+                        'rush_att': 'rush_att',
+                        
+                        # Receiving stats (WR, TE, RB)
+                        'rec_td': 'recv_td',
+                        'rec_yards': 'recv_yds',
+                        'rec': 'receptions',
+                        'targets': 'targets',
+                        
+                        # Fantasy points
+                        'fantasy': 'fantasy_points',
+                        'points': 'fantasy_points'
+                    }
+                    
+                    # Add position-dependent combined stats
+                    if position in ['WR', 'TE']:
+                        proj_stat_mapping['td'] = 'recv_td'
+                        proj_stat_mapping['yards'] = 'recv_yds'
+                    elif position == 'RB':
+                        proj_stat_mapping['td'] = 'rush_td'
+                        proj_stat_mapping['yards'] = 'rush_yds'
+                    elif position == 'QB':
+                        proj_stat_mapping['td'] = 'pass_td'
+                        proj_stat_mapping['yards'] = 'pass_yds'
+                    
+                    if stat not in proj_stat_mapping:
+                        console.print(f"[red]Stat '{stat}' not available in 2025 projections. Available: {', '.join(proj_stat_mapping.keys())}[/red]")
+                        return
+                    
+                    proj_column = proj_stat_mapping[stat]
+                    position_db = position.lower()
+                    
+                    query = f"""
+                        SELECT player_name, team_name, {proj_column} as total_{stat}
+                        FROM player_projections 
+                        WHERE season = ? AND position = ? AND projection_type = 'preseason' AND {proj_column} IS NOT NULL
+                        ORDER BY {proj_column} DESC
+                        LIMIT 50
+                    """
                 else:
-                    # Single category stats
-                    select_clause = f"SUM({stat_mapping[stat]}) as total_{stat}"
-                
-                query = f"""
-                    SELECT p.name, p.team, {select_clause}
-                    FROM player_game_stats pgs
-                    JOIN players p ON pgs.player_id = p.player_id
-                    JOIN games g ON pgs.game_id = g.game_id
-                    WHERE g.season = ? AND p.position = ?
-                    GROUP BY p.player_id, p.name, p.team
-                    ORDER BY total_{stat} DESC
-                    LIMIT 50
-                """
+                    # Build the query for historical stats
+                    if stat in ['td', 'yards']:
+                        # Combined stats across all categories
+                        select_clause = f"SUM({stat_mapping[stat]}) as total_{stat}"
+                    else:
+                        # Single category stats
+                        select_clause = f"SUM({stat_mapping[stat]}) as total_{stat}"
+                    
+                    query = f"""
+                        SELECT p.name, p.team, {select_clause}
+                        FROM player_game_stats pgs
+                        JOIN players p ON pgs.player_id = p.player_id
+                        JOIN games g ON pgs.game_id = g.game_id
+                        WHERE g.season = ? AND p.position = ?
+                        GROUP BY p.player_id, p.name, p.team
+                        ORDER BY total_{stat} DESC
+                        LIMIT 50
+                    """
             
-            cursor.execute(query, (season, position))
+            # Determine query parameters based on the type of query
+            if position in ['DEF', 'DST'] and season < 2025:
+                # Historical defensive stats only need season parameter
+                cursor.execute(query, (season,))
+            elif season >= 2025 and position not in ['K', 'DEF', 'DST']:
+                # 2025 projections for QB/RB/WR/TE need season and position
+                cursor.execute(query, (season, position_db))
+            else:
+                # Regular historical stats and K/DEF projections need season and position
+                cursor.execute(query, (season, position))
             results = cursor.fetchall()
             
             if not results:
@@ -1540,11 +1956,22 @@ def handle_rapid_stats_command(command: str):
             
             # Display results
             from rich.table import Table
-            table = Table(title=f"Top 50 {position}s by {stat.upper()} ({season})", show_header=True, header_style="bold bright_green")
+            # Determine if we're showing projections or historical data
+            if season >= 2025:
+                title_suffix = " (2025 Projections)"
+                column_header = f"Proj. {stat.upper()}"
+            elif position in ['DEF', 'DST'] and season < 2025:
+                title_suffix = f" ({season} Actuals)"
+                column_header = f"Total {stat.upper()}"
+            else:
+                title_suffix = f" ({season})"
+                column_header = f"Total {stat.upper()}"
+            
+            table = Table(title=f"Top 50 {position}s by {stat.upper()}{title_suffix}", show_header=True, header_style="bold bright_green")
             table.add_column("Rank", style="bright_green", width=6)
             table.add_column("Player", style="bright_green", width=25)
             table.add_column("Team", style="bright_green", width=6)
-            table.add_column(f"Total {stat.upper()}", style="bright_green", width=15)
+            table.add_column(column_header, style="bright_green", width=15)
             
             for i, row in enumerate(results, 1):
                 table.add_row(
@@ -1560,6 +1987,1330 @@ def handle_rapid_stats_command(command: str):
         
     except Exception as e:
         console.print(f"[red]Error fetching stats: {e}[/red]")
+
+
+def handle_adp_command(command: str):
+    """Handle ADP commands like /adp, /adp/10, /adp/12, etc."""
+    try:
+        parts = command.split('/')
+        
+        if len(parts) == 1:
+            # Just /adp - show overall ADP rankings with both 10-team and 12-team columns
+            handle_adp_rankings()
+        elif len(parts) == 2:
+            # /adp/number - show ADP rankings with projected round for specific league size
+            try:
+                league_size = int(parts[1])
+                if league_size < 6 or league_size > 20:
+                    console.print(f"[red]Error: League size must be between 6 and 20 teams[/red]")
+                    return
+                handle_adp_rankings_with_league_size(league_size)
+            except ValueError:
+                console.print(f"[red]Error: Invalid league size '{parts[1]}'. Please use a number (e.g., /adp/10)[/red]")
+        else:
+            console.print(f"[red]Error: Invalid ADP command format. Use /adp or /adp/number[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error processing ADP command: {str(e)}[/red]")
+
+
+def handle_adp_rankings():
+    """Show overall ADP rankings"""
+    try:
+        import sqlite3
+        from rich.table import Table
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Query ADP data with bye weeks
+        query = """
+        SELECT a.player_name, a.position, a.team, a.adp_overall, a.adp_position, p.bye_week
+        FROM adp_data a
+        LEFT JOIN player_projections p ON a.player_name = p.player_name 
+            AND LOWER(a.position) = p.position AND p.season = 2025 AND p.projection_type = 'preseason'
+        WHERE a.season = 2025
+        ORDER BY a.adp_overall ASC
+        LIMIT 50
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        conn.close()
+        
+        if not results:
+            console.print("[red]No ADP data found for 2025 season[/red]")
+            return
+        
+        # Create table
+        table = Table(title="2025 Fantasy Football ADP Rankings (PPR)", title_style="bold bright_green")
+        table.add_column("Rank", style="bright_green", width=6)
+        table.add_column("Player", style="white", width=20)
+        table.add_column("Pos", style="bright_green", width=5)
+        table.add_column("Team", style="bright_green", width=6)
+        table.add_column("Overall ADP", style="white", width=12)
+        table.add_column("Pos ADP", style="white", width=10)
+        table.add_column("Bye", style="dim", width=6)
+        table.add_column("Round (10tm)", style="yellow", width=12)
+        table.add_column("Round (12tm)", style="yellow", width=12)
+        
+        for i, row in enumerate(results, 1):
+            player_name, position, team, adp_overall, adp_position, bye_week = row
+            
+            # Calculate rounds for different league sizes
+            round_10team = calculate_round(adp_overall, 10)
+            round_12team = calculate_round(adp_overall, 12)
+            
+            bye_display = f"{int(bye_week)}" if bye_week else "N/A"
+            
+            table.add_row(
+                str(i),
+                player_name,
+                position,
+                team or "N/A",
+                f"{adp_overall:.1f}",
+                f"{adp_position:.1f}" if adp_position else "N/A",
+                bye_display,
+                round_10team,
+                round_12team
+            )
+        
+        console.print(table)
+        console.print("\n[dim]Use /adp/number to see round estimation for specific ADP (e.g., /adp/24)[/dim]")
+        console.print("[dim]Round calculations: 10-team league = 10 picks/round, 12-team = 12 picks/round[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error showing ADP rankings: {str(e)}[/red]")
+
+
+def handle_adp_rankings_with_league_size(league_size: int):
+    """Show ADP rankings with projected round for specific league size"""
+    try:
+        import sqlite3
+        from rich.table import Table
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Query ADP data with bye weeks
+        query = """
+        SELECT a.player_name, a.position, a.team, a.adp_overall, a.adp_position, p.bye_week
+        FROM adp_data a
+        LEFT JOIN player_projections p ON a.player_name = p.player_name 
+            AND LOWER(a.position) = p.position AND p.season = 2025 AND p.projection_type = 'preseason'
+        WHERE a.season = 2025
+        ORDER BY a.adp_overall ASC
+        LIMIT 100
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        conn.close()
+        
+        if not results:
+            console.print("[red]No ADP data found for 2025 season[/red]")
+            return
+        
+        # Create table
+        table = Table(title=f"2025 Fantasy Football ADP Rankings - {league_size} Team League", title_style="bold bright_green")
+        table.add_column("Rank", style="bright_green", width=6)
+        table.add_column("Player", style="white", width=20)
+        table.add_column("Pos", style="bright_green", width=5)
+        table.add_column("Team", style="bright_green", width=6)
+        table.add_column("Overall ADP", style="white", width=12)
+        table.add_column("Pos ADP", style="white", width=10)
+        table.add_column("Bye", style="dim", width=6)
+        table.add_column(f"Proj. Round", style="yellow", width=12)
+        
+        for i, row in enumerate(results, 1):
+            player_name, position, team, adp_overall, adp_position, bye_week = row
+            
+            # Calculate projected round for this league size
+            projected_round = calculate_round(adp_overall, league_size)
+            
+            bye_display = f"{int(bye_week)}" if bye_week else "N/A"
+            
+            table.add_row(
+                str(i),
+                player_name,
+                position,
+                team or "N/A",
+                f"{adp_overall:.1f}",
+                f"{adp_position:.1f}" if adp_position else "N/A",
+                bye_display,
+                projected_round
+            )
+        
+        console.print(table)
+        console.print(f"\n[dim]Projected rounds based on {league_size}-team league ({league_size} picks per round)[/dim]")
+        console.print("[dim]Format: Round.Pick (e.g., 2.05 = Round 2, Pick 5)[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error showing ADP rankings: {str(e)}[/red]")
+
+
+def handle_adp_round_estimation(adp_position: int):
+    """Show round estimation for specific ADP position"""
+    try:
+        from rich.table import Table
+        from rich.panel import Panel
+        
+        # Calculate rounds for common league sizes
+        league_sizes = [8, 10, 12, 14, 16]
+        
+        table = Table(title=f"Round Estimation for ADP #{adp_position}", title_style="bold bright_green")
+        table.add_column("League Size", style="bright_green", width=12)
+        table.add_column("Round", style="white", width=8)
+        table.add_column("Pick in Round", style="white", width=15)
+        table.add_column("Description", style="dim", width=30)
+        
+        for league_size in league_sizes:
+            round_num = calculate_round_number(adp_position, league_size)
+            pick_in_round = calculate_pick_in_round(adp_position, league_size)
+            
+            # Add description based on round
+            if round_num == 1:
+                description = "Elite tier, first round pick"
+            elif round_num == 2:
+                description = "High-end starter"
+            elif round_num <= 4:
+                description = "Solid starter"
+            elif round_num <= 6:
+                description = "Flex/backup option"
+            elif round_num <= 10:
+                description = "Bench depth"
+            else:
+                description = "Deep sleeper/waiver wire"
+            
+            table.add_row(
+                f"{league_size} teams",
+                f"Round {round_num}",
+                f"Pick {pick_in_round}",
+                description
+            )
+        
+        console.print(table)
+        
+        # Show additional context
+        panel_text = f"""
+**ADP #{adp_position} Analysis:**
+
+• In a **10-team league**: {calculate_round(adp_position, 10)}
+• In a **12-team league**: {calculate_round(adp_position, 12)}
+
+**Draft Strategy:**
+• This player is typically selected in the {calculate_round_number(adp_position, 12)} round
+• Consider targeting them 1-2 picks earlier than ADP if you really want them
+• Good value if available 3-5 picks later than ADP
+        """
+        
+        console.print(Panel(panel_text, border_style="dim", title="Draft Context"))
+        
+    except Exception as e:
+        console.print(f"[red]Error calculating round estimation: {str(e)}[/red]")
+
+
+def calculate_round(adp: float, league_size: int) -> str:
+    """Calculate round display string for ADP"""
+    round_num = calculate_round_number(adp, league_size)
+    pick_in_round = calculate_pick_in_round(adp, league_size)
+    return f"{round_num}.{pick_in_round:02d}"
+
+
+def calculate_round_number(adp: float, league_size: int) -> int:
+    """Calculate which round an ADP falls into"""
+    return int((adp - 1) // league_size) + 1
+
+
+def calculate_pick_in_round(adp: float, league_size: int) -> int:
+    """Calculate which pick within the round"""
+    return int((adp - 1) % league_size) + 1
+
+
+def handle_tiers_command(command: str):
+    """Handle tiers commands like /tiers, /tiers/wr, /tiers/rb, etc."""
+    try:
+        parts = command.split('/')
+        
+        if len(parts) == 1:
+            # Just /tiers - show all positions
+            handle_positional_tiers()
+        elif len(parts) == 2:
+            # /tiers/position - show specific position breakdown
+            position = parts[1].lower()
+            valid_positions = ['qb', 'rb', 'wr', 'te', 'k', 'dst']
+            if position in valid_positions:
+                handle_specific_position_tiers(position)
+            else:
+                console.print(f"[red]Error: Invalid position '{position}'. Valid positions: {', '.join(valid_positions)}[/red]")
+        else:
+            console.print(f"[red]Error: Invalid tiers command format. Use /tiers or /tiers/position[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error processing tiers command: {str(e)}[/red]")
+
+
+def handle_positional_tiers():
+    """Show marginal value analysis for all positions"""
+    try:
+        import sqlite3
+        import numpy as np
+        from rich.table import Table
+        from rich.panel import Panel
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        positions = ['qb', 'rb', 'wr', 'te', 'k', 'dst']
+        
+        # Create summary table
+        table = Table(title="2025 Positional Tier Analysis - Marginal Value Drops", title_style="bold bright_green")
+        table.add_column("Position", style="bright_green", width=10)
+        table.add_column("Players", style="dim", width=8)
+        table.add_column("Tier 1→2", style="red", width=10)
+        table.add_column("Tier 2→3", style="yellow", width=10) 
+        table.add_column("Tier 3→4", style="white", width=10)
+        table.add_column("Biggest Drop", style="bright_red", width=12)
+        
+        for pos in positions:
+            cursor.execute('''
+                SELECT fantasy_points 
+                FROM player_projections 
+                WHERE season = 2025 AND projection_type = 'preseason' AND position = ? 
+                ORDER BY fantasy_points DESC
+            ''', (pos,))
+            
+            results = cursor.fetchall()
+            if not results:
+                continue
+                
+            points = [r[0] for r in results]
+            n = len(points)
+            
+            # Calculate tier breakpoints
+            tier1_end = max(1, int(n * 0.10))
+            tier2_end = max(tier1_end + 1, int(n * 0.25))
+            tier3_end = max(tier2_end + 1, int(n * 0.50))
+            tier4_end = max(tier3_end + 1, int(n * 0.75))
+            
+            tier1_avg = np.mean(points[:tier1_end]) if tier1_end > 0 else 0
+            tier2_avg = np.mean(points[tier1_end:tier2_end]) if tier2_end > tier1_end else 0
+            tier3_avg = np.mean(points[tier2_end:tier3_end]) if tier3_end > tier2_end else 0
+            tier4_avg = np.mean(points[tier3_end:tier4_end]) if tier4_end > tier3_end else 0
+            
+            # Calculate drops
+            drop_1_2 = tier1_avg - tier2_avg if tier1_avg > 0 and tier2_avg > 0 else 0
+            drop_2_3 = tier2_avg - tier3_avg if tier2_avg > 0 and tier3_avg > 0 else 0
+            drop_3_4 = tier3_avg - tier4_avg if tier3_avg > 0 and tier4_avg > 0 else 0
+            
+            biggest_drop = max(drop_1_2, drop_2_3, drop_3_4)
+            biggest_tier = ""
+            if biggest_drop == drop_1_2:
+                biggest_tier = "Tier 1→2"
+            elif biggest_drop == drop_2_3:
+                biggest_tier = "Tier 2→3"  
+            else:
+                biggest_tier = "Tier 3→4"
+            
+            table.add_row(
+                pos.upper(),
+                str(n),
+                f"-{drop_1_2:.1f}",
+                f"-{drop_2_3:.1f}",
+                f"-{drop_3_4:.1f}",
+                f"{biggest_tier} ({biggest_drop:.1f})"
+            )
+        
+        console.print(table)
+        
+        # Add ADP-based draft round analysis
+        draft_analysis = get_draft_round_analysis()
+        
+        # Key insights panel
+        insights = f"""
+**Key Draft Strategy Insights:**
+
+• **RB has the largest early drop-offs** - prioritize elite RBs early
+• **TE shows major scarcity** - Tier 1 TEs have huge value over Tier 2+
+• **WR has consistent drop-offs** - multiple tiers of viable options
+• **QB can wait** - smaller gaps between tiers, stream-friendly
+• **K/DST minimal differences** - wait until very late rounds
+
+**Tier Definitions:**
+• Tier 1: Top 10% of position
+• Tier 2: 11-25% of position  
+• Tier 3: 26-50% of position
+• Tier 4: 51-75% of position
+
+**Draft Round Analysis (When Tiers Get Selected):**
+
+{draft_analysis}
+        """
+        
+        console.print(Panel(insights, border_style="dim", title="Draft Strategy"))
+        console.print("\n[dim]Use /tiers/position for detailed breakdown (e.g., /tiers/te)[/dim]")
+        
+        conn.close()
+        
+    except Exception as e:
+        console.print(f"[red]Error showing positional tiers: {str(e)}[/red]")
+
+
+def handle_specific_position_tiers(position: str):
+    """Show detailed tier breakdown for specific position"""
+    try:
+        import sqlite3
+        import numpy as np
+        from rich.table import Table
+        from rich.panel import Panel
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT player_name, fantasy_points 
+            FROM player_projections 
+            WHERE season = 2025 AND projection_type = 'preseason' AND position = ? 
+            ORDER BY fantasy_points DESC
+        ''', (position,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        if not results:
+            console.print(f"[red]No projection data found for {position.upper()}[/red]")
+            return
+            
+        points = [r[1] for r in results]
+        players = [r[0] for r in results]
+        n = len(points)
+        
+        # Calculate tier breakpoints
+        tier1_end = max(1, int(n * 0.10))
+        tier2_end = max(tier1_end + 1, int(n * 0.25))
+        tier3_end = max(tier2_end + 1, int(n * 0.50))
+        tier4_end = max(tier3_end + 1, int(n * 0.75))
+        
+        # Create detailed table
+        table = Table(title=f"{position.upper()} Tier Analysis - 2025 Projections", title_style="bold bright_green")
+        table.add_column("Tier", style="bright_green", width=8)
+        table.add_column("Range", style="dim", width=12)
+        table.add_column("Players", style="white", width=8)
+        table.add_column("Avg Points", style="white", width=12)
+        table.add_column("Top Players", style="bright_green", width=40)
+        table.add_column("Marginal Drop", style="red", width=15)
+        
+        # Tier 1
+        tier1_avg = np.mean(points[:tier1_end])
+        tier1_players = ", ".join(players[:min(3, tier1_end)])
+        table.add_row("Tier 1", "Top 10%", str(tier1_end), f"{tier1_avg:.1f}", tier1_players, "-")
+        
+        # Tier 2
+        if tier2_end > tier1_end:
+            tier2_avg = np.mean(points[tier1_end:tier2_end])
+            tier2_players = ", ".join(players[tier1_end:min(tier1_end + 3, tier2_end)])
+            drop_1_2 = tier1_avg - tier2_avg
+            table.add_row("Tier 2", "11-25%", str(tier2_end - tier1_end), f"{tier2_avg:.1f}", tier2_players, f"-{drop_1_2:.1f}")
+            
+            # Tier 3
+            if tier3_end > tier2_end:
+                tier3_avg = np.mean(points[tier2_end:tier3_end])
+                tier3_players = ", ".join(players[tier2_end:min(tier2_end + 3, tier3_end)])
+                drop_2_3 = tier2_avg - tier3_avg
+                table.add_row("Tier 3", "26-50%", str(tier3_end - tier2_end), f"{tier3_avg:.1f}", tier3_players, f"-{drop_2_3:.1f}")
+                
+                # Tier 4
+                if tier4_end > tier3_end:
+                    tier4_avg = np.mean(points[tier3_end:tier4_end])
+                    tier4_players = ", ".join(players[tier3_end:min(tier3_end + 3, tier4_end)])
+                    drop_3_4 = tier3_avg - tier4_avg
+                    table.add_row("Tier 4", "51-75%", str(tier4_end - tier3_end), f"{tier4_avg:.1f}", tier4_players, f"-{drop_3_4:.1f}")
+                    
+                    # Tier 5
+                    if n > tier4_end:
+                        tier5_avg = np.mean(points[tier4_end:])
+                        tier5_players = ", ".join(players[tier4_end:min(tier4_end + 3, n)])
+                        drop_4_5 = tier4_avg - tier5_avg
+                        table.add_row("Tier 5", "76%+", str(n - tier4_end), f"{tier5_avg:.1f}", tier5_players, f"-{drop_4_5:.1f}")
+        
+        console.print(table)
+        
+        # Position-specific insights with ADP analysis
+        insights = get_position_insights(position, results)
+        adp_analysis = get_position_adp_analysis(position, players)
+        
+        combined_insights = f"{insights}\n\n**Draft Round Analysis:**\n{adp_analysis}" if adp_analysis else insights
+        
+        if combined_insights:
+            console.print(Panel(combined_insights, border_style="dim", title=f"{position.upper()} Strategy"))
+        
+    except Exception as e:
+        console.print(f"[red]Error showing {position} tiers: {str(e)}[/red]")
+
+
+def get_draft_round_analysis():
+    """Analyze when each position tier typically gets drafted based on ADP"""
+    try:
+        import sqlite3
+        import numpy as np
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        analysis_text = ""
+        positions = ['qb', 'rb', 'wr', 'te']
+        
+        for pos in positions:
+            # Get projection data to determine tiers
+            cursor.execute('''
+                SELECT player_name, fantasy_points 
+                FROM player_projections 
+                WHERE season = 2025 AND projection_type = 'preseason' AND position = ? 
+                ORDER BY fantasy_points DESC
+            ''', (pos,))
+            
+            proj_results = cursor.fetchall()
+            if not proj_results:
+                continue
+                
+            points = [r[1] for r in proj_results]
+            players = [r[0] for r in proj_results]
+            n = len(points)
+            
+            # Calculate tier breakpoints
+            tier1_end = max(1, int(n * 0.10))
+            tier2_end = max(tier1_end + 1, int(n * 0.25))
+            tier3_end = max(tier2_end + 1, int(n * 0.50))
+            
+            # Get tier player lists
+            tier1_players = players[:tier1_end]
+            tier2_players = players[tier1_end:tier2_end] if tier2_end > tier1_end else []
+            tier3_players = players[tier2_end:tier3_end] if tier3_end > tier2_end else []
+            
+            # Get ADP data for these players
+            tier_adps = {}
+            for tier_num, tier_players in enumerate([tier1_players, tier2_players, tier3_players], 1):
+                if not tier_players:
+                    continue
+                    
+                placeholders = ','.join(['?' for _ in tier_players])
+                cursor.execute(f'''
+                    SELECT adp_overall 
+                    FROM adp_data 
+                    WHERE season = 2025 AND player_name IN ({placeholders})
+                    AND adp_overall IS NOT NULL
+                ''', tier_players)
+                
+                adp_results = cursor.fetchall()
+                if adp_results:
+                    adps = [r[0] for r in adp_results]
+                    tier_adps[tier_num] = {
+                        'min': min(adps),
+                        'max': max(adps),
+                        'avg': np.mean(adps)
+                    }
+            
+            # Convert to round ranges
+            analysis_text += f"\n**{pos.upper()}:**\n"
+            for tier_num, adp_data in tier_adps.items():
+                if adp_data:
+                    # Calculate rounds for 10 and 12 team leagues
+                    min_round_10 = calculate_round_number(adp_data['min'], 10)
+                    max_round_10 = calculate_round_number(adp_data['max'], 10)
+                    avg_round_10 = calculate_round_number(adp_data['avg'], 10)
+                    
+                    min_round_12 = calculate_round_number(adp_data['min'], 12)
+                    max_round_12 = calculate_round_number(adp_data['max'], 12)
+                    avg_round_12 = calculate_round_number(adp_data['avg'], 12)
+                    
+                    if min_round_10 == max_round_10:
+                        round_str_10 = f"Rd {min_round_10}"
+                    else:
+                        round_str_10 = f"Rds {min_round_10}-{max_round_10}"
+                        
+                    if min_round_12 == max_round_12:
+                        round_str_12 = f"Rd {min_round_12}"
+                    else:
+                        round_str_12 = f"Rds {min_round_12}-{max_round_12}"
+                    
+                    analysis_text += f"• Tier {tier_num}: {round_str_10} (10tm), {round_str_12} (12tm)\n"
+        
+        conn.close()
+        return analysis_text.strip()
+        
+    except Exception as e:
+        return f"Error analyzing draft rounds: {str(e)}"
+
+
+def get_position_adp_analysis(position: str, players: list):
+    """Get ADP-based round analysis for specific position"""
+    try:
+        import sqlite3
+        import numpy as np
+        
+        # Connect to database
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        n = len(players)
+        
+        # Calculate tier breakpoints
+        tier1_end = max(1, int(n * 0.10))
+        tier2_end = max(tier1_end + 1, int(n * 0.25))
+        tier3_end = max(tier2_end + 1, int(n * 0.50))
+        tier4_end = max(tier3_end + 1, int(n * 0.75))
+        
+        # Get tier player lists
+        tier1_players = players[:tier1_end]
+        tier2_players = players[tier1_end:tier2_end] if tier2_end > tier1_end else []
+        tier3_players = players[tier2_end:tier3_end] if tier3_end > tier2_end else []
+        tier4_players = players[tier3_end:tier4_end] if tier4_end > tier3_end else []
+        
+        analysis_text = ""
+        
+        # Analyze each tier
+        for tier_num, tier_players in enumerate([tier1_players, tier2_players, tier3_players, tier4_players], 1):
+            if not tier_players:
+                continue
+                
+            placeholders = ','.join(['?' for _ in tier_players])
+            cursor.execute(f'''
+                SELECT adp_overall 
+                FROM adp_data 
+                WHERE season = 2025 AND player_name IN ({placeholders})
+                AND adp_overall IS NOT NULL
+            ''', tier_players)
+            
+            adp_results = cursor.fetchall()
+            if adp_results:
+                adps = [r[0] for r in adp_results]
+                min_adp = min(adps)
+                max_adp = max(adps)
+                avg_adp = np.mean(adps)
+                
+                # Calculate rounds for 10 and 12 team leagues
+                min_round_10 = calculate_round_number(min_adp, 10)
+                max_round_10 = calculate_round_number(max_adp, 10)
+                avg_round_10 = calculate_round_number(avg_adp, 10)
+                
+                min_round_12 = calculate_round_number(min_adp, 12)
+                max_round_12 = calculate_round_number(max_adp, 12)
+                avg_round_12 = calculate_round_number(avg_adp, 12)
+                
+                # Format round ranges
+                if min_round_10 == max_round_10:
+                    round_str_10 = f"Rd {min_round_10}"
+                else:
+                    round_str_10 = f"Rds {min_round_10}-{max_round_10}"
+                    
+                if min_round_12 == max_round_12:
+                    round_str_12 = f"Rd {min_round_12}"
+                else:
+                    round_str_12 = f"Rds {min_round_12}-{max_round_12}"
+                
+                analysis_text += f"• **Tier {tier_num}**: {round_str_10} (10tm), {round_str_12} (12tm)\n"
+                
+                # Add strategic insight based on tier and position
+                if tier_num == 1:
+                    if position in ['rb', 'te']:
+                        analysis_text += f"  → Must target early if you want elite {position.upper()}\n"
+                    elif position == 'qb':
+                        analysis_text += f"  → Early QB investment, but can wait for value\n"
+                elif tier_num == 2:
+                    if position == 'qb':
+                        analysis_text += f"  → Sweet spot for QB value\n"
+                    elif position == 'wr':
+                        analysis_text += f"  → Solid WR1/2 options\n"
+                elif tier_num == 3:
+                    if position in ['rb', 'wr']:
+                        analysis_text += f"  → Flex/depth options\n"
+                    elif position == 'te':
+                        analysis_text += f"  → Streaming territory\n"
+                        
+        conn.close()
+        return analysis_text.strip()
+        
+    except Exception as e:
+        return f"Error analyzing ADP: {str(e)}"
+
+
+def get_position_insights(position: str, results: list) -> str:
+    """Get position-specific draft strategy insights"""
+    insights = {
+        'qb': """
+**QB Strategy:**
+• Large gap between elite QBs and middle tier
+• Many streamable options in lower tiers  
+• Consider waiting unless you get a top-tier QB
+• Rushing QBs provide higher floor/ceiling
+        """,
+        'rb': """
+**RB Strategy:**
+• Massive drop-offs between tiers - RB scarcity is real
+• Elite RBs are extremely valuable due to large gaps
+• Tier 1-2 RBs should be prioritized in early rounds
+• Handcuffs become important for injury protection
+        """,
+        'wr': """
+**WR Strategy:**
+• More consistent value across tiers than RB
+• Deep position with multiple viable tiers
+• Can find value in middle rounds
+• Target volume and target share over big plays
+        """,
+        'te': """
+**TE Strategy:**
+• Huge scarcity after elite tier - "Zero TE" strategy viable
+• Either draft elite TE early or wait very late
+• Middle tiers offer poor value relative to other positions
+• Streaming difficult due to inconsistency
+        """,
+        'k': """
+**K Strategy:**
+• Minimal differences between tiers
+• Wait until final rounds - no need to reach
+• Target high-volume offenses and dome teams
+• Streaming is highly effective
+        """,
+        'dst': """
+**DST Strategy:**
+• Small gaps between tiers - highly streamable
+• Matchups matter more than individual unit quality
+• Wait until final rounds
+• Consider schedule strength for playoffs
+        """
+    }
+    
+    return insights.get(position, "")
+
+
+async def run_team_intelligence_workflow(agent):
+    """Run comprehensive team position intelligence gathering workflow"""
+    import sqlite3
+    import json
+    from datetime import datetime
+    from rich.progress import Progress, TaskID, track
+    from rich.panel import Panel
+    
+    # NFL teams and positions to analyze
+    nfl_teams = [
+        'ARI', 'ATL', 'BAL', 'BUF', 'CAR', 'CHI', 'CIN', 'CLE', 'DAL', 'DEN',
+        'DET', 'GB', 'HOU', 'IND', 'JAC', 'KC', 'LV', 'LAC', 'LAR', 'MIA',
+        'MIN', 'NE', 'NO', 'NYG', 'NYJ', 'PHI', 'PIT', 'SEA', 'SF', 'TB', 'TEN', 'WAS'
+    ]
+    positions = ['qb', 'rb', 'wr', 'te', 'def']
+    
+    total_tasks = len(nfl_teams) * len(positions)
+    console.print(f"[bright_green]Starting intelligence gathering for {len(nfl_teams)} teams × {len(positions)} positions = {total_tasks} analyses[/bright_green]")
+    
+    # Database setup
+    db_path = "data/fantasy_ppr.db"
+    
+    # Create the table if it doesn't exist
+    try:
+        await create_intelligence_table(db_path)
+        console.print("[dim]Database table verified/created[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error setting up database: {e}[/red]")
+        return
+    
+    success_count = 0
+    error_count = 0
+    
+    with Progress() as progress:
+        task = progress.add_task("[bright_green]Analyzing teams...", total=total_tasks)
+        
+        for team in nfl_teams:
+            for position in positions:
+                try:
+                    console.print(f"\n[dim]Analyzing {team} {position.upper()}...[/dim]")
+                    
+                    # Step 1: Claude Sonnet 4 with web search analysis
+                    intelligence_data = await gather_position_intelligence(agent, team, position)
+                    
+                    if intelligence_data:
+                        # Step 2: Perplexity fact-checking
+                        fact_check_result = await fact_check_with_perplexity(agent, team, position, intelligence_data)
+                        
+                        # Step 3: Save to database
+                        await save_intelligence_to_db(db_path, team, position, intelligence_data, fact_check_result)
+                        
+                        success_count += 1
+                        console.print(f"[bright_green]✓ {team} {position.upper()} completed[/bright_green]")
+                    else:
+                        error_count += 1
+                        console.print(f"[red]✗ {team} {position.upper()} failed - no data returned[/red]")
+                        
+                except Exception as e:
+                    error_count += 1
+                    console.print(f"[red]✗ {team} {position.upper()} failed: {str(e)[:100]}[/red]")
+                
+                progress.update(task, advance=1)
+    
+    # Summary
+    console.print(f"\n[bold bright_green]Intelligence Update Complete![/bold bright_green]")
+    console.print(f"[bright_green]Successful: {success_count}[/bright_green]")
+    console.print(f"[red]Errors: {error_count}[/red]")
+    console.print(f"[dim]Data stored in: {db_path}[/dim]")
+
+
+async def create_intelligence_table(db_path: str):
+    """Create the team position intelligence table if it doesn't exist"""
+    import sqlite3
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS team_position_intelligence (
+            team TEXT,
+            position TEXT,
+            season INTEGER,
+            last_updated TEXT,
+            intelligence_summary TEXT,
+            key_players TEXT,
+            usage_notes TEXT,
+            coaching_style TEXT,
+            injury_updates TEXT,
+            recent_changes TEXT,
+            fact_check_status TEXT DEFAULT 'pending',
+            fact_check_notes TEXT,
+            confidence_score REAL,
+            PRIMARY KEY (team, position, season)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+
+async def gather_position_intelligence(agent, team: str, position: str) -> dict:
+    """Use Claude Sonnet 4 with web search to gather position intelligence"""
+    try:
+        # Force Claude Sonnet 4 for this analysis
+        original_model = getattr(agent.model_manager, 'current_model', None)
+        agent.model_manager.set_model('claude-sonnet-4')
+        
+        prompt = f"""Analyze the {team} {position.upper()} position group for the 2025 NFL season. Use web search to find the most current information.
+
+ANALYSIS REQUIREMENTS:
+1. **Key Players**: Who are the main players in this position group?
+2. **Usage Patterns**: Expected snap counts, target share, carries, etc.
+3. **Coaching Style**: How does this team utilize this position?
+4. **Injury Updates**: Any current injuries or concerns?
+5. **Recent Changes**: New signings, trades, cuts, or scheme changes?
+6. **Fantasy Impact**: What does this mean for fantasy football?
+
+WEB SEARCH FOCUS:
+- 2025 depth charts and roster moves
+- Recent beat reporter updates
+- Coaching staff quotes about usage
+- Preseason performance and usage
+- Injury reports and training camp news
+
+Please provide factual, recent information only. Include sources when possible.
+"""
+        
+        # This will use Claude's native web search capability
+        response = await agent.model_manager.complete(
+            messages=[{"role": "user", "content": prompt}],
+            task_type="research",
+            temperature=0.3,
+            max_tokens=2000
+        )
+        
+        # Restore original model
+        if original_model:
+            agent.model_manager.set_model(original_model)
+        
+        # Parse the response into structured data
+        intelligence_data = {
+            'raw_analysis': response,
+            'key_players': extract_key_players(response),
+            'usage_notes': extract_usage_notes(response),
+            'coaching_style': extract_coaching_style(response),
+            'injury_updates': extract_injury_updates(response),
+            'recent_changes': extract_recent_changes(response),
+            'fantasy_impact': extract_fantasy_impact(response)
+        }
+        
+        return intelligence_data
+        
+    except Exception as e:
+        console.print(f"[red]Error in Claude analysis for {team} {position}: {e}[/red]")
+        return None
+
+
+async def fact_check_with_perplexity(agent, team: str, position: str, intelligence_data: dict) -> dict:
+    """Use Perplexity Pro to fact-check the Claude analysis"""
+    try:
+        # Force Perplexity Pro for fact-checking
+        original_model = getattr(agent.model_manager, 'current_model', None)
+        agent.model_manager.set_model('perplexity-sonar-pro')
+        
+        # Create fact-checking prompt
+        claims_to_check = f"""
+Key Claims from Analysis:
+- Key Players: {intelligence_data.get('key_players', 'N/A')}
+- Usage Notes: {intelligence_data.get('usage_notes', 'N/A')}
+- Injury Updates: {intelligence_data.get('injury_updates', 'N/A')}
+- Recent Changes: {intelligence_data.get('recent_changes', 'N/A')}
+"""
+        
+        fact_check_prompt = f"""Fact-check these claims about the {team} {position.upper()} position group for 2025:
+
+{claims_to_check}
+
+Please verify:
+1. Are the key players correctly identified?
+2. Are injury reports accurate and current?
+3. Are recent roster moves/trades correct?
+4. Are usage patterns realistic based on team history?
+
+Provide confidence scores (0-100) for each major claim and flag any inaccuracies."""
+        
+        fact_check_response = await agent.model_manager.complete(
+            messages=[{"role": "user", "content": fact_check_prompt}],
+            task_type="research", 
+            temperature=0.1,
+            max_tokens=1000
+        )
+        
+        # Restore original model
+        if original_model:
+            agent.model_manager.set_model(original_model)
+            
+        return {
+            'fact_check_response': fact_check_response,
+            'confidence_score': extract_confidence_score(fact_check_response),
+            'status': 'verified' if 'accurate' in fact_check_response.lower() else 'flagged'
+        }
+        
+    except Exception as e:
+        console.print(f"[red]Error in Perplexity fact-check for {team} {position}: {e}[/red]")
+        return {'status': 'error', 'fact_check_response': f'Error: {e}', 'confidence_score': 0}
+
+
+async def save_intelligence_to_db(db_path: str, team: str, position: str, intelligence_data: dict, fact_check_result: dict):
+    """Save the intelligence data to the database"""
+    import sqlite3
+    import json
+    from datetime import datetime
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Prepare data for insertion
+    timestamp = datetime.now().isoformat()
+    
+    cursor.execute('''
+        INSERT OR REPLACE INTO team_position_intelligence (
+            team, position, season, last_updated, intelligence_summary,
+            key_players, usage_notes, coaching_style, injury_updates,
+            recent_changes, fact_check_status, fact_check_notes, confidence_score
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        team, position, 2025, timestamp,
+        intelligence_data.get('raw_analysis', ''),
+        intelligence_data.get('key_players', ''),
+        intelligence_data.get('usage_notes', ''),
+        intelligence_data.get('coaching_style', ''),
+        intelligence_data.get('injury_updates', ''),
+        intelligence_data.get('recent_changes', ''),
+        fact_check_result.get('status', 'pending'),
+        fact_check_result.get('fact_check_response', ''),
+        fact_check_result.get('confidence_score', 0)
+    ))
+    
+    conn.commit()
+    conn.close()
+
+
+def extract_key_players(response: str) -> str:
+    """Extract key players from Claude response"""
+    # Simple extraction - look for player names (could be enhanced with NER)
+    import re
+    lines = response.split('\n')
+    key_players = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['key player', 'starter', 'depth chart', 'rb1', 'wr1', 'qb1']):
+            # Extract potential player names (capitalized words)
+            names = re.findall(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', line)
+            key_players.extend(names)
+    
+    return ', '.join(set(key_players[:5]))  # Top 5 unique names
+
+
+def extract_usage_notes(response: str) -> str:
+    """Extract usage/snap count information"""
+    lines = response.split('\n')
+    usage_info = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['snap', 'target', 'usage', 'carry', 'touch', 'percent']):
+            usage_info.append(line.strip())
+    
+    return '\n'.join(usage_info[:3])  # Top 3 usage notes
+
+
+def extract_coaching_style(response: str) -> str:
+    """Extract coaching philosophy information"""
+    lines = response.split('\n')
+    coaching_info = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['coach', 'scheme', 'offense', 'defense', 'system', 'philosophy']):
+            coaching_info.append(line.strip())
+    
+    return '\n'.join(coaching_info[:2])  # Top 2 coaching notes
+
+
+def extract_injury_updates(response: str) -> str:
+    """Extract injury information"""
+    lines = response.split('\n')
+    injury_info = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['injury', 'injured', 'hurt', 'questionable', 'doubtful', 'ir']):
+            injury_info.append(line.strip())
+    
+    return '\n'.join(injury_info[:3])  # Top 3 injury notes
+
+
+def extract_recent_changes(response: str) -> str:
+    """Extract recent roster moves"""
+    lines = response.split('\n')
+    changes_info = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['trade', 'sign', 'cut', 'release', 'draft', 'acquire', 'new']):
+            changes_info.append(line.strip())
+    
+    return '\n'.join(changes_info[:3])  # Top 3 recent changes
+
+
+def extract_fantasy_impact(response: str) -> str:
+    """Extract fantasy football implications"""
+    lines = response.split('\n')
+    fantasy_info = []
+    
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['fantasy', 'draft', 'waiver', 'start', 'sit', 'value']):
+            fantasy_info.append(line.strip())
+    
+    return '\n'.join(fantasy_info[:3])  # Top 3 fantasy notes
+
+
+def extract_confidence_score(response: str) -> float:
+    """Extract confidence score from fact-check response"""
+    import re
+    
+    # Look for confidence percentages
+    confidence_matches = re.findall(r'(\d+)%|confidence[:\s]*(\d+)', response.lower())
+    
+    if confidence_matches:
+        # Get the highest confidence score mentioned
+        scores = []
+        for match in confidence_matches:
+            for group in match:
+                if group:
+                    scores.append(int(group))
+        
+        return max(scores) if scores else 75.0
+    
+    # Default confidence if none specified
+    return 75.0
+
+
+def handle_intel_command(command: str):
+    """Handle intelligence queries like /intel/team/position"""
+    try:
+        parts = command.split('/')
+        
+        if len(parts) == 1:
+            # Just /intel - show help
+            console.print("[bright_green]Team Position Intelligence System[/bright_green]")
+            console.print("\n[dim]Usage examples:[/dim]")
+            console.print("  [bright_green]/intel/PHI/wr[/bright_green] - Get Eagles WR intelligence")
+            console.print("  [bright_green]/intel/SF/rb[/bright_green] - Get 49ers RB intelligence")
+            console.print("  [bright_green]/intel/list[/bright_green] - Show available team/position combinations")
+            console.print("\n[dim]Available positions: qb, rb, wr, te, def[/dim]")
+            
+        elif len(parts) == 2 and parts[1].lower() == 'list':
+            # Show available intelligence data
+            show_available_intelligence()
+            
+        elif len(parts) == 3:
+            # /intel/team/position - show specific intelligence
+            team = parts[1].upper()
+            position = parts[2].lower()
+            show_team_position_intelligence(team, position)
+            
+        else:
+            console.print(f"[red]Error: Invalid intel command format. Use /intel/team/position[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error processing intel command: {str(e)}[/red]")
+
+
+def show_available_intelligence():
+    """Show what intelligence data is available"""
+    try:
+        import sqlite3
+        from rich.table import Table
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='team_position_intelligence'")
+        if not cursor.fetchone():
+            console.print("[red]No intelligence data found. Run '/update intelligence' first.[/red]")
+            conn.close()
+            return
+        
+        # Get summary of available data
+        cursor.execute('''
+            SELECT team, position, last_updated, fact_check_status, confidence_score
+            FROM team_position_intelligence 
+            WHERE season = 2025
+            ORDER BY team, position
+        ''')
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        if not results:
+            console.print("[red]No intelligence data found for 2025 season. Run '/update intelligence' first.[/red]")
+            return
+        
+        # Create summary table
+        table = Table(title="Available Team Position Intelligence", title_style="bold bright_green")
+        table.add_column("Team", style="bright_green", width=6)
+        table.add_column("Position", style="bright_green", width=8)
+        table.add_column("Last Updated", style="dim", width=12)
+        table.add_column("Status", style="white", width=10)
+        table.add_column("Confidence", style="yellow", width=12)
+        
+        for row in results:
+            team, position, last_updated, status, confidence = row
+            
+            # Format date
+            try:
+                from datetime import datetime
+                date_obj = datetime.fromisoformat(last_updated)
+                formatted_date = date_obj.strftime("%m/%d %H:%M")
+            except:
+                formatted_date = last_updated[:10]
+            
+            # Color code status
+            if status == 'verified':
+                status_display = f"[bright_green]{status}[/bright_green]"
+            elif status == 'flagged':
+                status_display = f"[red]{status}[/red]"
+            else:
+                status_display = f"[yellow]{status}[/yellow]"
+            
+            confidence_display = f"{confidence:.0f}%" if confidence else "N/A"
+            
+            table.add_row(
+                team,
+                position.upper(),
+                formatted_date,
+                status_display,
+                confidence_display
+            )
+        
+        console.print(table)
+        console.print(f"\n[dim]Use /intel/team/position to view detailed analysis (e.g., /intel/PHI/wr)[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error showing intelligence list: {str(e)}[/red]")
+
+
+def show_team_position_intelligence(team: str, position: str):
+    """Show detailed intelligence for specific team/position"""
+    try:
+        import sqlite3
+        from rich.panel import Panel
+        from rich.columns import Columns
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get intelligence data
+        cursor.execute('''
+            SELECT intelligence_summary, key_players, usage_notes, coaching_style,
+                   injury_updates, recent_changes, fact_check_status, fact_check_notes,
+                   confidence_score, last_updated
+            FROM team_position_intelligence 
+            WHERE team = ? AND position = ? AND season = 2025
+        ''', (team, position))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            console.print(f"[red]No intelligence data found for {team} {position.upper()}. Try '/intel/list' to see available data.[/red]")
+            return
+        
+        (intelligence_summary, key_players, usage_notes, coaching_style,
+         injury_updates, recent_changes, fact_check_status, fact_check_notes,
+         confidence_score, last_updated) = result
+        
+        # Display intelligence in organized panels
+        console.print(f"\n[bold bright_green]{team} {position.upper()} Intelligence Report[/bold bright_green]")
+        
+        # Status info
+        status_color = "bright_green" if fact_check_status == 'verified' else "yellow" if fact_check_status == 'pending' else "red"
+        console.print(f"[dim]Status: [{status_color}]{fact_check_status}[/{status_color}] | Confidence: {confidence_score:.0f}% | Updated: {last_updated[:10]}[/dim]")
+        
+        # Main analysis
+        if intelligence_summary:
+            console.print(Panel(intelligence_summary, title="📊 Analysis Summary", border_style="bright_green"))
+        
+        # Key details in columns
+        panels = []
+        
+        if key_players:
+            panels.append(Panel(key_players, title="👥 Key Players", border_style="blue"))
+        
+        if usage_notes:
+            panels.append(Panel(usage_notes, title="📈 Usage Patterns", border_style="yellow"))
+        
+        if coaching_style:
+            panels.append(Panel(coaching_style, title="🎯 Coaching Style", border_style="green"))
+        
+        if injury_updates:
+            panels.append(Panel(injury_updates, title="🏥 Injury Updates", border_style="red"))
+        
+        if recent_changes:
+            panels.append(Panel(recent_changes, title="🔄 Recent Changes", border_style="cyan"))
+        
+        # Display panels in columns (2 per row)
+        if panels:
+            for i in range(0, len(panels), 2):
+                if i + 1 < len(panels):
+                    console.print(Columns([panels[i], panels[i + 1]]))
+                else:
+                    console.print(panels[i])
+        
+        # Fact-check notes if available
+        if fact_check_notes and fact_check_status != 'pending':
+            console.print(Panel(fact_check_notes, title="✅ Fact-Check Results", border_style="dim"))
+        
+        console.print(f"\n[dim]Last updated: {last_updated}[/dim]")
+        console.print(f"[dim]Use '/update intelligence' to refresh all team data[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error showing intelligence for {team} {position}: {str(e)}[/red]")
+
+
+def handle_bye_week_command(position: str, parts: list):
+    """Handle bye week queries like /wr/bye, /qb/bye/5, etc."""
+    try:
+        # Parse optional bye week filter: /position/bye[/week]
+        week_filter = None
+        if len(parts) > 2:
+            try:
+                week_filter = int(parts[2])
+                if week_filter < 1 or week_filter > 18:
+                    console.print(f"[red]Invalid week: {week_filter}. Must be between 1-18[/red]")
+                    return
+            except ValueError:
+                console.print(f"[red]Invalid week: {parts[2]}. Must be a number (1-18)[/red]")
+                return
+        
+        # Connect to database
+        import sqlite3
+        from pathlib import Path
+        
+        db_path = Path(__file__).parent / "data" / "fantasy_ppr.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        position_db = position.lower() if position not in ['DEF', 'DST'] else 'dst'
+        
+        if week_filter:
+            # Show players with specific bye week
+            query = """
+                SELECT player_name, team_name, bye_week
+                FROM player_projections 
+                WHERE season = 2025 AND position = ? AND bye_week = ?
+                ORDER BY player_name
+            """
+            cursor.execute(query, (position_db, week_filter))
+            title = f"{position}s with Week {week_filter} Bye"
+        else:
+            # Show all players with their bye weeks
+            query = """
+                SELECT player_name, team_name, bye_week
+                FROM player_projections 
+                WHERE season = 2025 AND position = ? AND bye_week IS NOT NULL
+                ORDER BY bye_week, player_name
+            """
+            cursor.execute(query, (position_db,))
+            title = f"All {position}s - 2025 Bye Weeks"
+        
+        results = cursor.fetchall()
+        
+        if not results:
+            if week_filter:
+                console.print(f"[yellow]No {position}s found with Week {week_filter} bye[/yellow]")
+            else:
+                console.print(f"[yellow]No bye week data found for {position}s[/yellow]")
+            return
+        
+        # Display results
+        from rich.table import Table
+        table = Table(title=title, show_header=True, header_style="bold bright_green")
+        table.add_column("Rank", style="bright_green", width=6)
+        table.add_column("Player", style="bright_green", width=25)
+        table.add_column("Team", style="bright_green", width=6)
+        table.add_column("Bye Week", style="bright_green", width=10)
+        
+        for i, row in enumerate(results, 1):
+            table.add_row(
+                str(i),
+                row[0],  # player_name
+                row[1] or "FA",  # team_name
+                f"Week {int(row[2])}" if row[2] else "N/A"  # bye_week
+            )
+        
+        console.print(table)
+        
+        # Show bye week summary if showing all players
+        if not week_filter and results:
+            console.print(f"\n[bold bright_green]Bye Week Summary:[/bold bright_green]")
+            
+            # Count players by bye week
+            bye_summary = {}
+            for row in results:
+                week = int(row[2]) if row[2] else 0
+                bye_summary[week] = bye_summary.get(week, 0) + 1
+            
+            for week in sorted(bye_summary.keys()):
+                if week > 0:
+                    console.print(f"  [bright_green]Week {week}:[/bright_green] {bye_summary[week]} players")
+        
+        conn.close()
+        
+    except Exception as e:
+        console.print(f"[red]Error fetching bye weeks: {e}[/red]")
 
 
 if __name__ == '__main__':
