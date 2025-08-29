@@ -31,7 +31,7 @@ from howie_cli.core.context import ConversationContext
 console = Console(style="green")
 
 # Version
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 
 def detect_accidental_rapid_stats(user_input: str) -> bool:
