@@ -239,6 +239,8 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     console.print("  [dim]/tiers/te - Detailed tier breakdown for specific position[/dim]")
                     console.print("  [bright_green]/intel[/bright_green] - Team position intelligence system")
                     console.print("  [dim]/intel/PHI/wr - Get Eagles WR intelligence report[/dim]")
+                    console.print("  [bright_green]/player[/bright_green] - Comprehensive player analysis")
+                    console.print("  [dim]/player/A.J. Brown - Complete player evaluation with all data[/dim]")
                     console.print("\n[dim]? for help • / for commands • /end to exit[/dim]")
                     continue
                 elif user_input.lower().startswith('/model'):
@@ -267,6 +269,9 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     continue
                 elif user_input.lower().startswith('/intel'):
                     handle_intel_command(user_input[1:])  # Remove '/' prefix
+                    continue
+                elif user_input.lower().startswith('/player'):
+                    await handle_player_search_command(user_input[1:])  # Remove '/' prefix
                     continue
                 elif (user_input.lower().startswith('/wr/') or user_input.lower().startswith('/qb/') or 
                       user_input.lower().startswith('/rb/') or user_input.lower().startswith('/te/') or 
@@ -1053,6 +1058,9 @@ def show_enhanced_help():
   - **/intel** - Show help and usage examples
   - **/intel/list** - Show available intelligence data
   - **/intel/PHI/wr** - Get detailed Eagles WR intelligence report
+- **/player** - Comprehensive player analysis
+  - **/player** - Show help and usage examples
+  - **/player/A.J. Brown** - Complete player evaluation with projections, ADP, tiers, SoS, team intel
 - **/help** - Show detailed help
 - **/quit**, **/end**, **/e** - Exit the application
 
@@ -3032,6 +3040,556 @@ def extract_confidence_score(response: str) -> float:
     
     # Default confidence if none specified
     return 75.0
+
+
+async def handle_player_search_command(command: str):
+    """Handle comprehensive player search like /player/A.J. Brown"""
+    try:
+        parts = command.split('/', 1)  # Split on first slash only
+        
+        if len(parts) == 1:
+            # Just /player - show help
+            console.print("[bright_green]Player Search System[/bright_green]")
+            console.print("\n[dim]Usage examples:[/dim]")
+            console.print("  [bright_green]/player/A.J. Brown[/bright_green] - Complete analysis for A.J. Brown")
+            console.print("  [bright_green]/player/Christian McCaffrey[/bright_green] - Full McCaffrey report")
+            console.print("  [bright_green]/player/Josh Allen[/bright_green] - Josh Allen comprehensive data")
+            console.print("\n[dim]Includes: Stats, Projections, ADP, Tiers, Team Intelligence, SoS[/dim]")
+            
+        elif len(parts) == 2:
+            # /player/name - show comprehensive player analysis
+            player_name = parts[1].strip()
+            await show_comprehensive_player_analysis(player_name)
+            
+        else:
+            console.print(f"[red]Error: Invalid player command format. Use /player/Player Name[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error processing player search: {str(e)}[/red]")
+
+
+async def show_comprehensive_player_analysis(player_name: str):
+    """Show comprehensive player analysis in vertical format"""
+    try:
+        import sqlite3
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+        
+        console.print(f"\n[bold bright_green]🔍 Comprehensive Analysis: {player_name}[/bold bright_green]")
+        console.print("[dim]═" * 60 + "[/dim]")
+        
+        # Get player basic info and determine position/team
+        player_info = await get_player_basic_info(player_name)
+        
+        if not player_info:
+            console.print(f"[red]❌ Player '{player_name}' not found in database[/red]")
+            console.print("[dim]Try checking spelling or use a different name format[/dim]")
+            return
+        
+        position = player_info['position'].lower()
+        team = player_info['team']
+        
+        console.print(f"[bright_green]📋 {player_info['display_name']} ({position.upper()}, {team})[/bright_green]")
+        console.print("")
+        
+        # Section 1: 2025 Projections
+        projections = await get_player_projections(player_name, position)
+        if projections:
+            display_projections_section(projections, position)
+        
+        # Section 2: ADP Analysis  
+        adp_data = await get_player_adp_data(player_name)
+        if adp_data:
+            display_adp_section(adp_data)
+        
+        # Section 3: Positional Tier Analysis
+        tier_info = await get_player_tier_info(player_name, position)
+        if tier_info:
+            display_tier_section(tier_info, position)
+        
+        # Section 4: Strength of Schedule
+        sos_data = await get_player_sos_data(team, position)
+        if sos_data:
+            display_sos_section(sos_data, position)
+        
+        # Section 5: Team Position Intelligence
+        team_intel = await get_team_intelligence(team, position)
+        if team_intel:
+            display_team_intelligence_section(team_intel, team, position)
+        
+        # Section 6: Draft Recommendation
+        draft_rec = generate_draft_recommendation(adp_data, tier_info, projections, team_intel)
+        display_draft_recommendation(draft_rec, player_name)
+        
+        console.print(f"\n[dim]━━━ End of Analysis: {player_name} ━━━[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error in comprehensive analysis: {str(e)}[/red]")
+
+
+async def get_player_basic_info(player_name: str) -> dict:
+    """Get basic player information from database"""
+    try:
+        import sqlite3
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Try to find player in projections table first (most complete)
+        cursor.execute('''
+            SELECT player_name, position, team_name
+            FROM player_projections 
+            WHERE season = 2025 AND projection_type = 'preseason'
+            AND (LOWER(player_name) = LOWER(?) OR player_name LIKE ?)
+            LIMIT 1
+        ''', (player_name, f'%{player_name}%'))
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            # Try ADP data as fallback
+            cursor.execute('''
+                SELECT player_name, position, team
+                FROM adp_data 
+                WHERE season = 2025
+                AND (LOWER(player_name) = LOWER(?) OR player_name LIKE ?)
+                LIMIT 1
+            ''', (player_name, f'%{player_name}%'))
+            
+            result = cursor.fetchone()
+        
+        conn.close()
+        
+        if result:
+            return {
+                'display_name': result[0],
+                'position': result[1],
+                'team': result[2]
+            }
+        
+        return None
+        
+    except Exception as e:
+        console.print(f"[red]Error getting player info: {e}[/red]")
+        return None
+
+
+async def get_player_projections(player_name: str, position: str) -> dict:
+    """Get player projections data"""
+    try:
+        import sqlite3
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT fantasy_points, games, pass_td, pass_yds, rush_td, rush_yds, 
+                   recv_td, recv_yds, recv_targets, recv_receptions, bye_week
+            FROM player_projections 
+            WHERE season = 2025 AND projection_type = 'preseason'
+            AND LOWER(player_name) = LOWER(?)
+        ''', (player_name,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'fantasy_points': result[0],
+                'games': result[1],
+                'pass_td': result[2],
+                'pass_yds': result[3],
+                'rush_td': result[4],
+                'rush_yds': result[5],
+                'recv_td': result[6],
+                'recv_yds': result[7],
+                'recv_targets': result[8],
+                'recv_receptions': result[9],
+                'bye_week': result[10]
+            }
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+
+async def get_player_adp_data(player_name: str) -> dict:
+    """Get player ADP data"""
+    try:
+        import sqlite3
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT adp_overall, adp_position, position
+            FROM adp_data 
+            WHERE season = 2025 AND LOWER(player_name) = LOWER(?)
+        ''', (player_name,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            adp_overall = result[0]
+            adp_position = result[1]
+            position = result[2]
+            
+            # Handle None values
+            if adp_overall is None:
+                return None
+                
+            return {
+                'adp_overall': adp_overall,
+                'adp_position': adp_position if adp_position is not None else 0,
+                'position': position,
+                'round_10team': calculate_round(adp_overall, 10),
+                'round_12team': calculate_round(adp_overall, 12),
+                'round_14team': calculate_round(adp_overall, 14)
+            }
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+
+async def get_player_tier_info(player_name: str, position: str) -> dict:
+    """Determine what tier the player falls into"""
+    try:
+        import sqlite3
+        import numpy as np
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get all players at this position with fantasy points
+        cursor.execute('''
+            SELECT player_name, fantasy_points 
+            FROM player_projections 
+            WHERE season = 2025 AND projection_type = 'preseason' AND position = ?
+            ORDER BY fantasy_points DESC
+        ''', (position,))
+        
+        all_players = cursor.fetchall()
+        conn.close()
+        
+        if not all_players:
+            return None
+        
+        # Find this player's rank
+        player_rank = None
+        player_points = None
+        
+        for i, (name, points) in enumerate(all_players, 1):
+            if name.lower() == player_name.lower():
+                player_rank = i
+                player_points = points
+                break
+        
+        if player_rank is None:
+            return None
+        
+        total_players = len(all_players)
+        percentile = (player_rank / total_players) * 100
+        
+        # Determine tier
+        if percentile <= 10:
+            tier = "Tier 1 (Elite)"
+            tier_color = "bright_green"
+        elif percentile <= 25:
+            tier = "Tier 2 (High-End)"
+            tier_color = "green"
+        elif percentile <= 50:
+            tier = "Tier 3 (Solid)"
+            tier_color = "yellow"
+        elif percentile <= 75:
+            tier = "Tier 4 (Depth)"
+            tier_color = "white"
+        else:
+            tier = "Tier 5 (Bench/Waiver)"
+            tier_color = "dim"
+        
+        return {
+            'tier': tier,
+            'tier_color': tier_color,
+            'rank': player_rank,
+            'total_players': total_players,
+            'percentile': percentile,
+            'fantasy_points': player_points
+        }
+        
+    except Exception as e:
+        return None
+
+
+async def get_player_sos_data(team: str, position: str) -> dict:
+    """Get strength of schedule data"""
+    try:
+        import sqlite3
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT season_sos, playoffs_sos, all_sos
+            FROM strength_of_schedule 
+            WHERE season = 2025 AND team = ? AND position = ?
+        ''', (team, position))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            season_sos, playoffs_sos, all_sos = result
+            
+            def get_difficulty(sos_value):
+                if sos_value is None:
+                    return "Unknown", "dim"
+                elif sos_value <= 2:
+                    return "Hardest", "red"
+                elif sos_value <= 4:
+                    return "Hard", "yellow"
+                elif sos_value <= 6:
+                    return "Average", "white"
+                elif sos_value <= 8:
+                    return "Easy", "green"
+                else:
+                    return "Easiest", "bright_green"
+            
+            return {
+                'season_sos': season_sos,
+                'season_difficulty': get_difficulty(season_sos),
+                'playoffs_sos': playoffs_sos,
+                'playoffs_difficulty': get_difficulty(playoffs_sos),
+                'all_sos': all_sos,
+                'all_difficulty': get_difficulty(all_sos)
+            }
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+
+async def get_team_intelligence(team: str, position: str) -> dict:
+    """Get team intelligence data"""
+    try:
+        import sqlite3
+        
+        db_path = "data/fantasy_ppr.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT intelligence_summary, key_players, usage_notes, 
+                   injury_updates, confidence_score, last_updated
+            FROM team_position_intelligence 
+            WHERE team = ? AND position = ? AND season = 2025
+        ''', (team, position))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'summary': result[0],
+                'key_players': result[1],
+                'usage_notes': result[2],
+                'injury_updates': result[3],
+                'confidence_score': result[4],
+                'last_updated': result[5]
+            }
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+
+def display_projections_section(projections: dict, position: str):
+    """Display projections in vertical format"""
+    console.print("[bold bright_green]📊 2025 Projections[/bold bright_green]")
+    
+    # Core stats
+    console.print(f"Fantasy Points: [white]{projections['fantasy_points']:.1f}[/white]")
+    console.print(f"Games: [white]{projections['games'] or 17}[/white]")
+    console.print(f"Bye Week: [yellow]{int(projections['bye_week']) if projections['bye_week'] else 'TBD'}[/yellow]")
+    
+    # Position-specific stats
+    if position in ['qb']:
+        if projections['pass_td']:
+            console.print(f"Pass TD: [white]{projections['pass_td']:.0f}[/white]")
+        if projections['pass_yds']:
+            console.print(f"Pass Yards: [white]{projections['pass_yds']:.0f}[/white]")
+    
+    if position in ['rb', 'qb']:
+        if projections['rush_td']:
+            console.print(f"Rush TD: [white]{projections['rush_td']:.1f}[/white]")
+        if projections['rush_yds']:
+            console.print(f"Rush Yards: [white]{projections['rush_yds']:.0f}[/white]")
+    
+    if position in ['wr', 'te']:
+        if projections['recv_td']:
+            console.print(f"Rec TD: [white]{projections['recv_td']:.1f}[/white]")
+        if projections['recv_yds']:
+            console.print(f"Rec Yards: [white]{projections['recv_yds']:.0f}[/white]")
+        if projections['recv_targets']:
+            console.print(f"Targets: [white]{projections['recv_targets']:.0f}[/white]")
+        if projections['recv_receptions']:
+            console.print(f"Receptions: [white]{projections['recv_receptions']:.0f}[/white]")
+    
+    console.print("")
+
+
+def display_adp_section(adp_data: dict):
+    """Display ADP data in vertical format"""
+    console.print("[bold bright_green]🎯 Draft Position (ADP)[/bold bright_green]")
+    
+    adp_overall = adp_data.get('adp_overall')
+    adp_position = adp_data.get('adp_position')
+    
+    if adp_overall is not None:
+        console.print(f"Overall ADP: [white]{adp_overall:.1f}[/white]")
+    else:
+        console.print("Overall ADP: [dim]Not Available[/dim]")
+        
+    if adp_position is not None:
+        console.print(f"Position ADP: [white]{adp_position:.1f}[/white]")
+    else:
+        console.print("Position ADP: [dim]Not Available[/dim]")
+    
+    console.print("")
+    console.print("[bold]Projected Rounds:[/bold]")
+    console.print(f"10-team: [yellow]{adp_data.get('round_10team', 'N/A')}[/yellow]")
+    console.print(f"12-team: [yellow]{adp_data.get('round_12team', 'N/A')}[/yellow]")
+    console.print(f"14-team: [yellow]{adp_data.get('round_14team', 'N/A')}[/yellow]")
+    console.print("")
+
+
+def display_tier_section(tier_info: dict, position: str):
+    """Display tier information"""
+    console.print("[bold bright_green]🏆 Positional Tier[/bold bright_green]")
+    console.print(f"Tier: [{tier_info['tier_color']}]{tier_info['tier']}[/{tier_info['tier_color']}]")
+    console.print(f"Rank: [white]#{tier_info['rank']} of {tier_info['total_players']} {position.upper()}s[/white]")
+    console.print(f"Percentile: [white]{tier_info['percentile']:.1f}%[/white]")
+    console.print("")
+
+
+def display_sos_section(sos_data: dict, position: str):
+    """Display strength of schedule"""
+    console.print(f"[bold bright_green]📅 Strength of Schedule ({position.upper()})[/bold bright_green]")
+    
+    if sos_data['season_sos']:
+        difficulty, color = sos_data['season_difficulty']
+        console.print(f"Season: [{color}]{difficulty}[/{color}] ({sos_data['season_sos']:.1f})")
+    
+    if sos_data['playoffs_sos']:
+        difficulty, color = sos_data['playoffs_difficulty']
+        console.print(f"Playoffs: [{color}]{difficulty}[/{color}] ({sos_data['playoffs_sos']:.1f})")
+    
+    console.print("")
+
+
+def display_team_intelligence_section(intel: dict, team: str, position: str):
+    """Display team intelligence summary"""
+    console.print(f"[bold bright_green]🧠 Team Intelligence ({team} {position.upper()})[/bold bright_green]")
+    
+    if intel['confidence_score']:
+        console.print(f"Confidence: [white]{intel['confidence_score']:.0f}%[/white]")
+    
+    if intel['key_players']:
+        console.print(f"Key Players: [white]{intel['key_players']}[/white]")
+    
+    if intel['usage_notes']:
+        # Show first line of usage notes
+        first_line = intel['usage_notes'].split('\n')[0]
+        console.print(f"Usage: [dim]{first_line}[/dim]")
+    
+    if intel['injury_updates']:
+        console.print(f"Injuries: [yellow]{intel['injury_updates'][:60]}...[/yellow]")
+    
+    console.print("")
+
+
+def generate_draft_recommendation(adp_data: dict, tier_info: dict, projections: dict, team_intel: dict) -> dict:
+    """Generate draft recommendation based on all data"""
+    try:
+        recommendation = "DRAFT"
+        confidence = "Medium"
+        reasoning = []
+        
+        # ADP analysis
+        if adp_data:
+            adp = adp_data['adp_overall']
+            if adp <= 24:  # Top 2 rounds
+                recommendation = "TARGET EARLY"
+                confidence = "High"
+                reasoning.append("Early-round ADP indicates premium player")
+            elif adp <= 60:  # Rounds 3-5
+                reasoning.append("Mid-round value with upside")
+            else:
+                reasoning.append("Late-round depth/sleeper option")
+        
+        # Tier analysis
+        if tier_info:
+            if "Tier 1" in tier_info['tier']:
+                confidence = "High"
+                reasoning.append("Elite tier player")
+            elif "Tier 5" in tier_info['tier']:
+                recommendation = "AVOID"
+                reasoning.append("Low-tier option with limited upside")
+        
+        # Team intelligence
+        if team_intel and team_intel['confidence_score']:
+            if team_intel['confidence_score'] >= 85:
+                reasoning.append("High-confidence team situation")
+            elif team_intel['confidence_score'] <= 60:
+                reasoning.append("Uncertain team situation")
+        
+        return {
+            'recommendation': recommendation,
+            'confidence': confidence,
+            'reasoning': reasoning
+        }
+        
+    except Exception:
+        return {
+            'recommendation': "RESEARCH",
+            'confidence': "Low",
+            'reasoning': ["Insufficient data for recommendation"]
+        }
+
+
+def display_draft_recommendation(draft_rec: dict, player_name: str):
+    """Display draft recommendation"""
+    rec = draft_rec['recommendation']
+    confidence = draft_rec['confidence']
+    
+    if rec == "TARGET EARLY":
+        color = "bright_green"
+    elif rec == "DRAFT":
+        color = "green"
+    elif rec == "AVOID":
+        color = "red"
+    else:
+        color = "yellow"
+    
+    console.print(f"[bold bright_green]💡 Draft Recommendation[/bold bright_green]")
+    console.print(f"Action: [{color}]{rec}[/{color}]")
+    console.print(f"Confidence: [white]{confidence}[/white]")
+    
+    if draft_rec['reasoning']:
+        console.print("Reasoning:")
+        for reason in draft_rec['reasoning']:
+            console.print(f"  • [dim]{reason}[/dim]")
 
 
 def handle_intel_command(command: str):
