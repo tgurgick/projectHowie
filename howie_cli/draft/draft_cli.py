@@ -23,57 +23,67 @@ class DraftCLI:
         self.analysis_generator = DraftAnalysisGenerator()
         self.db = DraftDatabaseConnector()
     
-    def handle_draft_command(self, command_parts: List[str]) -> str:
-        """Handle draft-related commands"""
+    def handle_draft_command(self, command_str: str) -> str:
+        """Handle draft-related commands using slash format"""
         
-        if not command_parts:
+        if not command_str.strip():
             return self._show_draft_help()
         
-        subcommand = command_parts[0].lower()
+        # Parse slash-separated command
+        parts = [part for part in command_str.strip().split('/') if part]
+        
+        if not parts:
+            return self._show_draft_help()
+        
+        subcommand = parts[0].lower()
         
         if subcommand == "help":
             return self._show_draft_help()
         elif subcommand == "test":
             return self._test_connection()
         elif subcommand == "config":
-            return self._interactive_config()
+            return self._handle_config(parts[1:])
         elif subcommand == "analyze":
-            return self._run_analysis(command_parts[1:])
+            return self._run_analysis(parts[1:])
         elif subcommand == "quick":
             return self._quick_analysis()
         elif subcommand == "monte" or subcommand == "montecarlo":
-            return self._run_monte_carlo(command_parts[1:])
+            return self._run_monte_carlo(parts[1:])
         elif subcommand == "simulate":
-            return self._run_simulation(command_parts[1:])
+            return self._run_simulation(parts[1:])
         else:
-            return f"Unknown draft command: {subcommand}. Use 'draft help' for available commands."
+            return f"Unknown draft command: {subcommand}. Use '/draft/help' for available commands."
     
     def _show_draft_help(self) -> str:
         """Show available draft commands"""
         help_panel = Panel(
             """[bold]Draft Simulation Commands:[/bold]
 
-[green]/draft test[/green]     - Test database connection
-[green]/draft quick[/green]    - Quick analysis with default settings  
-[green]/draft config[/green]   - Interactive league configuration
-[green]/draft analyze[/green]  - Full draft analysis
-[green]/draft monte[/green]    - Monte Carlo simulation (1000+ drafts)
-[green]/draft simulate[/green] - Advanced simulation with AI opponents
-[green]/draft help[/green]     - Show this help
+[green]/draft/test[/green]     - Test database connection
+[green]/draft/quick[/green]    - Quick analysis with default settings  
+[green]/draft/config[/green]   - Interactive league configuration
+[green]/draft/analyze[/green]  - Full draft analysis
+[green]/draft/monte[/green]    - Monte Carlo simulation
+[green]/draft/simulate[/green] - Advanced simulation with AI opponents
+[green]/draft/help[/green]     - Show this help
 
-[bold]Examples:[/bold]
-[dim]/draft quick[/dim]
-[dim]/draft monte --sims 1000 --rounds 8[/dim]
-[dim]/draft monte --personalities --sims 500[/dim]
-[dim]/draft simulate --position 6 --teams 12[/dim]
-[dim]/draft config[/dim]
+[bold]Monte Carlo Examples:[/bold]
+[dim]/draft/monte/25/8[/dim]                  - 25 simulations, 8 rounds
+[dim]/draft/monte/100/15[/dim]                - 100 simulations, 15 rounds
+[dim]/draft/monte/25/8/realistic[/dim]        - Use realistic opponents (default)
+[dim]/draft/monte/25/8/personalities[/dim]    - Use AI personalities
+[dim]/draft/monte/50/12/enhanced[/dim]        - Use enhanced distributions
+
+[bold]Configuration Examples:[/bold]
+[dim]/draft/config/position/10[/dim]          - Set draft position to 10
+[dim]/draft/config/teams/12[/dim]             - Set league to 12 teams
+[dim]/draft/config/scoring/ppr[/dim]          - Set PPR scoring
 
 [bold]Features:[/bold]
 • Round-by-round pick recommendations
 • Monte Carlo simulation with realistic opponents (ADP+noise)
-• Alternative AI personality-based opponents (--personalities)
 • Enhanced evaluation (SoS, starter status, injury risk)
-• VORP and scarcity analysis
+• VORP and scarcity analysis with player distributions
 • Natural draft variance and realistic outcomes
 """,
             title="🏈 Draft Simulation System",
@@ -176,39 +186,27 @@ class DraftCLI:
         return self._run_full_analysis(config, rounds=6)
     
     def _run_analysis(self, args: List[str]) -> str:
-        """Run analysis with command line arguments"""
+        """Run analysis using slash format"""
         
-        # Parse arguments
+        # Parse slash-separated arguments: /draft/analyze/position/teams/scoring
         config = LeagueConfig()  # Default config
         
-        i = 0
-        while i < len(args):
-            arg = args[i].lower()
-            
-            if arg in ["--position", "-p"] and i + 1 < len(args):
-                try:
-                    config.draft_position = int(args[i + 1])
-                    i += 2
-                except ValueError:
-                    return f"Invalid draft position: {args[i + 1]}"
-            
-            elif arg in ["--teams", "-t"] and i + 1 < len(args):
-                try:
-                    config.num_teams = int(args[i + 1])
-                    i += 2
-                except ValueError:
-                    return f"Invalid team count: {args[i + 1]}"
-            
-            elif arg in ["--scoring", "-s"] and i + 1 < len(args):
-                scoring = args[i + 1].lower()
-                if scoring in ["ppr", "half_ppr", "standard"]:
-                    config.scoring_type = scoring
-                    i += 2
-                else:
-                    return f"Invalid scoring type: {args[i + 1]}"
-            
-            else:
-                return f"Unknown argument: {arg}. Use 'draft help' for usage."
+        if len(args) >= 1:
+            try:
+                config.draft_position = int(args[0])
+            except ValueError:
+                pass
+        
+        if len(args) >= 2:
+            try:
+                config.num_teams = int(args[1])
+            except ValueError:
+                pass
+        
+        if len(args) >= 3:
+            scoring = args[2].lower()
+            if scoring in ["ppr", "half", "standard"]:
+                config.scoring_type = scoring
         
         return self._run_full_analysis(config)
     
@@ -293,26 +291,80 @@ class DraftCLI:
         
         console.print(table)
     
+    def _handle_config(self, args: List[str]) -> str:
+        """Handle configuration commands using slash format"""
+        
+        if not args:
+            return self._interactive_config()
+        
+        config_type = args[0].lower()
+        
+        if config_type == "position" and len(args) >= 2:
+            try:
+                position = int(args[1])
+                if 1 <= position <= 12:
+                    console.print(f"[green]✅ Draft position set to {position}[/green]")
+                    return f"Draft position configured: #{position}"
+                else:
+                    return "[red]❌ Draft position must be between 1 and 12[/red]"
+            except ValueError:
+                return "[red]❌ Invalid position number[/red]"
+        
+        elif config_type == "teams" and len(args) >= 2:
+            try:
+                teams = int(args[1])
+                if 8 <= teams <= 16:
+                    console.print(f"[green]✅ League size set to {teams} teams[/green]")
+                    return f"League size configured: {teams} teams"
+                else:
+                    return "[red]❌ League size must be between 8 and 16 teams[/red]"
+            except ValueError:
+                return "[red]❌ Invalid team count[/red]"
+        
+        elif config_type == "scoring" and len(args) >= 2:
+            scoring = args[1].lower()
+            if scoring in ["ppr", "half", "standard"]:
+                console.print(f"[green]✅ Scoring set to {scoring.upper()}[/green]")
+                return f"Scoring configured: {scoring.upper()}"
+            else:
+                return "[red]❌ Scoring must be one of: ppr, half, standard[/red]"
+        
+        else:
+            return "[yellow]Usage: /draft/config/position/6 or /draft/config/teams/12 or /draft/config/scoring/ppr[/yellow]"
+    
     def _run_monte_carlo(self, args: List[str]) -> str:
-        """Run Monte Carlo simulation"""
+        """Run Monte Carlo simulation using slash format"""
         
         try:
-            # Parse arguments
-            num_sims = 1000
+            # Default values
+            num_sims = 25
             rounds = 8
             position = 6
             teams = 12
+            use_realistic = True
+            use_enhanced = False
             
-            # Simple argument parsing
-            for i, arg in enumerate(args):
-                if arg == "--sims" and i + 1 < len(args):
-                    num_sims = int(args[i + 1])
-                elif arg == "--rounds" and i + 1 < len(args):
-                    rounds = int(args[i + 1])
-                elif arg == "--position" and i + 1 < len(args):
-                    position = int(args[i + 1])
-                elif arg == "--teams" and i + 1 < len(args):
-                    teams = int(args[i + 1])
+            # Parse slash-separated arguments: /draft/monte/sims/rounds/mode
+            if len(args) >= 1:
+                try:
+                    num_sims = int(args[0])
+                except ValueError:
+                    pass
+            
+            if len(args) >= 2:
+                try:
+                    rounds = int(args[1])
+                except ValueError:
+                    pass
+            
+            if len(args) >= 3:
+                mode = args[2].lower()
+                if mode == "personalities":
+                    use_realistic = False
+                elif mode == "enhanced":
+                    use_enhanced = True
+                elif mode == "realistic":
+                    use_realistic = True
             
             # Load data
             players = self.db.load_player_universe()
@@ -326,35 +378,57 @@ class DraftCLI:
                 scoring_type="ppr"
             )
             
-            # Check for realistic opponents flag
-            use_realistic = "--realistic" in args or True  # Default to realistic
-            use_personalities = "--personalities" in args
-            
-            if use_personalities:
-                use_realistic = False
-            
             # Import and run Monte Carlo simulation
-            from .monte_carlo_simulator import MonteCarloSimulator
+            if use_enhanced:
+                # Use enhanced Monte Carlo with distributions
+                from .enhanced_monte_carlo import EnhancedMonteCarloSimulator
+                
+                simulator = EnhancedMonteCarloSimulator(config, players)
+                
+                console.print(f"🎲 Starting Enhanced Monte Carlo simulation...")
+                console.print(f"   Simulations: {num_sims:,}")
+                console.print(f"   Rounds: {rounds}")
+                console.print(f"   Your Position: #{position} of {teams}")
+                console.print(f"   Mode: Enhanced with Player Distributions")
+                
+                # Run enhanced simulation
+                results = simulator.run_enhanced_simulation(
+                    num_simulations=num_sims,
+                    rounds=rounds,
+                    use_distributions=True,
+                    num_outcome_samples=min(10000, num_sims * 20)  # Scale samples with sims
+                )
+                
+                # Generate enhanced report
+                report = simulator.generate_enhanced_availability_report(results)
+                console.print("")
+                console.print(report)
+                
+            else:
+                # Use standard Monte Carlo simulation
+                from .monte_carlo_simulator import MonteCarloSimulator
+                
+                simulator = MonteCarloSimulator(config, players, use_realistic_opponents=use_realistic)
+                
+                opponent_type = "Realistic (ADP+noise)" if use_realistic else "AI Personalities"
+                console.print(f"🎲 Starting Monte Carlo simulation...")
+                console.print(f"   Simulations: {num_sims:,}")
+                console.print(f"   Rounds: {rounds}")
+                console.print(f"   Your Position: #{position} of {teams}")
+                console.print(f"   Opponent Model: {opponent_type}")
+                
+                # Run standard simulation
+                results = simulator.run_simulation(
+                    num_simulations=num_sims,
+                    rounds_to_simulate=rounds
+                )
+                
+                # Generate standard report
+                report = simulator.generate_availability_report(results)
+                console.print("")
+                console.print(report)
             
-            simulator = MonteCarloSimulator(config, players, use_realistic_opponents=use_realistic)
-            
-            opponent_type = "Realistic (ADP+noise)" if use_realistic else "AI Personalities"
-            console.print(f"🎲 Starting Monte Carlo simulation...")
-            console.print(f"   Simulations: {num_sims:,}")
-            console.print(f"   Rounds: {rounds}")
-            console.print(f"   Your Position: #{position} of {teams}")
-            console.print(f"   Opponent Model: {opponent_type}")
-            console.print("")
-            
-            results = simulator.run_simulation(
-                num_simulations=num_sims,
-                rounds_to_simulate=rounds
-            )
-            
-            # Generate report
-            report = simulator.generate_availability_report(results)
-            
-            return report
+            return ""
             
         except Exception as e:
             return f"❌ Error running Monte Carlo simulation: {str(e)}"

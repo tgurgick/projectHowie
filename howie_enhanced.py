@@ -238,7 +238,7 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     console.print("  [bright_green]/cost[/bright_green] - Cost tracking and limits")
                     console.print("  [bright_green]/logs[/bright_green] - Show recent system events")
                     console.print("  [bright_green]/update[/bright_green] - Update ADP data from FantasyPros")
-                    console.print("  [bright_green]/draft[/bright_green] - Draft simulation and analysis")
+                    console.print("  [bright_green]/draft[/bright_green] - Draft simulation and analysis (use /draft/help for options)")
                     console.print("  [bright_green]/help[/bright_green] - Show detailed help")
                     console.print("  [bright_green]/quit[/bright_green] - Exit the application")
                     console.print("\n[bold bright_green]Rapid Stats Commands:[/bold bright_green]")
@@ -1166,22 +1166,31 @@ def show_enhanced_help():
 - **/** - Show available commands
 - **/model** - Model management
   - **/model/info** - Show available models and usage
-  - **/model/switch <name>** - Switch to a different model
-  - **/model/config <task> <model>** - Configure model for task type
+  - **/model/switch/model_name** - Switch to a different model
+  - **/model/config/task/model** - Configure model for task type
   - **/model/save** - Save model configuration
 - **/cost** - Cost tracking and limits
   - **/cost/info** - Show cost information and usage
   - **/cost/reset** - Reset cost tracking
-  - **/cost/estimate <model> <tokens>** - Estimate cost for a query
+  - **/cost/estimate/model/tokens** - Estimate cost for a query
 - **/agent** - Agent management
   - **/agent/info** - Show agent information and types
-  - **/agent/spawn <type>** - Spawn a new agent (coming soon)
+  - **/agent/spawn/type** - Spawn a new agent (coming soon)
   - **/agent/list** - List active agents (coming soon)
 - **/logs** - System event logging and tracing
   - **/logs/info** - Show recent system events
   - **/logs/tools** - Show detailed tool execution trace
   - **/logs/agent** - Show agent decision trace
   - **/logs/session** - Show session information
+- **/draft** - Draft simulation and analysis
+  - **/draft/help** - Show draft system help
+  - **/draft/test** - Test database connection
+  - **/draft/quick** - Quick 8-round analysis
+  - **/draft/monte/sims/rounds** - Monte Carlo simulation (e.g., /draft/monte/25/8)
+  - **/draft/monte/sims/rounds/enhanced** - Enhanced simulation with distributions
+  - **/draft/config/position/6** - Set draft position
+  - **/draft/config/teams/12** - Set league size
+  - **/draft/config/scoring/ppr** - Set scoring format
 - **/adp** - ADP rankings and draft tools
   - **/adp** - Show ADP rankings with 10-team and 12-team round estimates
   - **/adp/10** - Show ADP rankings with projected rounds for 10-team league
@@ -4241,11 +4250,8 @@ def handle_draft_command(command: str):
         # Initialize draft CLI
         draft_cli = DraftCLI()
         
-        # Parse command parts  
-        parts = command.strip().split() if command.strip() else []
-        
-        # Handle the command
-        result = draft_cli.handle_draft_command(parts)
+        # Handle the command using slash format
+        result = draft_cli.handle_draft_command(command)
         
         # Display result if not empty
         if result:
