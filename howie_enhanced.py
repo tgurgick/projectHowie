@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from howie_cli.core.enhanced_agent import EnhancedHowieAgent
 from howie_cli.core.model_manager import ModelManager
 from howie_cli.core.context import ConversationContext
+from howie_cli.draft.draft_cli import DraftCLI
 
 # Eagles green color theme
 console = Console(style="green")
@@ -237,6 +238,7 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     console.print("  [bright_green]/cost[/bright_green] - Cost tracking and limits")
                     console.print("  [bright_green]/logs[/bright_green] - Show recent system events")
                     console.print("  [bright_green]/update[/bright_green] - Update ADP data from FantasyPros")
+                    console.print("  [bright_green]/draft[/bright_green] - Draft simulation and analysis")
                     console.print("  [bright_green]/help[/bright_green] - Show detailed help")
                     console.print("  [bright_green]/quit[/bright_green] - Exit the application")
                     console.print("\n[bold bright_green]Rapid Stats Commands:[/bold bright_green]")
@@ -291,6 +293,9 @@ async def enhanced_chat_loop(agent: EnhancedHowieAgent):
                     continue
                 elif user_input.lower().startswith('/player'):
                     await handle_player_search_command(user_input[1:])  # Remove '/' prefix
+                    continue
+                elif user_input.lower().startswith('/draft'):
+                    handle_draft_command(user_input[7:])  # Remove '/draft' prefix
                     continue
                 elif (user_input.lower().startswith('/wr/') or user_input.lower().startswith('/qb/') or 
                       user_input.lower().startswith('/rb/') or user_input.lower().startswith('/te/') or 
@@ -416,9 +421,114 @@ async def handle_update_command(agent: EnhancedHowieAgent, command: str):
         except Exception as e:
             console.print(f"[red]Error updating rosters: {e}[/red]")
     
+    elif parts[0].startswith('intel'):
+        # Check if this is a single team update (format: intel/TEAM)
+        if '/' in parts[0]:
+            # Extract team from intel/TEAM format
+            _, team_to_update = parts[0].split('/', 1)
+            team_to_update = team_to_update.upper()
+            console.print(f"[bright_green]🎯 Updating Intelligence for {team_to_update}...[/bright_green]")
+            
+            try:
+                from howie_cli.draft.enhanced_intelligence import EnhancedIntelligenceGatherer
+                
+                gatherer = EnhancedIntelligenceGatherer()
+                
+                # Get players for this specific team
+                team_player_mapping = gatherer._get_fantasy_relevant_players()
+                
+                if team_to_update not in team_player_mapping:
+                    console.print(f"[red]Team '{team_to_update}' not found.[/red]")
+                    console.print("")
+                    console.print("[yellow]📋 All valid team abbreviations:[/yellow]")
+                    
+                    available_teams = sorted(list(team_player_mapping.keys()))
+                    
+                    # Display teams in organized rows of 8 for better readability
+                    from rich.table import Table
+                    table = Table(show_header=False, show_edge=False, pad_edge=False)
+                    for i in range(8):  # 8 columns
+                        table.add_column(width=4)
+                    
+                    # Add teams in rows of 8
+                    for i in range(0, len(available_teams), 8):
+                        row = available_teams[i:i+8]
+                        # Pad row to 8 items if needed
+                        while len(row) < 8:
+                            row.append("")
+                        table.add_row(*row)
+                    
+                    console.print(table)
+                    console.print("")
+                    console.print(f"[dim]Usage: /update intel/TEAM (e.g., /update intel/ARZ)[/dim]")
+                    console.print(f"[dim]Total teams: {len(available_teams)}[/dim]")
+                    return
+                
+                # Update just this team
+                intelligence_data = await gatherer.gather_single_team_intelligence(agent, team_to_update)
+                
+                if intelligence_data:
+                    # Save to database
+                    updates_made = await gatherer.save_intelligence_to_database({team_to_update: intelligence_data})
+                    
+                    console.print(f"[bright_green]✅ {team_to_update} Intelligence Update Complete![/bright_green]")
+                    console.print(f"[bright_green]📊 Player records updated: {updates_made}[/bright_green]")
+                    console.print(f"[dim]Use '/intel/{team_to_update}/position' to view updated intelligence[/dim]")
+                else:
+                    console.print(f"[yellow]No intelligence data gathered for {team_to_update}[/yellow]")
+                
+            except Exception as e:
+                console.print(f"[red]Error updating {team_to_update} intelligence: {e}[/red]")
+                import traceback
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        
+        else:
+            # Full intelligence update
+            console.print("[bright_green]🚀 Starting Enhanced Intelligence Update...[/bright_green]")
+            console.print("[dim]Using parallel processing for faster analysis of fantasy-relevant players[/dim]")
+            
+            try:
+                from howie_cli.draft.enhanced_intelligence import EnhancedIntelligenceGatherer
+                
+                # Initialize the enhanced gatherer
+                gatherer = EnhancedIntelligenceGatherer()
+                
+                # Determine concurrency based on command
+                max_concurrent = 3  # Default - conservative for rate limits
+                if len(parts) > 1:
+                    if parts[1] == 'fast':
+                        max_concurrent = 6  # More aggressive but still reasonable
+                        console.print("[dim]Using fast mode (6 concurrent requests)[/dim]")
+                    elif parts[1] == 'slow':
+                        max_concurrent = 2   # Very conservative
+                        console.print("[dim]Using slow mode (2 concurrent requests)[/dim]")
+                else:
+                    console.print("[dim]Using default mode (3 concurrent requests with retry logic)[/dim]")
+                
+                # Gather intelligence for all teams
+                intelligence_data = await gatherer.gather_all_team_intelligence(agent, max_concurrent)
+                
+                # Save to database
+                updates_made = await gatherer.save_intelligence_to_database(intelligence_data)
+                
+                # Update the draft intelligence parser with new data
+                from howie_cli.draft.intelligence_parser import IntelligenceParser
+                parser = IntelligenceParser()
+                additional_updates = parser.update_draft_intelligence_table()
+                
+                console.print("[bright_green]✅ Enhanced Intelligence Update Complete![/bright_green]")
+                console.print(f"[bright_green]📊 Player records updated: {updates_made}[/bright_green]")
+                console.print(f"[bright_green]🔄 Additional parsing updates: {additional_updates}[/bright_green]")
+                console.print("[dim]Enhanced data now available for draft analysis and /intel commands[/dim]")
+                
+            except Exception as e:
+                console.print(f"[red]Error updating enhanced intelligence: {e}[/red]")
+                import traceback
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
     elif parts[0] == 'intelligence':
-        # Update team position intelligence
-        console.print("[bright_green]Starting Team Position Intelligence Update...[/bright_green]")
+        # Original team position intelligence (legacy mode)
+        console.print("[bright_green]Starting Team Position Intelligence Update (Legacy)...[/bright_green]")
         console.print("[dim]This process will analyze each team's positional groups using Claude + web search + fact-checking[/dim]")
         
         try:
@@ -434,7 +544,13 @@ async def handle_update_command(agent: EnhancedHowieAgent, command: str):
         console.print("[yellow]Available update commands:[/yellow]")
         console.print("  [bright_green]/update adp[/bright_green] - Update ADP data from FantasyPros")
         console.print("  [bright_green]/update rosters[/bright_green] - Update NFL roster information")
-        console.print("  [bright_green]/update intelligence[/bright_green] - Update team position intelligence (AI-powered analysis)")
+        console.print("  [bright_green]/update intel[/bright_green] - 🚀 Enhanced intelligence (3 concurrent, retry logic)")
+        console.print("  [bright_green]/update intel fast[/bright_green] - Enhanced intelligence (6 concurrent)")
+        console.print("  [bright_green]/update intel slow[/bright_green] - Enhanced intelligence (2 concurrent)")
+        console.print("  [bright_green]/update intel/TEAM[/bright_green] - Re-run intelligence for specific team (e.g., /update intel/ARI)")
+        console.print("  [bright_green]/update intelligence[/bright_green] - Original intelligence system (legacy)")
+        console.print("\n[yellow]💡 Recommended: Use '/update intel' - optimized for rate limits with retry logic[/yellow]")
+        console.print("[yellow]💡 For quick fixes: Use '/update intel/TEAM' to re-run just one team[/yellow]")
 
 
 def handle_model_command(agent: EnhancedHowieAgent, command: str):
@@ -3612,31 +3728,38 @@ def display_draft_recommendation(draft_rec: dict, player_name: str):
 
 
 def handle_intel_command(command: str):
-    """Handle intelligence queries like /intel/team/position"""
+    """Handle intelligence queries like /intel/team/position or /intel/player/name"""
     try:
         parts = command.split('/')
         
         if len(parts) == 1:
             # Just /intel - show help
-            console.print("[bright_green]Team Position Intelligence System[/bright_green]")
+            console.print("[bright_green]Enhanced Team Intelligence System[/bright_green]")
             console.print("\n[dim]Usage examples:[/dim]")
             console.print("  [bright_green]/intel/PHI/wr[/bright_green] - Get Eagles WR intelligence")
             console.print("  [bright_green]/intel/SF/rb[/bright_green] - Get 49ers RB intelligence")
+            console.print("  [bright_green]/intel/player/Josh Allen[/bright_green] - Get specific player intelligence")
             console.print("  [bright_green]/intel/list[/bright_green] - Show available team/position combinations")
-            console.print("\n[dim]Available positions: qb, rb, wr, te, def[/dim]")
+            console.print("\n[dim]Available positions: qb, rb, wr, te, dst (or def), k[/dim]")
+            console.print("\n[yellow]💡 Enhanced features: Starter status, injury risk, usage projections[/yellow]")
             
         elif len(parts) == 2 and parts[1].lower() == 'list':
             # Show available intelligence data
             show_available_intelligence()
             
         elif len(parts) == 3:
-            # /intel/team/position - show specific intelligence
-            team = parts[1].upper()
-            position = parts[2].lower()
-            show_team_position_intelligence(team, position)
+            if parts[1].lower() == 'player':
+                # /intel/player/name - show specific player intelligence
+                player_name = parts[2].replace('%20', ' ')  # Handle URL encoding
+                show_player_intelligence(player_name)
+            else:
+                # /intel/team/position - show specific intelligence  
+                team = parts[1].upper()
+                position = parts[2].lower()
+                show_enhanced_team_position_intelligence(team, position)
             
         else:
-            console.print(f"[red]Error: Invalid intel command format. Use /intel/team/position[/red]")
+            console.print(f"[red]Error: Invalid intel command format. Use /intel/team/position or /intel/player/name[/red]")
             
     except Exception as e:
         console.print(f"[red]Error processing intel command: {str(e)}[/red]")
@@ -3797,6 +3920,228 @@ def show_team_position_intelligence(team: str, position: str):
         console.print(f"[red]Error showing intelligence for {team} {position}: {str(e)}[/red]")
 
 
+def show_player_intelligence(player_name: str):
+    """Show enhanced intelligence for a specific player"""
+    try:
+        from howie_cli.draft.enhanced_intelligence import EnhancedIntelligenceGatherer
+        
+        gatherer = EnhancedIntelligenceGatherer()
+        player_intel = gatherer.get_player_intelligence_summary(player_name)
+        
+        if not player_intel:
+            console.print(f"[yellow]No intelligence found for '{player_name}'[/yellow]")
+            console.print("[dim]Try using exact player name from projections (e.g., 'Josh Allen')[/dim]")
+            return
+        
+        # Display enhanced player intelligence
+        from rich.table import Table
+        from rich.panel import Panel
+        
+        # Create player info panel
+        player_info = []
+        player_info.append(f"[bold bright_green]{player_intel['player_name']}[/bold bright_green]")
+        player_info.append(f"[dim]{player_intel['team']} {player_intel['position'].upper()}[/dim]")
+        
+        # Starter status
+        if player_intel['is_projected_starter']:
+            confidence = player_intel.get('starter_confidence', 0) * 100
+            player_info.append(f"✅ [bright_green]Projected Starter[/bright_green] ({confidence:.0f}% confidence)")
+        elif player_intel['is_projected_starter'] is False:
+            player_info.append("⚠️  [yellow]Backup/Uncertain Role[/yellow]")
+        else:
+            player_info.append("❓ [dim]Role Unknown[/dim]")
+        
+        # Injury status
+        if player_intel['injury_risk_level']:
+            risk_colors = {'LOW': 'green', 'MEDIUM': 'yellow', 'HIGH': 'red'}
+            risk_emojis = {'LOW': '💪', 'MEDIUM': '⚠️ ', 'HIGH': '🚑'}
+            
+            risk = player_intel['injury_risk_level']
+            color = risk_colors.get(risk, 'white')
+            emoji = risk_emojis.get(risk, '❓')
+            
+            player_info.append(f"{emoji} [{color}]{risk} Injury Risk[/{color}]")
+            
+            if player_intel['injury_details']:
+                details = player_intel['injury_details'][:80] + "..." if len(player_intel['injury_details']) > 80 else player_intel['injury_details']
+                player_info.append(f"   [dim]{details}[/dim]")
+        else:
+            player_info.append("❓ [dim]Injury Status Unknown[/dim]")
+        
+        # Usage projections
+        if player_intel.get('snap_share_projection'):
+            snap_pct = player_intel['snap_share_projection'] * 100
+            player_info.append(f"📊 [bright_green]Projected Snap Share: {snap_pct:.1f}%[/bright_green]")
+        
+        if player_intel.get('target_share_projection'):
+            target_pct = player_intel['target_share_projection'] * 100
+            player_info.append(f"🎯 [bright_green]Projected Target Share: {target_pct:.1f}%[/bright_green]")
+        
+        if player_intel.get('usage_notes'):
+            player_info.append(f"📝 [dim]{player_intel['usage_notes']}[/dim]")
+        
+        # Last updated
+        if player_intel.get('last_updated'):
+            from datetime import datetime
+            try:
+                updated = datetime.fromisoformat(player_intel['last_updated'].replace('Z', '+00:00'))
+                player_info.append(f"\n[dim]Updated: {updated.strftime('%Y-%m-%d %H:%M')}[/dim]")
+            except:
+                pass
+        
+        panel = Panel(
+            "\n".join(player_info),
+            title=f"🔍 Player Intelligence: {player_name}",
+            border_style="bright_green"
+        )
+        
+        console.print(panel)
+        
+    except Exception as e:
+        console.print(f"[red]Error showing player intelligence: {e}[/red]")
+
+
+def show_enhanced_team_position_intelligence(team: str, position: str):
+    """Show enhanced team position intelligence with player details"""
+    try:
+        import sqlite3
+        from rich.table import Table
+        from rich.panel import Panel
+        
+        db_path = get_database_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get enhanced player intelligence for this team/position
+        # Handle DEF/DST position alias
+        search_position = 'dst' if position.lower() == 'def' else position
+        
+        cursor.execute("""
+            SELECT player_name, is_projected_starter, starter_confidence, 
+                   depth_chart_position, injury_risk_level, injury_details,
+                   snap_share_projection, target_share_projection, usage_notes,
+                   last_updated
+            FROM player_draft_intelligence
+            WHERE team = ? AND position = ? AND season = 2025
+            ORDER BY 
+                CASE WHEN is_projected_starter = 1 THEN 1 ELSE 2 END,
+                COALESCE(depth_chart_position, 99),
+                starter_confidence DESC
+        """, (team, search_position))
+        
+        players = cursor.fetchall()
+        
+        if not players:
+            console.print(f"[yellow]No enhanced intelligence found for {team} {position.upper()}[/yellow]")
+            
+            # Check if it's an invalid team name
+            cursor.execute("SELECT DISTINCT team_name FROM player_projections WHERE season = 2025 AND team_name != 'FA' ORDER BY team_name")
+            valid_teams = [row[0] for row in cursor.fetchall()]
+            
+            if team not in valid_teams:
+                console.print(f"[red]Invalid team '{team}'.[/red]")
+                console.print("")
+                console.print("[yellow]📋 All valid team abbreviations:[/yellow]")
+                
+                # Display teams in organized rows of 8
+                from rich.table import Table
+                table = Table(show_header=False, show_edge=False, pad_edge=False)
+                for i in range(8):  # 8 columns
+                    table.add_column(width=4)
+                
+                # Add teams in rows of 8
+                for i in range(0, len(valid_teams), 8):
+                    row = valid_teams[i:i+8]
+                    while len(row) < 8:
+                        row.append("")
+                    table.add_row(*row)
+                
+                console.print(table)
+                console.print("")
+                console.print(f"[dim]Usage: /intel/TEAM/position (e.g., /intel/ARZ/qb)[/dim]")
+                console.print(f"[dim]Total teams: {len(valid_teams)}[/dim]")
+            else:
+                console.print("[dim]Run '/update intel' to gather enhanced intelligence data[/dim]")
+            
+            conn.close()
+            return
+        
+        # Create enhanced display
+        table = Table(title=f"🏈 {team} {position.upper()} Intelligence", show_header=True)
+        table.add_column("Player", style="bright_green", width=18)
+        table.add_column("Role", style="white", width=12)
+        table.add_column("Health", style="white", width=12)
+        table.add_column("Usage", style="white", width=25)
+        table.add_column("Notes", style="dim", width=30)
+        
+        for player_data in players:
+            (player_name, is_starter, confidence, depth_pos, injury_risk, 
+             injury_details, snap_share, target_share, usage_notes, last_updated) = player_data
+            
+            # Role column
+            if is_starter:
+                conf_pct = int((confidence or 0.8) * 100)
+                role = f"✅ Starter ({conf_pct}%)"
+            elif is_starter is False:
+                role = "⚠️  Backup"
+            else:
+                role = "❓ Unknown"
+            
+            # Health column
+            if injury_risk:
+                risk_emojis = {'LOW': '💪', 'MEDIUM': '⚠️ ', 'HIGH': '🚑'}
+                emoji = risk_emojis.get(injury_risk, '❓')
+                health = f"{emoji} {injury_risk}"
+            else:
+                health = "❓ Unknown"
+            
+            # Usage column
+            usage_parts = []
+            if snap_share:
+                usage_parts.append(f"Snaps: {snap_share*100:.0f}%")
+            if target_share:
+                usage_parts.append(f"Targets: {target_share*100:.0f}%")
+            
+            usage = " | ".join(usage_parts) if usage_parts else "No projections"
+            
+            # Notes column
+            notes = usage_notes[:28] + "..." if usage_notes and len(usage_notes) > 28 else (usage_notes or "")
+            
+            table.add_row(player_name, role, health, usage, notes)
+        
+        console.print(table)
+        
+        # Also show legacy intelligence if available
+        cursor.execute("""
+            SELECT intelligence_summary, coaching_style, last_updated
+            FROM team_position_intelligence 
+            WHERE team = ? AND position = ? AND season = 2025
+        """, (team, position))
+        
+        legacy_data = cursor.fetchone()
+        if legacy_data and legacy_data[0]:
+            summary, coaching, updated = legacy_data
+            
+            legacy_info = []
+            if coaching:
+                legacy_info.append(f"[bold]Coaching Style:[/bold] {coaching}")
+            if summary:
+                legacy_info.append(f"[bold]Summary:[/bold] {summary}")
+            
+            if legacy_info:
+                legacy_panel = Panel(
+                    "\n\n".join(legacy_info),
+                    title="📋 Additional Team Intelligence",
+                    border_style="dim"
+                )
+                console.print(legacy_panel)
+        
+        conn.close()
+        
+    except Exception as e:
+        console.print(f"[red]Error showing enhanced intelligence for {team} {position}: {e}[/red]")
+
+
 def handle_bye_week_command(position: str, parts: list):
     """Handle bye week queries like /wr/bye, /qb/bye/5, etc."""
     try:
@@ -3888,6 +4233,26 @@ def handle_bye_week_command(position: str, parts: list):
         
     except Exception as e:
         console.print(f"[red]Error fetching bye weeks: {e}[/red]")
+
+
+def handle_draft_command(command: str):
+    """Handle draft simulation commands"""
+    try:
+        # Initialize draft CLI
+        draft_cli = DraftCLI()
+        
+        # Parse command parts  
+        parts = command.strip().split() if command.strip() else []
+        
+        # Handle the command
+        result = draft_cli.handle_draft_command(parts)
+        
+        # Display result if not empty
+        if result:
+            console.print(result)
+            
+    except Exception as e:
+        console.print(f"[red]Draft command error: {e}[/red]")
 
 
 if __name__ == '__main__':

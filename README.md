@@ -2,34 +2,36 @@
 
 > **Transform your fantasy football strategy with AI-powered analysis, real-time intelligence, and comprehensive draft tools.**
 
-[![Version](https://img.shields.io/badge/version-2.3.0-brightgreen.svg)](https://github.com/tgurgick/projectHowie)
+[![Version](https://img.shields.io/badge/version-2.4.0-brightgreen.svg)](https://github.com/tgurgick/projectHowie)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 
-## 🚀 What's New in v2.3.0
+## 🚀 What's New in v2.4.0
+
+### 🎲 **Monte Carlo Draft Simulation Engine**
+- **`/draft monte`** - Advanced draft simulation with realistic opponent modeling
+- **FantasyPros ADP Integration**: 86.7% real consensus data coverage
+- **Strategic Opponents**: 9 opponent types (Zero RB, Hero RB, QB Early/Late)
+- **ADP Range Strategy**: ±10 picks around position for realistic candidate filtering
+- **VORP Optimization**: Value Over Replacement Player with position-specific calculations
+
+### 🧮 **Sophisticated Draft Analysis**
+- **`/draft analyze`** - Pre-draft analysis with recommendations
+- **6-Factor Scoring**: VORP, scarcity, roster fit, SoS, starter status, injury risk
+- **Realistic Variance**: Unique random seeds and Gaussian noise per simulation
+- **Live Tracing**: Pick-by-pick analysis showing ADP ranges and selections
+- **Season Projections**: Full roster strength calculations
 
 ### 🎯 **Complete Player Evaluation System**
 - **`/player/Name`** - Comprehensive player analysis in vertical format
 - **All-in-one reports**: Projections, ADP, tiers, SoS, team intelligence, draft recommendations
 - **Mobile-optimized**: Perfect for narrow screens and draft apps
 
-### 📊 **Advanced Draft Tools**  
-- **`/adp`** - ADP rankings with multi-league round projections
-- **`/adp/10`, `/adp/12`** - League-specific round targeting
-- **`/tiers`** - Positional tier analysis with marginal value drops
-- **Round-based strategy**: Know exactly when tiers typically get drafted
-
 ### 🤖 **AI-Powered Team Intelligence**
 - **`/intel/team/position`** - Real-time scouting reports for every team/position
 - **Claude + Perplexity workflow**: Web search → analysis → fact-checking
 - **`/update intelligence`** - Refresh all 32 teams × 5 positions = 160 analyses
 - **95%+ confidence scoring**: Verified by beat reporters and analysts
-
-### ⚡ **Enhanced CLI Experience**
-- **Fixed database paths**: Works from any directory
-- **Early termination**: Prevents expensive API calls on typos
-- **Bye week integration**: Complete schedule awareness
-- **Clean color scheme**: Optimized for readability
 
 ## 📋 Quick Reference
 
@@ -46,6 +48,13 @@
 /adp/12                      # 12-team league targeting
 /tiers                       # All position tier analysis
 /tiers/rb                    # RB-specific tier breakdown
+```
+
+### **🎲 Draft Simulation**
+```bash
+/draft monte --sims 25 --rounds 2    # Monte Carlo simulation
+/draft analyze                       # Pre-draft analysis
+/draft simulate --opponents realistic # Full mock draft
 ```
 
 ### **🧠 Team Intelligence**
@@ -75,10 +84,11 @@
 ### **🎯 Draft Command Center**
 | Command | Description | Example |
 |---------|-------------|---------|
+| `/draft monte` | Monte Carlo simulation | 25 simulations with realistic opponents |
+| `/draft analyze` | Pre-draft analysis | Round-by-round recommendations |
 | `/adp` | ADP rankings with round estimates | Shows top 50 with 10/12-team projections |
 | `/adp/10` | League-specific rounds | ADP table + projected round for 10-team |
 | `/tiers` | Tier value analysis | Marginal points between position tiers |
-| `/tiers/rb` | Position-specific tiers | Detailed RB tier breakdown |
 | `/player/Name` | Complete evaluation | All data points in mobile format |
 
 ### **🧠 Intelligence System**
@@ -169,6 +179,35 @@ Usage: Expects 280+ carries in Sirianni's RB-friendly offense
 Action: TARGET EARLY
 Confidence: High
 Reasoning: Elite tier player, favorable team situation, strong ADP value
+```
+
+### **🎲 Monte Carlo Draft Simulation**
+```bash
+> /draft monte --sims 25 --rounds 2
+
+🎲 MONTE CARLO SIMULATION RESULTS
+============================================================
+Simulations Run: 25
+Average Roster Strength: 496.8
+Your Position: #6 of 12
+
+📍 ROUND 1 PLAYER AVAILABILITY:
+(Players available when your Round 1 pick comes up)
+──────────────────────────────────────────────────────────
+ 1. Ja'Marr Chase         93.3% 🟢 Very Likely (ADP:  1.0)
+ 2. CeeDee Lamb           86.7% 🟢 Very Likely (ADP:  5.0)
+ 3. Amon-Ra St. Brown     80.0% 🟢 Very Likely (ADP:  9.5)
+ 4. Justin Jefferson      80.0% 🟢 Very Likely (ADP:  4.8)
+ 5. Saquon Barkley        73.3% 🟡 Possible (ADP:  3.7)
+
+🎯 MOST COMMON PICKS BY ROUND:
+Round 1: CeeDee Lamb (86.7%), Amon-Ra St. Brown (13.3%)
+Round 2: Josh Allen (73.3%), Chase Brown (13.3%)
+
+✅ ANALYSIS:
+• ADP range strategy working: Pick #6 gets ADP 1-16 players
+• VORP optimization: CeeDee Lamb best value in range
+• Realistic opponents: Natural draft flow with variance
 ```
 
 ### **🎯 Draft Strategy Session**
@@ -285,27 +324,33 @@ export HOWIE_WORKSPACE="~/fantasy"      # Custom workspace
 
 ## 🔮 Roadmap & Future Features
 
-### **📅 Coming Soon**
-- **Live draft assistant**: Real-time pick recommendations
-- **Trade analyzer**: Multi-team trade evaluation
-- **Waiver wire AI**: Priority recommendations with reasoning
-- **League-specific analysis**: Custom scoring and roster settings
-- **Mobile app**: Native iOS/Android companion
+### **📅 Coming Soon (v2.5.0)**
+- **Full MCTS Implementation**: Tree search with strategic lookahead
+- **Player Outcome Distributions**: Age/tenure variance with injury overlay
+- **Pre-sampled Outcomes**: 10K-20K season simulations for performance
+- **Weekly Lineup Optimization**: Season scoring with lineup decisions
 
-### **🎯 Planned Enhancements**
+### **🎯 Draft Simulation Enhancements**
+- **Live draft assistant**: Real-time pick recommendations during drafts
+- **Trade analyzer**: Multi-team trade evaluation with VORP analysis
+- **Keeper league support**: Draft pick replacement and valuation
+- **League-specific analysis**: Custom scoring and roster settings
+
+### **🎮 Advanced Features**
 - **Dynasty league support**: Multi-year player valuations
 - **Playoff optimizer**: Week 15-17 specific strategies
 - **Injury impact analysis**: Replacement value calculations
 - **Weather integration**: Game condition impact analysis
+- **Mobile app**: Native iOS/Android companion
 
 ## 🤝 Contributing
 
 ### **🔧 Development Setup**
-```bash
+   ```bash
 # Clone and setup development environment
 git clone https://github.com/tgurgick/projectHowie.git
 cd projectHowie
-pip install -r requirements_enhanced.txt
+   pip install -r requirements_enhanced.txt
 python -m pytest tests/
 ```
 

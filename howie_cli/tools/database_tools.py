@@ -75,8 +75,15 @@ class DatabaseQueryTool(BaseTool):
             df = pd.read_sql_query(sql_query, conn)
             conn.close()
             
-            # Format return based on type
-            if return_type == "dict":
+            # Format return based on type - ALWAYS return safe dict format
+            if df.empty:
+                data = {
+                    "rows": 0,
+                    "columns": list(df.columns),
+                    "records": [],
+                    "message": "No data found"
+                }
+            elif return_type == "dict":
                 data = df.to_dict('records')
             elif return_type == "summary":
                 data = {
@@ -86,7 +93,12 @@ class DatabaseQueryTool(BaseTool):
                     "stats": df.describe().to_dict() if not df.empty else {}
                 }
             else:
-                data = df
+                # Default: return dict format instead of DataFrame to avoid ambiguity
+                data = {
+                    "rows": len(df),
+                    "columns": list(df.columns),
+                    "records": df.to_dict('records')
+                }
             
             return ToolResult(
                 status=ToolStatus.SUCCESS,
