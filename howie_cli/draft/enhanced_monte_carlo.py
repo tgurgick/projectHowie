@@ -1,498 +1,361 @@
 """
-Enhanced Monte Carlo Simulation with Player Outcome Distributions
+Enhanced Monte Carlo Simulator with Pre-sampled Outcomes
 
-This module enhances the existing Monte Carlo simulation by integrating
-realistic player distributions for more accurate season outcome modeling.
+This module enhances the existing Monte Carlo simulator to use pre-sampled
+player outcomes for faster and more realistic draft simulations.
 """
 
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import random
 from dataclasses import dataclass
-from .monte_carlo_simulator import MonteCarloSimulator, MonteCarloResults
-from .distributions import DistributionFactory, OutcomesMatrixGenerator, SeasonOutcome
-from .distribution_database import DistributionDatabaseManager, PlayerDistributionProfile
-from .models import Player, LeagueConfig, Roster
+import time
+
+from .outcome_matrix import OutcomeMatrix, get_cached_outcome_matrix
+from .models import LeagueConfig, Player as BasePlayer
 from .draft_state import DraftState
 
 
+class MonteCarloStrategy:
+    """Base strategy interface for Monte Carlo simulation"""
+    
+    def select_pick(self, draft_state: DraftState, config: LeagueConfig) -> 'EnhancedPlayer':
+        """Select the best available player given current draft state"""
+        raise NotImplementedError
+
+
 @dataclass 
-class EnhancedMonteCarloResults(MonteCarloResults):
-    """Enhanced results including distribution statistics"""
-    # Inherit all from base MonteCarloResults
-    
-    # Add distribution-specific metrics
-    variance_statistics: Dict[str, Dict[str, float]]  # Per-player outcome stats
-    injury_impact_analysis: Dict[str, float]  # Games missed impact
-    ceiling_floor_analysis: Dict[str, Dict[str, float]]  # P90/P10 outcomes
-    position_variance_summary: Dict[str, Dict[str, float]]  # By position stats
+class EnhancedPlayer(BasePlayer):
+    """Enhanced player with variance profile"""
+    coefficient_of_variation: float = 0.25
+    floor_outcome: float = 0.0
+    ceiling_outcome: float = 0.0
+    outcome_samples: Optional[np.ndarray] = None
 
 
-class EnhancedMonteCarloSimulator(MonteCarloSimulator):
-    """Enhanced Monte Carlo simulator with realistic player distributions"""
+class EnhancedMonteCarloSimulator:
+    """Monte Carlo simulator using pre-sampled outcome distributions"""
     
-    def __init__(self, config: LeagueConfig, players: List[Player]):
-        super().__init__(config, players)
+    def __init__(self, league_config: LeagueConfig):
+        self.config = league_config
+        self.outcome_matrix: Optional[OutcomeMatrix] = None
+        self.enhanced_players: Dict[str, EnhancedPlayer] = {}
         
-        # Initialize distribution system
-        self.db_manager = DistributionDatabaseManager()
-        self.player_distributions = self._load_player_distributions()
-        self.outcomes_matrix = None
-        self.distribution_stats = {}
-        
-        # Create distribution objects
-        self.distributions = {}
-        for profile in self.player_distributions:
-            self.distributions[profile.player_name] = DistributionFactory.create_distribution(profile)
+        # Initialize outcome matrix
+        self._initialize_outcome_matrix()
     
-    def _load_player_distributions(self) -> List[PlayerDistributionProfile]:
-        """Load player distribution profiles from database"""
-        try:
-            profiles = self.db_manager.get_all_player_distributions()
-            print(f"📊 Loaded {len(profiles)} player distribution profiles")
-            return profiles
-        except Exception as e:
-            print(f"⚠️  Warning: Could not load distributions: {e}")
-            print("   Falling back to simple variance estimation...")
-            return self._create_fallback_distributions()
-    
-    def _create_fallback_distributions(self) -> List[PlayerDistributionProfile]:
-        """Create simple distributions if database unavailable"""
-        profiles = []
+    def _initialize_outcome_matrix(self):
+        """Initialize the pre-sampled outcome matrix"""
+        print("🎲 Initializing Enhanced Monte Carlo Simulator...")
         
-        # Simple CV mapping by position
-        position_cv = {
-            'QB': 0.18, 'RB': 0.25, 'WR': 0.20, 'TE': 0.22, 
-            'K': 0.15, 'DEF': 0.20, 'DST': 0.20
-        }
-        
-        for player in self.players:
-            cv = position_cv.get(player.position.upper(), 0.20)
-            
-            profile = PlayerDistributionProfile(
-                player_name=player.name,
-                position=player.position,
-                team=player.team,
-                season=2025,
-                mean_projection=player.projection,
-                coefficient_of_variation=cv,
-                injury_prob_healthy=0.82,
-                injury_prob_minor=0.13,
-                injury_prob_major=0.05
-            )
-            profiles.append(profile)
-        
-        return profiles
-    
-    def initialize_outcomes_matrix(self, num_samples: int = 15000):
-        """Pre-generate outcomes matrix for fast simulation"""
-        print(f"🎲 Initializing outcomes matrix with {num_samples:,} samples...")
-        
-        matrix_generator = OutcomesMatrixGenerator(
-            self.player_distributions, 
-            num_samples=num_samples
+        # Load or generate outcome matrix
+        self.outcome_matrix = get_cached_outcome_matrix(
+            cache_file="data/outcome_matrix_15k.pkl",
+            regenerate=False  # Set to True to regenerate
         )
         
-        self.outcomes_matrix = matrix_generator.generate_outcomes_matrix()
-        self.distribution_stats = matrix_generator.calculate_distribution_stats(self.outcomes_matrix)
-        
-        # Create player index mapping
-        self.player_index_map = {
-            profile.player_name: i 
-            for i, profile in enumerate(self.player_distributions)
-        }
-        
-        print(f"✅ Outcomes matrix ready: {self.outcomes_matrix.shape}")
-        return self.outcomes_matrix
+        # Create enhanced player objects
+        print("📊 Creating enhanced player profiles...")
+        self._create_enhanced_players()
     
-    def run_enhanced_simulation(
+    def _create_enhanced_players(self):
+        """Create enhanced player objects with outcome data"""
+        if not self.outcome_matrix:
+            raise ValueError("Outcome matrix not initialized")
+        
+        for player_name in self.outcome_matrix.player_names:
+            distribution = self.outcome_matrix.distributions.get(player_name)
+            if not distribution:
+                continue
+            
+            # Get outcome statistics
+            stats = self.outcome_matrix.get_outcome_statistics(player_name)
+            outcomes = self.outcome_matrix.get_player_outcomes(player_name)
+            
+            enhanced_player = EnhancedPlayer(
+                name=player_name,
+                position=distribution.position,
+                team=getattr(distribution, 'team', 'UNK'),
+                projection=distribution.mean_projection,
+                adp=999,  # Will be loaded from database if needed
+                bye_week=0,  # Will be loaded from database if needed
+                coefficient_of_variation=distribution.coefficient_of_variation,
+                floor_outcome=stats.get('p25', 0),
+                ceiling_outcome=stats.get('p75', distribution.mean_projection),
+                outcome_samples=outcomes
+            )
+            
+            self.enhanced_players[player_name] = enhanced_player
+        
+        print(f"✅ Created {len(self.enhanced_players)} enhanced player profiles")
+    
+    def simulate_draft_with_outcomes(
         self, 
+        strategy: MonteCarloStrategy,
         num_simulations: int = 25,
-        rounds: int = 15,
-        use_distributions: bool = True,
-        num_outcome_samples: int = 10000
-    ) -> EnhancedMonteCarloResults:
-        """Run enhanced Monte Carlo simulation with distributions"""
+        rounds_to_simulate: int = 15
+    ) -> Dict[str, Any]:
+        """Run Monte Carlo simulation using pre-sampled outcomes"""
         
-        # Initialize outcomes matrix if using distributions
-        if use_distributions and self.outcomes_matrix is None:
-            self.initialize_outcomes_matrix(num_outcome_samples)
+        print(f"🎯 Running Enhanced Monte Carlo Simulation:")
+        print(f"   • {num_simulations} draft simulations")
+        print(f"   • {rounds_to_simulate} rounds each")
+        print(f"   • {len(self.enhanced_players)} players with individual variance")
         
-        print(f"🎯 Running {num_simulations} enhanced Monte Carlo simulations...")
-        print(f"   Using {'realistic distributions' if use_distributions else 'simple projections'}")
+        results = []
+        start_time = time.time()
         
-        simulation_results = []
-        pick_tracking = {round_num: {} for round_num in range(1, rounds + 1)}
-        
-        for sim_num in range(num_simulations):
-            if sim_num % 10 == 0 and sim_num > 0:
-                print(f"   Completed {sim_num}/{num_simulations} simulations...")
+        for sim in range(num_simulations):
+            if sim % 5 == 0:
+                print(f"   Simulation {sim+1}/{num_simulations}...")
             
-            # Set unique seeds for variance
-            np.random.seed(sim_num * 12345)
-            random.seed(sim_num * 54321)
-            
-            # Run single simulation
-            result = self._run_single_enhanced_simulation(
-                rounds, use_distributions, sim_num
+            # Run single draft simulation
+            draft_result = self._simulate_single_draft(
+                strategy, 
+                rounds_to_simulate,
+                outcome_simulation_index=sim % self.outcome_matrix.num_simulations
             )
             
-            simulation_results.append(result)
-            
-            # Track picks for aggregation
-            for round_num, pick in result['user_picks'].items():
-                if pick:
-                    pick_name = pick.name
-                    if pick_name not in pick_tracking[round_num]:
-                        pick_tracking[round_num][pick_name] = 0
-                    pick_tracking[round_num][pick_name] += 1
+            results.append(draft_result)
         
-        # Calculate enhanced statistics
-        enhanced_stats = self._calculate_enhanced_statistics(simulation_results)
+        elapsed = time.time() - start_time
+        print(f"✅ Completed {num_simulations} simulations in {elapsed:.1f} seconds")
         
-        # Convert to standard results format and enhance
-        most_common_picks = {}
-        player_availability_rates = {}
-        
-        for round_num in range(1, rounds + 1):
-            round_picks = pick_tracking[round_num]
-            if round_picks:
-                most_common = max(round_picks.items(), key=lambda x: x[1])
-                most_common_picks[round_num] = {
-                    'player_name': most_common[0],
-                    'frequency': most_common[1] / num_simulations
-                }
-            
-            # Calculate availability rates (simplified for enhanced version)
-            for player_name, count in round_picks.items():
-                if player_name not in player_availability_rates:
-                    player_availability_rates[player_name] = {}
-                player_availability_rates[player_name][round_num] = count / num_simulations
-        
-        # Calculate average roster strength using distributions
-        avg_roster_strength = self._calculate_average_roster_strength_enhanced(
-            simulation_results, use_distributions
-        )
-        
-        return EnhancedMonteCarloResults(
-            num_simulations=num_simulations,
-            most_common_picks=most_common_picks,
-            player_availability_rates=player_availability_rates,
-            average_roster_strength=avg_roster_strength,
-            variance_statistics=enhanced_stats['variance'],
-            injury_impact_analysis=enhanced_stats['injury_impact'],
-            ceiling_floor_analysis=enhanced_stats['ceiling_floor'],
-            position_variance_summary=enhanced_stats['position_variance']
-        )
+        # Aggregate results
+        return self._aggregate_simulation_results(results)
     
-    def _run_single_enhanced_simulation(
+    def _simulate_single_draft(
         self, 
-        rounds: int, 
-        use_distributions: bool,
-        sim_num: int
-    ) -> Dict:
-        """Run a single enhanced simulation"""
+        strategy: MonteCarloStrategy,
+        rounds_to_simulate: int,
+        outcome_simulation_index: int
+    ) -> Dict[str, Any]:
+        """Simulate a single draft using specific outcome column"""
         
-        # Initialize draft state
-        draft_state = DraftState(self.config, self.players)
-        user_picks = {}
+        # Initialize draft state with enhanced players
+        available_players = list(self.enhanced_players.values())
+        random.shuffle(available_players)  # Random draft order variation
         
-        for round_num in range(1, rounds + 1):
-            available_players = [
-                player for player in self.players 
-                if player.name.lower() not in draft_state.drafted_players
-            ]
-            
-            if not available_players:
-                break
-            
-            # User's turn
-            user_pick = self._make_strategic_pick(
-                available_players, draft_state.get_user_roster(), round_num
-            )
-            
-            if user_pick:
-                draft_state.execute_pick(user_pick.name)
-                user_picks[round_num] = user_pick
-            
-            # Other teams pick (simplified - use realistic opponents from parent class)
-            available_after_user = [
-                player for player in available_players 
-                if player != user_pick and player.name.lower() not in draft_state.drafted_players
-            ]
-            
-            for team_idx in range(1, self.config.num_teams):
-                if available_after_user:
-                    # Use parent class realistic opponent model
-                    opponent_manager = self._get_opponent_manager()
-                    
-                    if hasattr(opponent_manager, 'managers') and team_idx - 1 < len(opponent_manager.managers):
-                        ai_pick = opponent_manager.managers[team_idx - 1].make_pick(
-                            available_after_user,
-                            draft_state.teams[team_idx].roster,
-                            round_num
-                        )
-                    else:
-                        # Fallback to simple pick
-                        ai_pick = available_after_user[0] if available_after_user else None
-                    
-                    if ai_pick:
-                        draft_state.execute_pick(ai_pick.name)
-                        available_after_user = [
-                            p for p in available_after_user 
-                            if p.name.lower() != ai_pick.name.lower()
-                        ]
+        draft_state = DraftState(
+            current_round=1,
+            current_pick=1,
+            rosters={i: [] for i in range(self.config.num_teams)},
+            available_players=available_players,
+            player_universe=available_players
+        )
         
-        # Get final user roster
-        user_roster = draft_state.get_user_roster()
+        user_roster = []
+        user_team_index = self.config.draft_position - 1
         
-        # Calculate roster strength using distributions if enabled
-        if use_distributions:
-            roster_strength = self._calculate_roster_strength_with_distributions(
-                user_roster, sim_num
-            )
-        else:
-            roster_strength = sum(p.projection for p in user_roster.players)
+        # Simulate draft
+        for round_num in range(1, rounds_to_simulate + 1):
+            # Determine pick order for this round
+            if round_num % 2 == 1:  # Odd rounds
+                pick_order = list(range(self.config.num_teams))
+            else:  # Even rounds (snake)
+                pick_order = list(range(self.config.num_teams - 1, -1, -1))
+            
+            for pick_pos, team_index in enumerate(pick_order):
+                if not draft_state.available_players:
+                    break
+                
+                if team_index == user_team_index:
+                    # User's pick - use strategy
+                    pick = strategy.select_pick(draft_state, self.config)
+                    user_roster.append(pick)
+                else:
+                    # AI opponent pick
+                    pick = self._ai_opponent_pick(draft_state)
+                
+                # Remove picked player and update state
+                if pick in draft_state.available_players:
+                    draft_state.available_players.remove(pick)
+                    draft_state.rosters[team_index].append(pick)
+                
+                draft_state.current_pick += 1
+            
+            draft_state.current_round += 1
+        
+        # Calculate roster score using specific outcome simulation
+        roster_score = self._calculate_roster_outcome_score(user_roster, outcome_simulation_index)
         
         return {
-            'user_picks': user_picks,
-            'final_roster': user_roster,
-            'roster_strength': roster_strength,
-            'sim_num': sim_num
+            'roster': user_roster,
+            'roster_score': roster_score,
+            'outcome_simulation': outcome_simulation_index,
+            'rounds_completed': rounds_to_simulate
         }
     
-    def _calculate_roster_strength_with_distributions(
-        self, 
-        roster: Roster, 
-        outcome_column: int
-    ) -> float:
-        """Calculate roster strength using pre-sampled distributions"""
+    def _ai_opponent_pick(self, draft_state: DraftState) -> EnhancedPlayer:
+        """AI opponent pick with ADP + variance considerations"""
+        available = draft_state.available_players
         
-        if self.outcomes_matrix is None:
-            # Fallback to simple projections
-            return sum(p.projection for p in roster.players)
+        if not available:
+            return available[0]  # Fallback
         
-        total_strength = 0.0
+        # Weight by projection with some ADP noise
+        candidates = available[:min(20, len(available))]  # Top 20 available
         
-        for player in roster.players:
-            if player.name in self.player_index_map:
-                player_idx = self.player_index_map[player.name]
-                # Use the specific outcome column for this simulation
-                total_strength += self.outcomes_matrix[player_idx, outcome_column % self.outcomes_matrix.shape[1]]
+        # Add some randomness to ADP-based selection
+        weights = []
+        for player in candidates:
+            base_weight = player.projection
+            
+            # Add variance consideration (slightly favor consistent players)
+            consistency_bonus = (1 - player.coefficient_of_variation) * 10
+            
+            # Add some random noise
+            noise = random.uniform(0.8, 1.2)
+            
+            final_weight = base_weight + consistency_bonus * noise
+            weights.append(final_weight)
+        
+        # Weighted random selection
+        total_weight = sum(weights)
+        if total_weight > 0:
+            weights = [w / total_weight for w in weights]
+            selected_player = np.random.choice(candidates, p=weights)
+        else:
+            selected_player = random.choice(candidates)
+        
+        return selected_player
+    
+    def _calculate_roster_outcome_score(self, roster: List[EnhancedPlayer], outcome_index: int) -> float:
+        """Calculate roster score using specific outcome simulation"""
+        if not self.outcome_matrix:
+            # Fallback to projections
+            return sum(player.projection for player in roster)
+        
+        total_score = 0.0
+        
+        for player in roster:
+            if player.name in self.outcome_matrix.player_index_map:
+                player_idx = self.outcome_matrix.player_index_map[player.name]
+                outcome = self.outcome_matrix.outcomes[player_idx, outcome_index]
+                total_score += outcome
             else:
-                # Fallback to projection for players not in matrix
-                total_strength += player.projection
+                # Fallback to projection
+                total_score += player.projection
         
-        return total_strength
+        return total_score
     
-    def _calculate_enhanced_statistics(self, simulation_results: List[Dict]) -> Dict:
-        """Calculate enhanced statistics from simulation results"""
+    def _aggregate_simulation_results(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Aggregate results from multiple simulations"""
         
-        stats = {
-            'variance': {},
-            'injury_impact': {},
-            'ceiling_floor': {},
-            'position_variance': {}
-        }
+        # Extract roster scores
+        scores = [result['roster_score'] for result in results]
         
-        if not self.distribution_stats:
-            return stats
+        # Player frequency analysis
+        player_frequency = {}
+        for result in results:
+            for player in result['roster']:
+                player_key = f"{player.name} ({player.position})"
+                player_frequency[player_key] = player_frequency.get(player_key, 0) + 1
         
-        # Variance statistics per player (from distribution stats)
-        for player_name, player_stats in self.distribution_stats.items():
-            stats['variance'][player_name] = {
-                'mean': player_stats['mean'],
-                'std': player_stats['std'],
-                'cv': player_stats['cv'],
-                'upside_prob': player_stats['upside_prob'],
-                'bust_prob': player_stats['bust_prob']
-            }
-        
-        # Ceiling/floor analysis
-        for player_name, player_stats in self.distribution_stats.items():
-            stats['ceiling_floor'][player_name] = {
-                'floor_p10': player_stats.get('p25', 0),  # Conservative floor
-                'median': player_stats['median'],
-                'ceiling_p90': player_stats['p90']
-            }
-        
-        # Position variance summary
-        positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
-        for position in positions:
-            position_players = [
-                name for name, profile in 
-                {p.player_name: p for p in self.player_distributions}.items()
-                if profile.position.upper() == position
+        # Calculate statistics
+        aggregated = {
+            'num_simulations': len(results),
+            'roster_scores': {
+                'mean': float(np.mean(scores)),
+                'std': float(np.std(scores)),
+                'min': float(np.min(scores)),
+                'max': float(np.max(scores)),
+                'p25': float(np.percentile(scores, 25)),
+                'p50': float(np.percentile(scores, 50)),
+                'p75': float(np.percentile(scores, 75))
+            },
+            'player_frequency': dict(sorted(player_frequency.items(), key=lambda x: x[1], reverse=True)),
+            'sample_rosters': [
+                {
+                    'roster': [f"{p.name} ({p.position})" for p in result['roster']],
+                    'score': result['roster_score']
+                }
+                for result in results[:3]  # Show first 3 as examples
             ]
+        }
+        
+        return aggregated
+
+
+# Integration with existing strategy classes
+class OutcomeAwareStrategy(MonteCarloStrategy):
+    """Strategy that considers pre-sampled outcome variance"""
+    
+    def __init__(self, risk_tolerance: float = 0.5):
+        self.risk_tolerance = risk_tolerance  # 0=risk-averse, 1=risk-seeking
+    
+    def select_pick(self, draft_state: DraftState, config: LeagueConfig) -> EnhancedPlayer:
+        """Select pick considering outcome variance"""
+        available = draft_state.available_players
+        
+        if not available:
+            return available[0]
+        
+        # Evaluate candidates
+        candidates = available[:min(10, len(available))]
+        best_player = None
+        best_score = float('-inf')
+        
+        for player in candidates:
+            if not isinstance(player, EnhancedPlayer):
+                continue
             
-            if position_players:
-                position_cvs = [
-                    self.distribution_stats.get(name, {}).get('cv', 0)
-                    for name in position_players
-                    if name in self.distribution_stats
-                ]
+            # Base value score
+            value_score = player.projection
+            
+            # Adjust for variance preference
+            if hasattr(player, 'coefficient_of_variation'):
+                cv = player.coefficient_of_variation
                 
-                if position_cvs:
-                    stats['position_variance'][position] = {
-                        'avg_cv': np.mean(position_cvs),
-                        'median_cv': np.median(position_cvs),
-                        'max_cv': np.max(position_cvs),
-                        'min_cv': np.min(position_cvs)
-                    }
-        
-        return stats
-    
-    def _calculate_average_roster_strength_enhanced(
-        self, 
-        simulation_results: List[Dict],
-        use_distributions: bool
-    ) -> float:
-        """Calculate average roster strength across simulations"""
-        
-        if not simulation_results:
-            return 0.0
-        
-        total_strength = sum(result['roster_strength'] for result in simulation_results)
-        return total_strength / len(simulation_results)
-    
-    def generate_enhanced_availability_report(self, results: EnhancedMonteCarloResults, top_n: int = 50) -> str:
-        """Generate enhanced availability report with distribution insights"""
-        
-        output = []
-        output.append("🎲 ENHANCED MONTE CARLO SIMULATION RESULTS")
-        output.append("=" * 80)
-        output.append(f"Simulations: {results.num_simulations}")
-        output.append(f"Average Roster Strength: {results.average_roster_strength:.1f}")
-        output.append(f"Distribution System: {'✅ Active' if self.outcomes_matrix is not None else '❌ Disabled'}")
-        output.append("")
-        
-        # Show distribution insights
-        if results.variance_statistics:
-            output.append("📊 PLAYER VARIANCE INSIGHTS:")
-            output.append("-" * 50)
-            
-            # Show top 10 highest variance players
-            high_variance = sorted(
-                results.variance_statistics.items(),
-                key=lambda x: x[1].get('cv', 0),
-                reverse=True
-            )[:10]
-            
-            for player_name, stats in high_variance:
-                cv = stats.get('cv', 0)
-                upside = stats.get('upside_prob', 0)
-                bust = stats.get('bust_prob', 0)
-                output.append(f"  {player_name:<20} CV:{cv:.3f} Upside:{upside:.1%} Bust:{bust:.1%}")
-            
-            output.append("")
-        
-        # Position variance summary
-        if results.position_variance_summary:
-            output.append("📈 POSITION RISK ANALYSIS:")
-            output.append("-" * 50)
-            
-            for position, stats in results.position_variance_summary.items():
-                avg_cv = stats.get('avg_cv', 0)
-                max_cv = stats.get('max_cv', 0)
-                output.append(f"  {position:3s}: Avg CV {avg_cv:.3f} | Max CV {max_cv:.3f}")
-            
-            output.append("")
-        
-        # Standard availability report
-        for round_num in range(1, 7):  # First 6 rounds
-            output.append(f"📍 ROUND {round_num} PLAYER AVAILABILITY:")
-            if round_num == 1:
-                output.append("(Players available when your Round 1 pick comes up)")
-            elif round_num == 2:
-                output.append("(Players available when your Round 2 pick comes up - varies by Round 1 outcome)")
-            else:
-                output.append(f"(Players available when your Round {round_num} pick comes up)")
-            output.append("-" * 50)
-            
-            # Get players available in this round
-            round_availability = []
-            for player_name, round_rates in results.player_availability_rates.items():
-                if round_num in round_rates:
-                    rate = round_rates[round_num]
-                    round_availability.append((player_name, rate))
-            
-            # Sort by availability rate (descending) 
-            round_availability.sort(key=lambda x: x[1], reverse=True)
-            
-            # Filter to show meaningful availability (20%+ chance)
-            meaningful_availability = [(name, rate) for name, rate in round_availability if rate >= 0.20]
-            
-            for i, (player_name, rate) in enumerate(meaningful_availability[:15], 1):
-                percentage = rate * 100
-                if percentage >= 80:
-                    status = "🟢 Very Likely"
-                elif percentage >= 50:
-                    status = "🟡 Possible"
-                elif percentage >= 20:
-                    status = "🟠 Unlikely"
+                if self.risk_tolerance < 0.5:
+                    # Risk-averse: penalty for high variance
+                    variance_adjustment = -(cv - 0.20) * 50
                 else:
-                    status = "🔴 Very Rare"
+                    # Risk-seeking: bonus for high variance (upside)
+                    variance_adjustment = (cv - 0.20) * 20
                 
-                # Add variance info if available
-                variance_info = ""
-                if player_name in results.variance_statistics:
-                    cv = results.variance_statistics[player_name].get('cv', 0)
-                    variance_info = f" CV:{cv:.3f}"
-                
-                output.append(f"{i:2d}. {player_name:<20} {percentage:5.1f}% {status}{variance_info}")
+                value_score += variance_adjustment
             
-            output.append("")
+            # Positional scarcity (simplified)
+            position_count = sum(1 for p in available if p.position == player.position)
+            scarcity_bonus = max(0, (20 - position_count) * 2)
+            value_score += scarcity_bonus
+            
+            if value_score > best_score:
+                best_score = value_score
+                best_player = player
         
-        return "\n".join(output)
-
-
-def test_enhanced_monte_carlo():
-    """Test the enhanced Monte Carlo system"""
-    
-    print("🧪 Testing Enhanced Monte Carlo Simulation...")
-    
-    # Test just the distribution loading and outcomes matrix generation
-    from .database import DraftDatabaseConnector
-    from .models import LeagueConfig
-    
-    db = DraftDatabaseConnector()
-    players = db.load_player_universe()
-    
-    if not players:
-        print("❌ No players found in database")
-        return
-    
-    config = LeagueConfig(draft_position=6, num_teams=12)
-    
-    print(f"📊 Testing with {len(players)} players")
-    
-    # Test enhanced simulator initialization
-    enhanced_sim = EnhancedMonteCarloSimulator(config, players[:50])  # Top 50 for testing
-    
-    print("✅ Enhanced simulator initialized successfully!")
-    
-    # Test outcomes matrix generation
-    print("\n🎲 Testing outcomes matrix generation...")
-    enhanced_sim.initialize_outcomes_matrix(num_samples=500)  # Small for testing
-    
-    # Show some distribution statistics
-    if enhanced_sim.distribution_stats:
-        print("\n📈 Sample Distribution Statistics:")
-        print("-" * 60)
-        
-        sample_players = list(enhanced_sim.distribution_stats.keys())[:10]
-        for player_name in sample_players:
-            stats = enhanced_sim.distribution_stats[player_name]
-            print(f"{player_name:<20} Mean:{stats['mean']:6.1f} CV:{stats['cv']:.3f} "
-                  f"P90:{stats['p90']:6.1f} Bust:{stats['bust_prob']:.1%}")
-    
-    print("\n✅ Enhanced Monte Carlo testing complete!")
-    print("\n🎯 Key Features Verified:")
-    print("   • Distribution profiles loaded from database")
-    print("   • Outcomes matrix generation working")
-    print("   • Statistical analysis functional")
-    print("   • Ready for integration with full simulation")
+        return best_player or available[0]
 
 
 if __name__ == "__main__":
-    test_enhanced_monte_carlo()
+    # Test enhanced Monte Carlo system
+    print("🎲 Testing Enhanced Monte Carlo System")
+    print("=" * 50)
+    
+    # Create test configuration
+    config = LeagueConfig(
+        num_teams=12,
+        draft_position=6,
+        roster_size=16
+    )
+    
+    # Create simulator
+    simulator = EnhancedMonteCarloSimulator(config)
+    
+    # Test strategy
+    strategy = OutcomeAwareStrategy(risk_tolerance=0.3)  # Risk-averse
+    
+    # Run small test simulation
+    results = simulator.simulate_draft_with_outcomes(
+        strategy=strategy,
+        num_simulations=5,
+        rounds_to_simulate=3
+    )
+    
+    print(f"\n📊 Test Results:")
+    print(f"   Mean Score: {results['roster_scores']['mean']:.1f}")
+    print(f"   Score Range: {results['roster_scores']['min']:.1f} - {results['roster_scores']['max']:.1f}")
+    print(f"   Most Drafted: {list(results['player_frequency'].keys())[:3]}")
+    
+    print("\n✅ Enhanced Monte Carlo system working!")

@@ -312,18 +312,18 @@ def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: in
             mean_pos = bar_width // 2
             high_pos = 2 * bar_width // 3
         
-        # Variance category and styling (adjusted for historical reality)
-        if cv <= 0.42:
+        # Variance category and styling (adjusted for individual player variance)
+        if cv <= 0.15:
             color = "green"
-            range_char = "━"     # Solid for consistent (QBs ~40-42%, Kickers ~35%)
+            range_char = "━"     # Solid for elite consistency (Mahomes, CMC, Kelce)
             mean_char = "█"      # Solid center
-        elif cv <= 0.56:
+        elif cv <= 0.35:
             color = "yellow" 
-            range_char = "▬"     # Medium for moderate (DST ~45%, some RBs ~51-55%)
+            range_char = "▬"     # Medium for moderate variance (Josh Allen, veteran players)
             mean_char = "█"
         else:
             color = "red"
-            range_char = "┅"     # Dotted for volatile (RBs/WRs/TEs >56% - very high variance)
+            range_char = "┅"     # Dotted for high variance (boom/bust, backups, rookies)
             mean_char = "█"
         
         # Build the visual bar
