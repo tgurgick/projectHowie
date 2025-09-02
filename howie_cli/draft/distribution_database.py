@@ -242,12 +242,19 @@ class DistributionDatabaseManager:
         for i, (_, player) in enumerate(players_df.iterrows()):
             # Normalize position and assign age group
             player_position = player['position'].upper()
-            age_group = self._assign_age_group(player['player_name'], player['position'])
-            variance_bucket = f"{player_position}_{age_group}"
             
-            # Find matching bucket
+            # Handle DST/DEF mismatch - DST players use DEF variance bucket
+            if player_position in ['DST', 'DEF']:
+                bucket_position = 'DEF'
+            else:
+                bucket_position = player_position
+                
+            age_group = self._assign_age_group(player['player_name'], player['position'])
+            variance_bucket = f"{bucket_position}_{age_group}"
+            
+            # Find matching bucket using the correct bucket position
             bucket_match = buckets_df[
-                (buckets_df['position'] == player_position) & 
+                (buckets_df['position'] == bucket_position) & 
                 (buckets_df['age_group'] == age_group)
             ]
             
