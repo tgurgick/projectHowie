@@ -78,6 +78,7 @@ class EnhancedMonteCarloSimulator:
                 team=getattr(distribution, 'team', 'UNK'),
                 projection=distribution.mean_projection,
                 adp=999,  # Will be loaded from database if needed
+                adp_position=99,  # Will be loaded from database if needed
                 bye_week=0,  # Will be loaded from database if needed
                 coefficient_of_variation=distribution.coefficient_of_variation,
                 floor_outcome=stats.get('p25', 0),
