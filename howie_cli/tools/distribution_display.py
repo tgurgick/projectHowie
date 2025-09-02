@@ -239,9 +239,45 @@ def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: in
         mean_proj = fantasy_points or dist_info['mean_projection']
         std_dev = cv * mean_proj
         
-        # Calculate P25 and P75 ranges (~50% of outcomes)
-        low_outcome = max(0, mean_proj - 0.675 * std_dev)   # ~25th percentile
-        high_outcome = mean_proj + 0.675 * std_dev          # ~75th percentile
+        # Calculate P25 and P75 ranges (~50% of outcomes) with realistic caps
+        raw_low = mean_proj - 0.675 * std_dev
+        raw_high = mean_proj + 0.675 * std_dev
+        
+        # Apply position-specific realistic floors and ceilings
+        position = dist_info.get('position', '').lower()
+        
+        if position == 'qb':
+            # QBs: Floor ~50 (backup level), Ceiling ~500 (historic peak)
+            floor_cap = max(50, mean_proj * 0.25)
+            ceiling_cap = min(500, mean_proj * 1.75)
+        elif position == 'rb':
+            # RBs: Floor ~20 (injury/committee), Ceiling ~450 (historic peak)
+            floor_cap = max(20, mean_proj * 0.15)
+            ceiling_cap = min(450, mean_proj * 1.85)
+        elif position == 'wr':
+            # WRs: Floor ~30 (low usage), Ceiling ~400 (historic peak)
+            floor_cap = max(30, mean_proj * 0.20)
+            ceiling_cap = min(400, mean_proj * 1.80)
+        elif position == 'te':
+            # TEs: Floor ~15 (minimal usage), Ceiling ~300 (elite season)
+            floor_cap = max(15, mean_proj * 0.15)
+            ceiling_cap = min(300, mean_proj * 1.75)
+        elif position in ['k', 'kicker']:
+            # Kickers: Floor ~80, Ceiling ~180 (more constrained)
+            floor_cap = max(80, mean_proj * 0.60)
+            ceiling_cap = min(180, mean_proj * 1.40)
+        elif position in ['dst', 'def']:
+            # Defense: Floor ~40, Ceiling ~200 (very constrained)
+            floor_cap = max(40, mean_proj * 0.40)
+            ceiling_cap = min(200, mean_proj * 1.60)
+        else:
+            # Default caps
+            floor_cap = max(0, mean_proj * 0.20)
+            ceiling_cap = mean_proj * 1.80
+        
+        # Apply caps to outcomes
+        low_outcome = max(floor_cap, raw_low)
+        high_outcome = min(ceiling_cap, raw_high)
         
         # If position context provided, scale relative to position
         if position_context:
@@ -276,18 +312,18 @@ def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: in
             mean_pos = bar_width // 2
             high_pos = 2 * bar_width // 3
         
-        # Variance category and styling
-        if cv <= 0.20:
+        # Variance category and styling (adjusted for historical reality)
+        if cv <= 0.42:
             color = "green"
-            range_char = "━"     # Solid for consistent
+            range_char = "━"     # Solid for consistent (QBs ~40-42%, Kickers ~35%)
             mean_char = "█"      # Solid center
-        elif cv <= 0.30:
+        elif cv <= 0.56:
             color = "yellow" 
-            range_char = "▬"     # Medium for moderate
+            range_char = "▬"     # Medium for moderate (DST ~45%, some RBs ~51-55%)
             mean_char = "█"
         else:
             color = "red"
-            range_char = "┅"     # Dotted for volatile
+            range_char = "┅"     # Dotted for volatile (RBs/WRs/TEs >56% - very high variance)
             mean_char = "█"
         
         # Build the visual bar
