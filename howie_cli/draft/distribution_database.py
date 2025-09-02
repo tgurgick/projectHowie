@@ -304,9 +304,20 @@ class DistributionDatabaseManager:
         
         # Known veterans (add more as needed)
         veteran_indicators = [
-            'tom brady', 'aaron rodgers', 'julio jones', 'larry fitzgerald',
-            'russell wilson', 'derek carr', 'mike evans', 'davante adams',
-            'stefon diggs', 'tyreek hill', 'travis kelce', 'george kittle'
+            # QBs (31+)
+            'aaron rodgers', 'russell wilson', 'derek carr', 'kirk cousins',
+            'ryan tannehill', 'matthew stafford', 'jimmy garoppolo',
+            # RBs (28+) 
+            'derrick henry', 'aaron jones', 'alvin kamara', 'dalvin cook',
+            'nick chubb', 'joe mixon', 'david montgomery', 'james conner',
+            'ezekiel elliott', 'leonard fournette', 'james robinson',
+            # WRs (29+)
+            'julio jones', 'mike evans', 'davante adams', 'stefon diggs', 
+            'tyreek hill', 'keenan allen', 'adam thielen', 'jarvis landry',
+            'allen robinson', 'mike williams', 'robert woods', 'cooper kupp',
+            # TEs (30+)
+            'travis kelce', 'george kittle', 'zach ertz', 'tyler higbee',
+            'logan thomas', 'hunter henry'
         ]
         if any(vet in name_lower for vet in veteran_indicators):
             if position == 'QB':
@@ -320,9 +331,20 @@ class DistributionDatabaseManager:
         
         # Known rookies/young players (2024-2025 draft class)
         rookie_indicators = [
-            'caleb williams', 'jayden daniels', 'drake maye', 'rome odunze', 
-            'malik nabers', 'marvin harrison', 'brock bowers', 'brian thomas',
-            'keon coleman', 'ladd mcconkey', 'malik washington'
+            # QBs
+            'caleb williams', 'jayden daniels', 'drake maye', 'bo nix',
+            'michael penix', 'joe milton', 'spencer rattler',
+            # RBs  
+            'ashton jeanty', 'omarion hampton', 'rj harvey', 'quinshon judkins',
+            'trevyon henderson', 'treveyon henderson', 'dylan sampson', 'cam skattebo',
+            'braelon allen', 'kaleb johnson', 'kyle monangai', 'jaydon blue',
+            'bhayshul tuten', 'trey benson',
+            # WRs
+            'rome odunze', 'malik nabers', 'marvin harrison', 'brian thomas',
+            'keon coleman', 'ladd mcconkey', 'malik washington', 'xavier worthy',
+            'adonai mitchell', 'troy franklin', 'ricky pearsall', 'jalyn polk',
+            # TEs
+            'brock bowers', 'jatavion sanders', 'cade stover', 'ben sinnott'
         ]
         if any(rookie in name_lower for rookie in rookie_indicators):
             return 'rookie'
