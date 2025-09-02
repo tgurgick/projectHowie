@@ -12,6 +12,7 @@ from rich import print as rprint
 from .models import LeagueConfig, KeeperPlayer
 from .analysis_generator import DraftAnalysisGenerator
 from .database import DraftDatabaseConnector
+from .keeper_system import KeeperManager, KeeperValidator, Keeper, KeeperConfiguration
 
 console = Console()
 
@@ -144,6 +145,12 @@ class DraftCLI:
             roster_size = self._prompt_int("Total roster size", 16, starting_slots + 3, 20)
             bench_slots = roster_size - starting_slots
             
+            # Keeper configuration
+            keeper_config = None
+            if self._prompt_yes_no("Does your league use keepers?", False):
+                console.print("\n[bold]🏆 Keeper Configuration:[/bold]")
+                keeper_config = self._setup_keepers_interactive(num_teams, draft_position)
+            
             # Create config
             config = LeagueConfig(
                 num_teams=num_teams,
@@ -155,7 +162,8 @@ class DraftCLI:
                 wr_slots=wr_slots,
                 te_slots=te_slots,
                 flex_slots=flex_slots,
-                bench_slots=bench_slots
+                bench_slots=bench_slots,
+                keepers_enabled=keeper_config is not None
             )
             
             # Show summary
@@ -163,7 +171,7 @@ class DraftCLI:
             
             # Ask if they want to run analysis
             if self._prompt_yes_no("Run draft analysis now?", True):
-                return self._run_full_analysis(config)
+                return self._run_full_analysis(config, keeper_config=keeper_config)
             else:
                 return "Configuration saved. Use '/draft analyze' to run analysis."
                 
@@ -210,14 +218,29 @@ class DraftCLI:
         
         return self._run_full_analysis(config)
     
-    def _run_full_analysis(self, config: LeagueConfig, rounds: int = 8) -> str:
+    def _run_full_analysis(self, config: LeagueConfig, rounds: int = 8, keeper_config: Optional[KeeperConfiguration] = None) -> str:
         """Run the full draft analysis"""
         
         console.print(f"[bold]Generating draft analysis for {rounds} rounds...[/bold]")
         
         try:
+            # Convert keeper configuration to KeeperPlayer format if provided
+            keepers = None
+            if keeper_config:
+                keepers = []
+                for keeper in keeper_config.keepers:
+                    keeper_player = KeeperPlayer(
+                        player_name=keeper.player_name,
+                        team_name=keeper.team_name,
+                        keeper_round=keeper.keeper_round,
+                        original_round=keeper.original_round
+                    )
+                    keepers.append(keeper_player)
+                
+                console.print(f"[dim]🏆 Including {len(keepers)} keepers in analysis...[/dim]")
+            
             analysis = self.analysis_generator.generate_pre_draft_analysis(
-                config, rounds_to_analyze=rounds
+                config, keepers=keepers, rounds_to_analyze=rounds
             )
             
             # Display the analysis
@@ -442,3 +465,166 @@ class DraftCLI:
             
         except Exception as e:
             return f"❌ Error running simulation: {str(e)}"
+    
+    def _setup_keepers_interactive(self, num_teams: int, user_draft_position: int) -> Optional[KeeperConfiguration]:
+        """Interactive keeper configuration for each team"""
+        
+        # Initialize keeper system
+        validator = KeeperValidator()
+        
+        # Get keeper rules
+        console.print("\n[dim]Keeper Rules:[/dim]")
+        console.print("1. [yellow]First Round[/yellow] - All keepers count as 1st round picks")
+        console.print("2. [yellow]Round Based[/yellow] - Keepers count as the round they were drafted last year")
+        
+        while True:
+            rule_choice = self._prompt_choice("Keeper rules", ["1", "2"], "2")
+            if rule_choice == "1":
+                keeper_rules = "first_round"
+                break
+            elif rule_choice == "2":
+                keeper_rules = "round_based"
+                break
+        
+        keepers = []
+        
+        # Get number of teams with keepers
+        num_teams_with_keepers = self._prompt_int("How many teams have keepers?", 0, 0, num_teams)
+        
+        if num_teams_with_keepers == 0:
+            return None
+        
+        # Configure each team's keepers
+        for team_num in range(num_teams_with_keepers):
+            console.print(f"\n[bold cyan]--- Team {team_num + 1} Keepers ---[/bold cyan]")
+            
+            # Get team info
+            default_team_name = f"Team{team_num + 1}"
+            if team_num == 0:  # First team might be the user
+                default_team_name = "Your Team"
+            
+            team_name = console.input(f"[dim]Team {team_num + 1} name[/dim] [yellow]({default_team_name})[/yellow]: ").strip()
+            if not team_name:
+                team_name = default_team_name
+            
+            draft_position = self._prompt_int(f"Team {team_name} draft position", user_draft_position if team_num == 0 else 1, 1, num_teams)
+            
+            # Get keepers for this team
+            num_keepers = self._prompt_int(f"How many keepers does {team_name} have?", 0, 0, 3)
+            
+            for keeper_num in range(num_keepers):
+                console.print(f"\n[dim]  Keeper {keeper_num + 1} for {team_name}:[/dim]")
+                
+                # Get player name with validation
+                while True:
+                    player_name = console.input("    [yellow]Player name[/yellow]: ").strip()
+                    if not player_name:
+                        continue
+                    
+                    # Validate player
+                    matches = validator.find_player_matches(player_name)
+                    
+                    if not matches:
+                        console.print(f"    [red]❌ Player '{player_name}' not found[/red]")
+                        # Try broader search
+                        broad_matches = validator.find_player_matches(player_name, max_suggestions=5)
+                        if broad_matches:
+                            console.print("    [dim]Suggestions:[/dim]")
+                            for i, (suggestion, score) in enumerate(broad_matches[:3]):
+                                console.print(f"      {i+1}. [cyan]{suggestion}[/cyan]")
+                        continue
+                    
+                    elif matches[0][1] < 1.0:
+                        console.print(f"    [yellow]Did you mean:[/yellow]")
+                        for i, (suggestion, score) in enumerate(matches[:3]):
+                            console.print(f"      {i+1}. [cyan]{suggestion}[/cyan] ({score:.1%} match)")
+                        
+                        choice = console.input("    [dim]Choose number or type new name[/dim]: ").strip()
+                        if choice.isdigit() and 1 <= int(choice) <= len(matches):
+                            player_name = matches[int(choice) - 1][0]
+                        else:
+                            continue
+                    else:
+                        player_name = matches[0][0]
+                    
+                    # Show player info
+                    player_info = validator._get_player_info(player_name)
+                    if player_info:
+                        console.print(f"    [green]✅ {player_info['name']} ({player_info['position']}) - {player_info['team']} - {player_info['projection']:.1f} pts[/green]")
+                    break
+                
+                # Get keeper round
+                if keeper_rules == "first_round":
+                    keeper_round = 1
+                    console.print(f"    [dim]Keeper round: 1 (first round rule)[/dim]")
+                else:
+                    keeper_round = self._prompt_int("    What round does this keeper cost?", 8, 1, 16)
+                
+                # Create keeper
+                keeper = Keeper(
+                    team_name=team_name,
+                    draft_position=draft_position,
+                    player_name=player_name,
+                    keeper_round=keeper_round
+                )
+                
+                keepers.append(keeper)
+                
+                # Calculate and show pick number
+                if keeper_round % 2 == 1:  # Odd rounds
+                    pick_in_round = draft_position
+                else:  # Even rounds (snake)
+                    pick_in_round = num_teams + 1 - draft_position
+                overall_pick = (keeper_round - 1) * num_teams + pick_in_round
+                
+                console.print(f"    [green]✅ Added {player_name} as Round {keeper_round} keeper (Pick #{overall_pick}) for {team_name}[/green]")
+        
+        # Create and validate configuration
+        config = KeeperConfiguration(keepers=keepers, keeper_rules=keeper_rules)
+        
+        # Show summary
+        console.print(f"\n[bold]🏆 Keeper Configuration Summary:[/bold]")
+        validation = validator.validate_keeper_configuration(config)
+        
+        if validation['valid']:
+            console.print(f"[green]✅ Configuration valid![/green]")
+        else:
+            console.print(f"[red]❌ Configuration has issues:[/red]")
+            for issue in validation.get('conflicts', []):
+                console.print(f"   [red]• {issue}[/red]")
+        
+        console.print(f"   Total keepers: {len(config.keepers)}")
+        console.print(f"   Teams with keepers: {validation['summary']['teams_with_keepers']}")
+        
+        # Show keepers by round
+        keepers_by_round = {}
+        for keeper in config.keepers:
+            round_num = keeper.keeper_round
+            if round_num not in keepers_by_round:
+                keepers_by_round[round_num] = []
+            keepers_by_round[round_num].append(keeper)
+        
+        for round_num in sorted(keepers_by_round.keys()):
+            console.print(f"\n   [cyan]Round {round_num}:[/cyan]")
+            for keeper in keepers_by_round[round_num]:
+                # Calculate pick number
+                if round_num % 2 == 1:
+                    pick_in_round = keeper.draft_position
+                else:
+                    pick_in_round = num_teams + 1 - keeper.draft_position
+                overall_pick = (round_num - 1) * num_teams + pick_in_round
+                
+                console.print(f"     Pick #{overall_pick:2d}: [yellow]{keeper.player_name:20s}[/yellow] (kept by {keeper.team_name})")
+        
+        # Save configuration
+        try:
+            from pathlib import Path
+            Path("data").mkdir(exist_ok=True)
+            
+            manager = KeeperManager()
+            manager.save_keeper_configuration(config, "data/keeper_config.json")
+            console.print(f"\n[green]💾 Keeper configuration saved to data/keeper_config.json[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Could not save keeper config: {e}[/yellow]")
+        
+        return config
