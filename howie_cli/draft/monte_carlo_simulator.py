@@ -142,7 +142,7 @@ class MonteCarloSimulator:
     def run_simulation(
         self, 
         num_simulations: int = 1000,
-        rounds_to_simulate: int = 8,
+        rounds_to_simulate: int = 16,
         strategy_override: Optional[str] = None
     ) -> MonteCarloResults:
         """Run Monte Carlo simulation with multiple draft scenarios"""

@@ -6,16 +6,36 @@ Generates top 10 picks per round with enhanced evaluation factors
 from typing import List, Dict, Any
 from .models import Player, Roster, PickRecommendation, LeagueConfig
 from .value_calculator import ValueCalculator, ScarcityAnalyzer
+from .variance_adjusted_value import VarianceAdjustedValueCalculator, EnhancedPickScorer, get_risk_tolerance_for_context
+from .distributions import DistributionFactory
 
 
 class PickRecommendationEngine:
     """Generate optimal pick recommendations for each round"""
     
-    def __init__(self, league_config: LeagueConfig, player_universe: List[Player]):
+    def __init__(self, league_config: LeagueConfig, player_universe: List[Player], use_variance_adjustment: bool = True):
         self.config = league_config
         self.players = player_universe
+        self.use_variance_adjustment = use_variance_adjustment
+        
+        # Initialize calculators
         self.value_calc = ValueCalculator(player_universe)
         self.scarcity_analyzer = ScarcityAnalyzer(player_universe)
+        
+        # Initialize variance-adjusted components if enabled
+        if use_variance_adjustment:
+            try:
+                self.distribution_factory = DistributionFactory()
+                self.variance_calc = VarianceAdjustedValueCalculator(player_universe, self.distribution_factory)
+                self.enhanced_scorer = EnhancedPickScorer(self.variance_calc)
+            except Exception as e:
+                print(f"⚠️  Variance adjustment disabled due to error: {e}")
+                self.use_variance_adjustment = False
+                self.variance_calc = None
+                self.enhanced_scorer = None
+        else:
+            self.variance_calc = None
+            self.enhanced_scorer = None
         
     def generate_round_recommendations(
         self, 
@@ -35,8 +55,14 @@ class PickRecommendationEngine:
         
         recommendations = []
         
+        # Determine risk tolerance for this round/context
+        risk_tolerance = get_risk_tolerance_for_context(
+            round_number, 
+            {'strength_percentile': self._estimate_roster_strength(current_roster)}
+        )
+        
         for player in candidates:
-            # Calculate all metrics
+            # Calculate basic metrics
             vorp = self.value_calc.calculate_vorp(player)
             vona = self.value_calc.calculate_vona(player, available)
             scarcity = self.value_calc.calculate_positional_scarcity(player.position, available)
@@ -56,11 +82,42 @@ class PickRecommendationEngine:
                 player, sos_advantage, starter_status_score, injury_risk_score
             )
             
-            # Calculate overall score
-            overall_score = self._calculate_overall_score(
-                vorp, scarcity, roster_fit, sos_advantage, 
-                starter_status_score, injury_risk_score
-            )
+            # Calculate overall score (with variance adjustment if available)
+            if self.use_variance_adjustment and self.enhanced_scorer:
+                # Use variance-adjusted scoring
+                base_metrics = {
+                    'scarcity': scarcity,
+                    'roster_fit': roster_fit,
+                    'sos_advantage': sos_advantage,
+                    'starter_status': starter_status_score,
+                    'injury_risk': injury_risk_score
+                }
+                
+                draft_context = {
+                    'round_number': round_number,
+                    'roster_strength': self._estimate_roster_strength(current_roster)
+                }
+                
+                enhanced_scores = self.enhanced_scorer.calculate_enhanced_score(
+                    player, base_metrics, risk_tolerance, draft_context
+                )
+                
+                overall_score = enhanced_scores['enhanced_score']
+                
+                # Add variance metrics to enhanced factors
+                enhanced_factors.update({
+                    'upside': f"📈 Upside: {enhanced_scores['upside_premium']:.1f} pts",
+                    'floor_risk': f"📉 Floor Risk: {enhanced_scores['floor_penalty']:.1f} pts",
+                    'ceiling': f"🚀 Ceiling: {enhanced_scores['ceiling_value']:.1f} pts",
+                    'variance_adj_vorp': f"⚖️  Variance VORP: {enhanced_scores['variance_adjusted_vorp']:.1f}"
+                })
+                
+            else:
+                # Use traditional scoring
+                overall_score = self._calculate_overall_score(
+                    vorp, scarcity, roster_fit, sos_advantage, 
+                    starter_status_score, injury_risk_score
+                )
             
             # Generate reasoning and risk assessment
             primary_reason = self._generate_primary_reason(
@@ -102,21 +159,50 @@ class PickRecommendationEngine:
             return round_number * self.config.num_teams - (self.config.draft_position - 1)
     
     def _filter_realistic_candidates(self, available: List[Player], pick_number: int) -> List[Player]:
-        """Filter to players who might realistically be available"""
-        # Use ADP to filter realistic options
-        adp_buffer = 24  # Players within 24 picks of ADP (2 rounds)
+        """Filter to players who might realistically be available and avoid overdrafts"""
+        # Dynamic ADP buffer based on round - tighter in early rounds
+        round_number = ((pick_number - 1) // 12) + 1
+        
+        if round_number <= 3:
+            adp_buffer = 8  # Tighter in early rounds (avoid major overdrafts)
+        elif round_number <= 6:
+            adp_buffer = 12  # Moderate buffer in middle rounds
+        elif round_number <= 10:
+            adp_buffer = 18  # More flexible in later rounds
+        else:
+            adp_buffer = 30  # Very flexible in deep rounds
         
         realistic = []
-        for player in available:
-            if player.adp >= 999:  # No ADP data, include if projected highly
-                if player.projection > 100:  # Threshold for unknown ADP players
-                    realistic.append(player)
-            elif abs(player.adp - pick_number) <= adp_buffer:
-                realistic.append(player)
+        undrafted_threshold = 15  # Don't recommend players going undrafted
         
-        # Sort by projection and return top candidates
-        realistic.sort(key=lambda x: x.projection, reverse=True)
-        return realistic[:30]  # Top 30 realistic candidates
+        for player in available:
+            if player.adp >= 999:  # No ADP data
+                # Only include high projections in early rounds, be more lenient later
+                min_projection = max(50, 150 - (round_number * 8))
+                if player.projection >= min_projection:
+                    realistic.append(player)
+            elif player.adp <= (16 * 12) + undrafted_threshold:  # Within draftable range
+                adp_diff = player.adp - pick_number
+                
+                # Allow some early picks (up to 6 picks early) but avoid major overdrafts
+                if adp_diff >= -6 and adp_diff <= adp_buffer:
+                    realistic.append(player)
+        
+        # Sort by a combination of projection and ADP appropriateness
+        def sort_key(player):
+            adp_penalty = 0
+            if player.adp < 999:
+                adp_diff = abs(player.adp - pick_number)
+                # Penalize picks that are too early or too late
+                if player.adp < pick_number - 6:  # Overdraft penalty
+                    adp_penalty = (pick_number - player.adp) * 2
+                elif adp_diff > adp_buffer:  # Too late penalty
+                    adp_penalty = adp_diff
+            
+            return player.projection - adp_penalty
+        
+        realistic.sort(key=sort_key, reverse=True)
+        return realistic[:20]  # Top 20 realistic, well-timed candidates
     
     def _calculate_roster_fit(self, player: Player, roster: Roster) -> float:
         """How well does this player fit current roster needs"""
@@ -391,3 +477,30 @@ class PickRecommendationEngine:
             confidence += 0.1
         
         return max(0.1, min(1.0, confidence))
+    
+    def _estimate_roster_strength(self, roster: Roster) -> float:
+        """Estimate roster strength as percentile (0-1)"""
+        if not roster.players:
+            return 0.5  # Neutral for empty roster
+        
+        # Calculate total value of current roster
+        total_value = sum(self.value_calc.calculate_vorp(player) for player in roster.players)
+        
+        # Estimate based on number of picks and average value
+        num_picks = len(roster.players)
+        if num_picks == 0:
+            return 0.5
+        
+        avg_value_per_pick = total_value / num_picks
+        
+        # Rough percentile mapping (can be refined)
+        if avg_value_per_pick >= 60:
+            return 0.9  # Elite roster
+        elif avg_value_per_pick >= 40:
+            return 0.7  # Strong roster
+        elif avg_value_per_pick >= 25:
+            return 0.5  # Average roster
+        elif avg_value_per_pick >= 15:
+            return 0.3  # Weak roster
+        else:
+            return 0.1  # Very weak roster

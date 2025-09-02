@@ -19,7 +19,7 @@ class DraftAnalysisGenerator:
         self, 
         league_config: LeagueConfig,
         keepers: List[KeeperPlayer] = None,
-        rounds_to_analyze: int = 8
+        rounds_to_analyze: int = 16
     ) -> str:
         """Generate complete pre-draft analysis"""
         
@@ -70,37 +70,45 @@ class DraftAnalysisGenerator:
                         output.append("⚠️  No recommendations available for this round")
                         continue
                     
-                    output.append("🎯 TOP 10 RECOMMENDATIONS:")
+                    # Show different detail levels for early vs late rounds
+                    if round_num <= 8:
+                        output.append("🎯 TOP RECOMMENDATIONS:")
+                        num_to_show = min(6, len(recommendations))  # Fewer recs to reduce clutter
+                    else:
+                        num_to_show = min(3, len(recommendations))  # Even fewer for late rounds
                     
-                    for i, rec in enumerate(recommendations, 1):
-                        # Player line
+                    for i, rec in enumerate(recommendations[:num_to_show], 1):
+                        # Player line with ADP info
+                        adp_text = f"ADP {rec.player.adp:.0f}" if rec.player.adp < 999 else "No ADP"
                         output.append(
-                            f"{i:2d}. {rec.player.name:<20} {rec.player.position:2s} "
-                            f"({rec.player.projection:.0f} pts) - Score: {rec.overall_score:.2f}"
+                            f"{i:2d}. {rec.player.name:<18} {rec.player.position:2s} "
+                            f"({rec.player.projection:.0f} pts, {adp_text}) - Score: {rec.overall_score:.1f}"
                         )
                         
                         # Primary reason
                         output.append(f"    💡 {rec.primary_reason}")
                         
-                        # Enhanced factors for top 5 picks
-                        if i <= 5:
-                            factors = rec.enhanced_factors
-                            output.append(f"    📅 {factors.get('sos', 'SoS Unknown')}")
-                            output.append(f"    🏈 {factors.get('starter', 'Role Unknown')}")
-                            output.append(f"    🏥 {factors.get('injury', 'Health Unknown')}")
-                        
-                        # Risk factors
-                        if rec.risk_factors:
-                            output.append(f"    ⚠️  Risks: {', '.join(rec.risk_factors)}")
-                        
-                        # Detailed metrics for top 3
-                        if i <= 3:
-                            output.append(
-                                f"    📊 VORP: {rec.vorp:.1f} | "
-                                f"SoS: {rec.sos_advantage:.2f} | "
-                                f"Starter: {rec.starter_status_score:.2f} | "
-                                f"Health: {rec.injury_risk_score:.2f}"
-                            )
+                        # Show details only for early rounds and top picks
+                        if round_num <= 8:
+                            # Enhanced factors for top 3 picks only
+                            if i <= 3:
+                                factors = rec.enhanced_factors
+                                output.append(f"    📅 {factors.get('sos', 'SoS Unknown')}")
+                                output.append(f"    🏈 {factors.get('starter', 'Role Unknown')}")
+                                output.append(f"    🏥 {factors.get('injury', 'Health Unknown')}")
+                            
+                            # Risk factors
+                            if rec.risk_factors and i <= 3:
+                                output.append(f"    ⚠️  Risks: {', '.join(rec.risk_factors)}")
+                            
+                            # Detailed metrics for top 2 only
+                            if i <= 2:
+                                output.append(
+                                    f"    📊 VORP: {rec.vorp:.1f} | "
+                                    f"SoS: {rec.sos_advantage:.2f} | "
+                                    f"Starter: {rec.starter_status_score:.2f} | "
+                                    f"Health: {rec.injury_risk_score:.2f}"
+                                )
                         
                         output.append("")  # Blank line between recommendations
                     

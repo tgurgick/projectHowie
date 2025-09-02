@@ -8,19 +8,22 @@
 
 ## 🚀 What's New in v2.4.0
 
-### 🎲 **Monte Carlo Draft Simulation Engine**
-- **`/draft monte`** - Advanced draft simulation with realistic opponent modeling
-- **FantasyPros ADP Integration**: 86.7% real consensus data coverage
-- **Strategic Opponents**: 9 opponent types (Zero RB, Hero RB, QB Early/Late)
-- **ADP Range Strategy**: ±10 picks around position for realistic candidate filtering
-- **VORP Optimization**: Value Over Replacement Player with position-specific calculations
+### 🎯 **Three-Layer Draft Analysis System**
+- **Pick Recommendations** - Top 10 picks for any round with 6-factor scoring
+- **Strategy Tree Search** - Optimal 16-round draft plan with unbiased opponent simulation
+- **Monte Carlo Evaluation** - Performance testing against realistic opponent scenarios
 
-### 🧮 **Sophisticated Draft Analysis**
-- **`/draft analyze`** - Pre-draft analysis with recommendations
-- **6-Factor Scoring**: VORP, scarcity, roster fit, SoS, starter status, injury risk
-- **Realistic Variance**: Unique random seeds and Gaussian noise per simulation
-- **Live Tracing**: Pick-by-pick analysis showing ADP ranges and selections
-- **Season Projections**: Full roster strength calculations
+### 🧠 **Advanced Draft Intelligence**
+- **`/draft analyze`** - Complete pre-draft analysis with round-by-round recommendations
+- **`/draft strategy generate`** - Optimal draft strategy using tree search algorithm
+- **`/draft monte 25 8`** - Monte Carlo simulation with diverse opponent personalities
+- **Unbiased Strategy Creation** - Tree search independent of Monte Carlo variance
+
+### 📊 **Enhanced Player Evaluation**
+- **6-Factor Scoring**: VORP, positional scarcity, roster fit, SoS, starter status, injury risk
+- **533 Players**: Complete FantasyPros ADP integration (86.7% coverage)
+- **Realistic Availability**: Opponent simulation prevents unrealistic draft scenarios
+- **Enhanced Intelligence**: AI-gathered scouting data for all teams/positions
 
 ### 🎯 **Complete Player Evaluation System**
 - **`/player/Name`** - Comprehensive player analysis in vertical format
@@ -50,11 +53,12 @@
 /tiers/rb                    # RB-specific tier breakdown
 ```
 
-### **🎲 Draft Simulation**
+### **🎲 Draft Analysis & Strategy**
 ```bash
-/draft monte --sims 25 --rounds 2    # Monte Carlo simulation
-/draft analyze                       # Pre-draft analysis
-/draft simulate --opponents realistic # Full mock draft
+/draft analyze                       # Complete pre-draft analysis
+/draft strategy generate             # Optimal 16-round strategy
+/draft monte 25 8                    # Monte Carlo evaluation (25 sims, 8 rounds)
+/draft view                          # View saved strategies & results
 ```
 
 ### **🧠 Team Intelligence**
@@ -84,10 +88,11 @@
 ### **🎯 Draft Command Center**
 | Command | Description | Example |
 |---------|-------------|---------|
-| `/draft monte` | Monte Carlo simulation | 25 simulations with realistic opponents |
-| `/draft analyze` | Pre-draft analysis | Round-by-round recommendations |
+| `/draft analyze` | Complete pre-draft analysis | Round-by-round recommendations for all 16 rounds |
+| `/draft strategy generate` | Optimal draft strategy | Tree search finds best 16-round plan |
+| `/draft monte 25 8` | Monte Carlo evaluation | Test strategy against 25 realistic scenarios |
+| `/draft view` | View saved results | Access strategies & Monte Carlo history |
 | `/adp` | ADP rankings with round estimates | Shows top 50 with 10/12-team projections |
-| `/adp/10` | League-specific rounds | ADP table + projected round for 10-team |
 | `/tiers` | Tier value analysis | Marginal points between position tiers |
 | `/player/Name` | Complete evaluation | All data points in mobile format |
 
@@ -181,33 +186,34 @@ Confidence: High
 Reasoning: Elite tier player, favorable team situation, strong ADP value
 ```
 
-### **🎲 Monte Carlo Draft Simulation**
+### **🎯 Draft Strategy Generation**
 ```bash
-> /draft monte --sims 25 --rounds 2
+> /draft strategy generate
 
-🎲 MONTE CARLO SIMULATION RESULTS
-============================================================
-Simulations Run: 25
-Average Roster Strength: 496.8
-Your Position: #6 of 12
+🌳 Starting strategy tree search...
+📋 League: 12T HALF_PPR, position #8
+🎯 Using unbiased ADP-based opponent simulation for strategy selection
+✅ Strategy tree search completed in 12.3 seconds
+🎲 Evaluating strategy performance with Monte Carlo...
 
-📍 ROUND 1 PLAYER AVAILABILITY:
-(Players available when your Round 1 pick comes up)
-──────────────────────────────────────────────────────────
- 1. Ja'Marr Chase         93.3% 🟢 Very Likely (ADP:  1.0)
- 2. CeeDee Lamb           86.7% 🟢 Very Likely (ADP:  5.0)
- 3. Amon-Ra St. Brown     80.0% 🟢 Very Likely (ADP:  9.5)
- 4. Justin Jefferson      80.0% 🟢 Very Likely (ADP:  4.8)
- 5. Saquon Barkley        73.3% 🟡 Possible (ADP:  3.7)
+🎯 OPTIMAL STRATEGY OVERVIEW
+══════════════════════════════════════════════════════════
+Round  1: WR - Elite receiver value (CeeDee Lamb tier)
+Round  2: QB - Secure premium QB position (Josh Allen)
+Round  3: RB - Address scarcity concern (Chase Brown)
+Round  4: WR - Build receiving depth (Jordan Addison)
+Round  5: TE - Premium tight end value (Brock Bowers)
+Round  6: RB - Backfield depth (Zack Moss)
+Round  7: WR - Target volume receiver (Courtland Sutton)
+Round  8: RB - Handcuff/upside play (Blake Corum)
 
-🎯 MOST COMMON PICKS BY ROUND:
-Round 1: CeeDee Lamb (86.7%), Amon-Ra St. Brown (13.3%)
-Round 2: Josh Allen (73.3%), Chase Brown (13.3%)
+💡 Key Insights:
+• 🛡️ Conservative approach - prioritizing safe floors
+• 🎯 Position scarcity drives early RB selections  
+• 📊 VORP optimization balances value vs need
+• 🏈 Realistic opponent simulation prevents overdrafts
 
-✅ ANALYSIS:
-• ADP range strategy working: Pick #6 gets ADP 1-16 players
-• VORP optimization: CeeDee Lamb best value in range
-• Realistic opponents: Natural draft flow with variance
+Expected Roster Value: 2,847 points | Confidence: 91.6%
 ```
 
 ### **🎯 Draft Strategy Session**
@@ -279,6 +285,8 @@ data/fantasy_ppr.db
 └── team_position_intelligence # AI scouting reports
 ```
 
+> 📖 **For technical details**, see [DRAFT_SYSTEM_ARCHITECTURE.md](DRAFT_SYSTEM_ARCHITECTURE.md) for complete documentation of the three-layer analysis system.
+
 ## 🛠️ Configuration
 
 ### **⚙️ Environment Setup**
@@ -325,10 +333,11 @@ export HOWIE_WORKSPACE="~/fantasy"      # Custom workspace
 ## 🔮 Roadmap & Future Features
 
 ### **📅 Coming Soon (v2.5.0)**
-- **Full MCTS Implementation**: Tree search with strategic lookahead
-- **Player Outcome Distributions**: Age/tenure variance with injury overlay
-- **Pre-sampled Outcomes**: 10K-20K season simulations for performance
-- **Weekly Lineup Optimization**: Season scoring with lineup decisions
+- **Enhanced Strategy Tree Search**: Multi-outcome rollouts with UCB1 selection
+- **Player Outcome Distributions**: Age/tenure variance with injury overlay  
+- **Pre-sampled Outcomes Matrix**: 15K+ season simulations for performance
+- **Weekly Lineup Optimization**: Season scoring with optimal lineup decisions
+- **Strategy Comparison Tool**: A/B testing different draft approaches
 
 ### **🎯 Draft Simulation Enhancements**
 - **Live draft assistant**: Real-time pick recommendations during drafts
@@ -381,7 +390,7 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## 🎯 Transform Your Fantasy Strategy
 
-**Howie CLI v2.3.0** isn't just a tool—it's your complete fantasy football command center. From comprehensive player analysis to AI-powered team intelligence, every feature is designed to give you the competitive edge.
+**Howie CLI v2.4.0** isn't just a tool—it's your complete fantasy football command center. From three-layer draft analysis to AI-powered team intelligence, every feature is designed to give you the competitive edge.
 
 **Ready to dominate your league?** 
 

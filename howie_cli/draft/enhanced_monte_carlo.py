@@ -94,7 +94,7 @@ class EnhancedMonteCarloSimulator:
         self, 
         strategy: MonteCarloStrategy,
         num_simulations: int = 25,
-        rounds_to_simulate: int = 15
+        rounds_to_simulate: int = 16
     ) -> Dict[str, Any]:
         """Run Monte Carlo simulation using pre-sampled outcomes"""
         

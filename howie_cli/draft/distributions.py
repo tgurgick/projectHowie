@@ -3,11 +3,14 @@ Player Outcome Distribution Models
 """
 
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 import sqlite3
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from .models import Player
 
 
 class DistributionType(Enum):
@@ -124,6 +127,7 @@ class DistributionFactory:
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or self._get_database_path()
+        self._distribution_cache = None  # Cache all distributions after first load
     
     def _get_database_path(self) -> str:
         """Get database path using ProjectHowie conventions"""
@@ -189,3 +193,84 @@ class DistributionFactory:
         conn.close()
         print(f"✅ Loaded {len(distributions)} player distributions")
         return distributions
+    
+    def get_distribution(self, player: 'Player') -> Optional[PlayerDistribution]:
+        """Get distribution for a specific player"""
+        # Load all distributions once and cache
+        if self._distribution_cache is None:
+            try:
+                self._distribution_cache = self.load_all_player_distributions()
+            except:
+                self._distribution_cache = {}
+        
+        # Try cached distributions first
+        cached_dist = self._distribution_cache.get(player.name)
+        if cached_dist:
+            return cached_dist
+        
+        # Fallback to creating distribution from player data
+        return self.create_distribution_from_player(player)
+    
+    def create_distribution_from_player(self, player: 'Player') -> PlayerDistribution:
+        """Create a distribution profile from basic player data"""
+        # Estimate coefficient of variation based on position and projection
+        cv = self._estimate_coefficient_of_variation(player)
+        
+        # Estimate injury probabilities based on position
+        injury_probs = self._estimate_injury_probabilities(player)
+        
+        return PlayerDistribution(
+            player_name=player.name,
+            position=player.position,
+            mean_projection=player.projection,
+            coefficient_of_variation=cv,
+            injury_prob_healthy=injury_probs['healthy'],
+            injury_prob_minor=injury_probs['minor'],
+            injury_prob_major=injury_probs['major']
+        )
+    
+    def _estimate_coefficient_of_variation(self, player: 'Player') -> float:
+        """Estimate CV based on position and projection level"""
+        position = player.position.upper()
+        projection = player.projection
+        
+        # Base CV by position (from research)
+        base_cv = {
+            'QB': 0.22,
+            'RB': 0.26,
+            'WR': 0.24,
+            'TE': 0.28,
+            'K': 0.15,
+            'DEF': 0.20,
+            'DST': 0.20
+        }.get(position, 0.25)
+        
+        # Adjust for projection level (higher projection = lower variance typically)
+        if projection > 250:
+            cv_modifier = 0.85  # Elite players have lower variance
+        elif projection > 180:
+            cv_modifier = 1.0   # Average variance
+        elif projection > 120:
+            cv_modifier = 1.15  # Slightly higher variance
+        else:
+            cv_modifier = 1.3   # Higher variance for low projection players
+        
+        return base_cv * cv_modifier
+    
+    def _estimate_injury_probabilities(self, player: 'Player') -> Dict[str, float]:
+        """Estimate injury probabilities based on position"""
+        position = player.position.upper()
+        
+        # Position-based injury probabilities
+        if position == 'QB':
+            return {'healthy': 0.85, 'minor': 0.12, 'major': 0.03}
+        elif position == 'RB':
+            return {'healthy': 0.78, 'minor': 0.15, 'major': 0.07}
+        elif position == 'WR':
+            return {'healthy': 0.82, 'minor': 0.13, 'major': 0.05}
+        elif position == 'TE':
+            return {'healthy': 0.80, 'minor': 0.14, 'major': 0.06}
+        elif position in ['K', 'DEF', 'DST']:
+            return {'healthy': 0.90, 'minor': 0.08, 'major': 0.02}
+        else:
+            return {'healthy': 0.80, 'minor': 0.14, 'major': 0.06}

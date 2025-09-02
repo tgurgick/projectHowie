@@ -2,9 +2,11 @@
 Core data models for draft simulation system
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional, Any
 import copy
+import json
+from pathlib import Path
 
 
 @dataclass
@@ -35,6 +37,35 @@ class LeagueConfig:
     keepers_enabled: bool = False
     keeper_slots: int = 0
     keeper_rules: str = "round_based"  # "first_round", "round_based", "auction_value"
+    
+    def save_to_file(self, filename: str = "data/league_config.json") -> None:
+        """Save league configuration to file"""
+        # Ensure data directory exists
+        Path("data").mkdir(exist_ok=True)
+        
+        # Convert to dict and save
+        config_data = asdict(self)
+        
+        with open(filename, 'w') as f:
+            json.dump(config_data, f, indent=2)
+        
+        print(f"💾 Saved league configuration to {filename}")
+    
+    @classmethod
+    def load_from_file(cls, filename: str = "data/league_config.json") -> Optional['LeagueConfig']:
+        """Load league configuration from file"""
+        try:
+            with open(filename, 'r') as f:
+                config_data = json.load(f)
+            
+            print(f"📂 Loaded league configuration from {filename}")
+            return cls(**config_data)
+        except FileNotFoundError:
+            print(f"📂 No configuration file found at {filename}")
+            return None
+        except Exception as e:
+            print(f"❌ Error loading configuration: {e}")
+            return None
 
 
 @dataclass
