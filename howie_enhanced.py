@@ -1724,29 +1724,52 @@ def handle_rapid_stats_command(command: str):
                 console.print(f"[yellow]No projection data found for {position}s in {season}[/yellow]")
                 return
             
-            # Display results
+            # Display results with variance bars
             from rich.table import Table
             table = Table(title=f"Top 50 {position}s by 2025 Projections", show_header=True, header_style="bold bright_green")
             table.add_column("Rank", style="bright_green", width=6)
             table.add_column("Player", style="bright_green", width=25)
             table.add_column("Team", style="bright_green", width=6)
             table.add_column("Fantasy Pts", style="bright_green", width=12)
+            table.add_column("Variance", style="bright_green", width=15)
             table.add_column("Games", style="bright_green", width=8)
             table.add_column("Bye", style="bright_green", width=6)
             table.add_column("Auction $", style="bright_green", width=10)
             
             for i, row in enumerate(results, 1):
+                # Generate variance bar for this player
+                try:
+                    from howie_cli.tools.distribution_display import generate_variance_bar
+                    variance_bar = generate_variance_bar(row[0], row[2])
+                except ImportError:
+                    variance_bar = "───────────"  # Fallback
+                
                 table.add_row(
                     str(i),
                     row[0],  # player_name
                     row[1] or "N/A",  # team_name
                     f"{row[2]:.1f}" if row[2] else "N/A",  # fantasy_points
+                    variance_bar,  # NEW: Visual variance bar
                     str(row[3]) if row[3] else "N/A",  # games
                     str(row[4]) if row[4] else "N/A",  # bye_week
                     f"${row[5]:.0f}" if row[5] else "N/A"   # auction_value
                 )
             
             console.print(table)
+            
+            # Add variance bar legend
+            console.print("\n[dim]📊 Variance Bar Legend:[/dim]")
+            console.print("[dim]   [green]┢┅━━━━━━┅┪[/green] = LOW variance (consistent performance)[/dim]")
+            console.print("[dim]   [yellow]┢┅──────┅┪[/yellow] = MODERATE variance (typical uncertainty)[/dim]") 
+            console.print("[dim]   [red]┢┅┅┅┅┅┅┅┅┅┪[/red] = HIGH variance (boom/bust potential)[/dim]")
+            
+            # Add distribution context for projections
+            try:
+                from howie_cli.tools.distribution_display import display_position_distribution_summary, add_distribution_context_to_stats_table
+                add_distribution_context_to_stats_table(table, position)
+                display_position_distribution_summary(position)
+            except ImportError:
+                pass  # Graceful fallback
             
         elif stat == 'sos':
             # Query strength of schedule data
@@ -2134,6 +2157,15 @@ def handle_rapid_stats_command(command: str):
                 )
             
             console.print(table)
+            
+            # Add distribution context for projections
+            if stat == 'projections' and season >= 2025:
+                try:
+                    from howie_cli.tools.distribution_display import display_position_distribution_summary, add_distribution_context_to_stats_table
+                    add_distribution_context_to_stats_table(table, position)
+                    display_position_distribution_summary(position)
+                except ImportError:
+                    pass  # Graceful fallback
         
         conn.close()
         
@@ -3241,6 +3273,13 @@ async def show_comprehensive_player_analysis(player_name: str):
         projections = await get_player_projections(player_name, position)
         if projections:
             display_projections_section(projections, position)
+        
+        # Section 1.5: Distribution Context (NEW!)
+        try:
+            from howie_cli.tools.distribution_display import display_player_distribution_context
+            display_player_distribution_context(player_name)
+        except ImportError:
+            pass  # Graceful fallback if distribution module unavailable
         
         # Section 2: ADP Analysis  
         adp_data = await get_player_adp_data(player_name)
