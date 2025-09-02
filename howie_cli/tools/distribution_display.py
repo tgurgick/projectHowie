@@ -227,8 +227,8 @@ def add_distribution_context_to_stats_table(table: Table, position: str, include
 
 
 # Convenience function for integration
-def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: int = 12) -> str:
-    """Generate a visual variance bar for a player showing uncertainty spread"""
+def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: int = 18, position_context: list = None) -> str:
+    """Generate a visual variance bar showing actual outcome ranges relative to peers"""
     try:
         dist_info = get_player_distribution_info(player_name)
         
@@ -239,32 +239,85 @@ def generate_variance_bar(player_name: str, fantasy_points: float, bar_width: in
         mean_proj = fantasy_points or dist_info['mean_projection']
         std_dev = cv * mean_proj
         
-        # Calculate range (±1 std dev covers ~68% of outcomes)
-        low_range = max(0, mean_proj - std_dev)
-        high_range = mean_proj + std_dev
+        # Calculate P25 and P75 ranges (~50% of outcomes)
+        low_outcome = max(0, mean_proj - 0.675 * std_dev)   # ~25th percentile
+        high_outcome = mean_proj + 0.675 * std_dev          # ~75th percentile
         
-        # Variance category and color
+        # If position context provided, scale relative to position
+        if position_context:
+            # Find min/max projections in the position
+            all_projections = [p for p in position_context if p > 0]
+            if all_projections:
+                pos_min = min(all_projections) * 0.8  # Add some padding
+                pos_max = max(all_projections) * 1.1
+                
+                # Scale values to bar width
+                def scale_to_bar(value):
+                    if pos_max <= pos_min:
+                        return bar_width // 2
+                    return int((value - pos_min) / (pos_max - pos_min) * bar_width)
+                
+                low_pos = max(0, scale_to_bar(low_outcome))
+                mean_pos = max(0, scale_to_bar(mean_proj))
+                high_pos = min(bar_width, scale_to_bar(high_outcome))
+                
+                # Ensure proper ordering
+                low_pos = min(low_pos, mean_pos - 1) if mean_pos > 0 else 0
+                high_pos = max(high_pos, mean_pos + 1) if mean_pos < bar_width else bar_width
+                
+            else:
+                # Fallback to centered
+                low_pos = bar_width // 3
+                mean_pos = bar_width // 2  
+                high_pos = 2 * bar_width // 3
+        else:
+            # Fallback to centered positioning
+            low_pos = bar_width // 3
+            mean_pos = bar_width // 2
+            high_pos = 2 * bar_width // 3
+        
+        # Variance category and styling
         if cv <= 0.20:
             color = "green"
-            bar_char = "━"  # Solid bar for low variance
+            range_char = "━"     # Solid for consistent
+            mean_char = "█"      # Solid center
         elif cv <= 0.30:
-            color = "yellow"
-            bar_char = "─"  # Medium bar for moderate variance
+            color = "yellow" 
+            range_char = "▬"     # Medium for moderate
+            mean_char = "█"
         else:
             color = "red"
-            bar_char = "┅"  # Dotted bar for high variance
+            range_char = "┅"     # Dotted for volatile
+            mean_char = "█"
         
-        # Create visual bar with uncertainty indicators
-        left_pad = bar_width // 4
-        center_width = bar_width // 2
-        right_pad = bar_width - left_pad - center_width
+        # Build the visual bar
+        bar_chars = [" "] * bar_width
         
-        # Show range visually: low ──██──── high
-        bar = "┢" + "┅" * left_pad + bar_char * center_width + "┅" * right_pad + "┪"
+        # Fill the range with appropriate character
+        for i in range(low_pos, high_pos + 1):
+            if i < bar_width:
+                bar_chars[i] = range_char
         
-        return f"[{color}]{bar}[/{color}]"
+        # Mark the mean projection
+        if mean_pos < bar_width:
+            bar_chars[mean_pos] = mean_char
         
-    except Exception:
+        # Add range indicators
+        if low_pos < bar_width:
+            bar_chars[low_pos] = "┢"
+        if high_pos < bar_width:
+            bar_chars[high_pos] = "┪"
+        
+        bar_visual = "".join(bar_chars)
+        
+        # Add upside/downside numbers
+        upside_text = f"{high_outcome:.0f}"
+        downside_text = f"{low_outcome:.0f}"
+        
+        # Format: "Low: 250 ┢━━█━━┪ High: 350"
+        return f"[dim]{downside_text}[/dim] [{color}]{bar_visual}[/{color}] [dim]{upside_text}[/dim]"
+        
+    except Exception as e:
         return "─" * bar_width  # Safe fallback
 
 

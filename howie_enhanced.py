@@ -1731,37 +1731,38 @@ def handle_rapid_stats_command(command: str):
             table.add_column("Player", style="bright_green", width=25)
             table.add_column("Team", style="bright_green", width=6)
             table.add_column("Fantasy Pts", style="bright_green", width=12)
-            table.add_column("Variance", style="bright_green", width=15)
-            table.add_column("Games", style="bright_green", width=8)
+            table.add_column("Outcome Range", style="bright_green", width=30)
             table.add_column("Bye", style="bright_green", width=6)
             table.add_column("Auction $", style="bright_green", width=10)
             
+            # Extract all fantasy points for position context
+            all_projections = [row[2] for row in results if row[2]]
+            
             for i, row in enumerate(results, 1):
-                # Generate variance bar for this player
+                # Generate variance bar for this player with position context
                 try:
                     from howie_cli.tools.distribution_display import generate_variance_bar
-                    variance_bar = generate_variance_bar(row[0], row[2])
+                    variance_bar = generate_variance_bar(row[0], row[2], position_context=all_projections)
                 except ImportError:
-                    variance_bar = "───────────"  # Fallback
+                    variance_bar = "─" * 20  # Fallback
                 
                 table.add_row(
                     str(i),
                     row[0],  # player_name
                     row[1] or "N/A",  # team_name
                     f"{row[2]:.1f}" if row[2] else "N/A",  # fantasy_points
-                    variance_bar,  # NEW: Visual variance bar
-                    str(row[3]) if row[3] else "N/A",  # games
-                    str(row[4]) if row[4] else "N/A",  # bye_week
+                    variance_bar,  # NEW: Relative outcome range bar
+                    str(row[4]) if row[4] else "N/A",  # bye_week (games removed)
                     f"${row[5]:.0f}" if row[5] else "N/A"   # auction_value
                 )
             
             console.print(table)
             
-            # Add variance bar legend
-            console.print("\n[dim]📊 Variance Bar Legend:[/dim]")
-            console.print("[dim]   [green]┢┅━━━━━━┅┪[/green] = LOW variance (consistent performance)[/dim]")
-            console.print("[dim]   [yellow]┢┅──────┅┪[/yellow] = MODERATE variance (typical uncertainty)[/dim]") 
-            console.print("[dim]   [red]┢┅┅┅┅┅┅┅┅┅┪[/red] = HIGH variance (boom/bust potential)[/dim]")
+            # Add outcome range legend
+            console.print("\n[dim]📊 Outcome Range: [Downside] Bar [Upside][/dim]")
+            console.print("[dim]   Numbers show realistic P25-P75 range (~50% of outcomes)[/dim]")
+            console.print("[dim]   Bar position = projection strength vs peers | Bar width = uncertainty[/dim]")
+            console.print("[dim]   [green]━━━[/green] Consistent | [yellow]▬▬▬[/yellow] Moderate | [red]┅┅┅[/red] Volatile[/dim]")
             
             # Add distribution context for projections
             try:
