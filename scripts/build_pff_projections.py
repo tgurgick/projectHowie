@@ -21,6 +21,11 @@ from scripts.build_fantasy_db import (
     PlayerProjections, StrengthOfSchedule, Base, 
     DEFAULT_DB_URL
 )
+try:
+    from howie_cli.core.paths import get_db_url
+    _DEFAULT_URL = os.getenv("DB_URL", get_db_url("ppr"))
+except Exception:
+    _DEFAULT_URL = DEFAULT_DB_URL
 
 @dataclass
 class Args:
@@ -243,7 +248,7 @@ def import_strength_of_schedule(args: Args):
 def main():
     parser = argparse.ArgumentParser(description="Import PFF projections and SoS data")
     parser.add_argument("--season", type=int, default=2025, help="Season year")
-    parser.add_argument("--db-url", default=DEFAULT_DB_URL, help="Database URL")
+    parser.add_argument("--db-url", default=_DEFAULT_URL, help="Database URL")
     parser.add_argument("--data-dir", default="data/pff_csv", help="Data directory")
     
     args = parser.parse_args()

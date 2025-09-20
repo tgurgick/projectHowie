@@ -13,6 +13,7 @@ from .models import LeagueConfig, KeeperPlayer
 from .analysis_generator import DraftAnalysisGenerator
 from .database import DraftDatabaseConnector
 from .keeper_system import KeeperManager, KeeperValidator, Keeper, KeeperConfiguration
+from .player_comparison import compare_players_command
 
 console = Console()
 
@@ -135,6 +136,8 @@ class DraftCLI:
             return self._handle_strategy(parts[1:])
         elif subcommand == "view":
             return self._handle_view_results(parts[1:])
+        elif subcommand == "compare":
+            return self._handle_player_compare(parts[1:])
         else:
             return f"Unknown draft command: {subcommand}. Use '/draft/help' for available commands."
     
@@ -151,6 +154,9 @@ class DraftCLI:
 [green]/draft/simulate[/green] - Advanced simulation with AI opponents
 [green]/draft/strategy[/green] - Strategy management and quick access
 [green]/draft/view[/green]     - View Monte Carlo simulation results
+[green]/draft/compare[/green]  - Compare two players side-by-side
+[green]/draft/strategy/recommendations[/green] - 5-7 options for each round (all 16 rounds)
+[green]/draft/strategy/positional[/green]       - Primary & backup plans by position
 [green]/draft/help[/green]     - Show this help
 
 [bold]Monte Carlo Examples:[/bold]
@@ -173,6 +179,11 @@ class DraftCLI:
 [dim]/draft/strategy/refresh[/dim]            - Force refresh with latest config
 [dim]/draft/strategy/migrate[/dim]            - Migrate to unified config system
 [dim]/draft/strategy/round/3[/dim]            - Show Round 3 strategy details
+
+[bold]Player Comparison Examples:[/bold]
+[dim]/draft/compare/Saquon Barkley/Josh Jacobs[/dim] - Compare two RBs
+[dim]/draft/compare/Jefferson/Chase[/dim]             - Compare two WRs (partial names)
+[dim]/draft/compare/Lamar/Mahomes[/dim]               - Compare different positions
 
 [bold]View Examples:[/bold]
 [dim]/draft/view[/dim]                        - Show results menu
@@ -1030,6 +1041,12 @@ class DraftCLI:
         elif command == "generate":
             return self._generate_new_strategy(manager)
         
+        elif command == "recommendations" or command == "recs":
+            return self._generate_round_recommendations()
+        
+        elif command == "positional" or command == "pos":
+            return self._generate_positional_strategy()
+        
         elif command == "round":
             if len(args) < 2:
                 return "[red]Usage: /draft/strategy/round/3[/red]"
@@ -1098,9 +1115,11 @@ class DraftCLI:
             
             console.print("[bold]🌳 Generating optimal draft strategy...[/bold]")
             console.print(f"[dim]League: {config.num_teams} teams, {config.scoring_type.upper()}, position #{config.draft_position}[/dim]")
+            console.print("[yellow]⏳ This may take 1-3 minutes (optimized for TUI)...[/yellow]")
+            console.print("[dim]💡 Tree search analyzes draft scenarios to find optimal picks[/dim]")
             
-            # Run tree search
-            tree_search = StrategyTreeSearch(config, players)
+            # Run tree search with TUI optimization
+            tree_search = StrategyTreeSearch(config, players, fast_mode=True)
             strategy = tree_search.find_optimal_strategy()
             
             # Save strategy
@@ -1186,3 +1205,80 @@ class DraftCLI:
                 
         except Exception as e:
             return f"❌ Migration error: {str(e)}"
+    
+    def _generate_round_recommendations(self) -> str:
+        """Generate 5-7 recommendations for each of 16 rounds"""
+        try:
+            # Load configuration
+            league_config = LeagueConfig.load_from_file("data/league_config.json")
+            if not league_config:
+                return "❌ No league configuration found. Please run /draft config first."
+            
+            # Load players
+            db = DraftDatabaseConnector()
+            players = db.load_player_universe()
+            
+            # Create tree search instance
+            from .strategy_tree_search import StrategyTreeSearch
+            tree_search = StrategyTreeSearch(league_config, players, use_monte_carlo=False)
+            
+            # Generate round-by-round recommendations
+            return tree_search.generate_round_by_round_recommendations()
+            
+        except Exception as e:
+            return f"❌ Error generating recommendations: {str(e)}"
+    
+    def _generate_positional_strategy(self) -> str:
+        """Generate contingency-based positional strategy guide"""
+        try:
+            # Load configuration
+            league_config = LeagueConfig.load_from_file("data/league_config.json")
+            if not league_config:
+                return "❌ No league configuration found. Please run /draft config first."
+            
+            # Load players
+            from .database import DraftDatabaseConnector
+            db = DraftDatabaseConnector()
+            players = db.load_player_universe()
+            
+            # Create tree search instance
+            from .strategy_tree_search import StrategyTreeSearch
+            tree_search = StrategyTreeSearch(league_config, players, use_monte_carlo=False)
+            
+            # Generate positional strategy guide
+            return tree_search.generate_positional_strategy_guide()
+            
+        except Exception as e:
+            return f"❌ Error generating positional strategy: {str(e)}"
+    
+    def _handle_player_compare(self, args: List[str]) -> str:
+        """Handle player comparison command"""
+        if len(args) < 2:
+            return """❌ Player comparison requires two player names.
+
+🔍 Usage Examples:
+   /draft/compare/Saquon Barkley/Josh Jacobs
+   /draft/compare/Jefferson/Chase  
+   /draft/compare/Lamar/Mahomes
+
+💡 You can use partial names - the system will search for matches."""
+        
+        try:
+            # Load configuration and players
+            league_config = LeagueConfig.load_from_file("data/league_config.json")
+            if not league_config:
+                return "❌ No league configuration found. Please run /draft config first."
+            
+            from .database import DraftDatabaseConnector
+            db = DraftDatabaseConnector()
+            players = db.load_player_universe()
+            
+            # Extract player names from args
+            player1_name = args[0].replace("_", " ")  # Handle URL encoding
+            player2_name = args[1].replace("_", " ")
+            
+            # Use the comparison function
+            return compare_players_command(league_config, players, player1_name, player2_name)
+            
+        except Exception as e:
+            return f"❌ Error comparing players: {str(e)}"

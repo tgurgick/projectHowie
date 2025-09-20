@@ -1,0 +1,10 @@
+include README.md
+include requirements.txt
+include LICENSE
+include data/*.db
+include data/*.pkl
+include data/*.json
+include .env
+recursive-include howie_cli *.py
+recursive-include howie_cli *.json
+recursive-include howie_cli *.yaml

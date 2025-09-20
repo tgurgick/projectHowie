@@ -137,13 +137,8 @@ class EnhancedMonteCarloSimulator:
         available_players = list(self.enhanced_players.values())
         random.shuffle(available_players)  # Random draft order variation
         
-        draft_state = DraftState(
-            current_round=1,
-            current_pick=1,
-            rosters={i: [] for i in range(self.config.num_teams)},
-            available_players=available_players,
-            player_universe=available_players
-        )
+        # Create draft state with correct constructor
+        draft_state = DraftState(self.config, available_players)
         
         user_roster = []
         user_team_index = self.config.draft_position - 1
@@ -157,7 +152,8 @@ class EnhancedMonteCarloSimulator:
                 pick_order = list(range(self.config.num_teams - 1, -1, -1))
             
             for pick_pos, team_index in enumerate(pick_order):
-                if not draft_state.available_players:
+                available_players = draft_state.get_available_players()
+                if not available_players:
                     break
                 
                 if team_index == user_team_index:
@@ -168,14 +164,9 @@ class EnhancedMonteCarloSimulator:
                     # AI opponent pick
                     pick = self._ai_opponent_pick(draft_state)
                 
-                # Remove picked player and update state
-                if pick in draft_state.available_players:
-                    draft_state.available_players.remove(pick)
-                    draft_state.rosters[team_index].append(pick)
-                
-                draft_state.current_pick += 1
-            
-            draft_state.current_round += 1
+                # Remove picked player using draft_player method
+                if pick:
+                    draft_state.draft_player(pick)
         
         # Calculate roster score using specific outcome simulation
         roster_score = self._calculate_roster_outcome_score(user_roster, outcome_simulation_index)
@@ -189,7 +180,7 @@ class EnhancedMonteCarloSimulator:
     
     def _ai_opponent_pick(self, draft_state: DraftState) -> EnhancedPlayer:
         """AI opponent pick with ADP + variance considerations"""
-        available = draft_state.available_players
+        available = draft_state.get_available_players()
         
         if not available:
             return available[0]  # Fallback
@@ -222,14 +213,21 @@ class EnhancedMonteCarloSimulator:
         return selected_player
     
     def _calculate_roster_outcome_score(self, roster: List[EnhancedPlayer], outcome_index: int) -> float:
-        """Calculate roster score using specific outcome simulation"""
+        """Calculate roster score using STARTING LINEUP ONLY (not bench players)"""
+        if not roster:
+            return 0.0
+        
+        # Create optimal starting lineup from roster
+        starting_lineup = self._get_optimal_starting_lineup(roster)
+        
         if not self.outcome_matrix:
-            # Fallback to projections
-            return sum(player.projection for player in roster)
+            # Fallback to projections for STARTERS ONLY
+            return sum(player.projection for player in starting_lineup)
         
         total_score = 0.0
         
-        for player in roster:
+        # Score STARTERS ONLY using outcome simulation
+        for player in starting_lineup:
             if player.name in self.outcome_matrix.player_index_map:
                 player_idx = self.outcome_matrix.player_index_map[player.name]
                 outcome = self.outcome_matrix.outcomes[player_idx, outcome_index]
@@ -239,6 +237,65 @@ class EnhancedMonteCarloSimulator:
                 total_score += player.projection
         
         return total_score
+    
+    def _get_optimal_starting_lineup(self, roster: List[EnhancedPlayer]) -> List[EnhancedPlayer]:
+        """Select optimal starting lineup from roster (QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1)"""
+        if not roster:
+            return []
+        
+        # Sort players by position and projection
+        by_position = {}
+        for player in roster:
+            pos = player.position.upper()
+            if pos not in by_position:
+                by_position[pos] = []
+            by_position[pos].append(player)
+        
+        # Sort each position by projection (highest first)
+        for pos in by_position:
+            by_position[pos].sort(key=lambda p: p.projection, reverse=True)
+        
+        starting_lineup = []
+        
+        # Fill required starting positions
+        # QB: 1
+        if 'QB' in by_position and by_position['QB']:
+            starting_lineup.append(by_position['QB'][0])
+        
+        # RB: 2 
+        if 'RB' in by_position:
+            starting_lineup.extend(by_position['RB'][:2])
+        
+        # WR: 2
+        if 'WR' in by_position:
+            starting_lineup.extend(by_position['WR'][:2])
+        
+        # TE: 1
+        if 'TE' in by_position and by_position['TE']:
+            starting_lineup.append(by_position['TE'][0])
+        
+        # FLEX: 1 (best remaining RB/WR/TE)
+        flex_candidates = []
+        if 'RB' in by_position and len(by_position['RB']) > 2:
+            flex_candidates.extend(by_position['RB'][2:])  # RB3+
+        if 'WR' in by_position and len(by_position['WR']) > 2:
+            flex_candidates.extend(by_position['WR'][2:])  # WR3+
+        if 'TE' in by_position and len(by_position['TE']) > 1:
+            flex_candidates.extend(by_position['TE'][1:])  # TE2+
+        
+        if flex_candidates:
+            best_flex = max(flex_candidates, key=lambda p: p.projection)
+            starting_lineup.append(best_flex)
+        
+        # K: 1
+        if 'K' in by_position and by_position['K']:
+            starting_lineup.append(by_position['K'][0])
+        
+        # DEF: 1
+        if 'DEF' in by_position and by_position['DEF']:
+            starting_lineup.append(by_position['DEF'][0])
+        
+        return starting_lineup
     
     def _aggregate_simulation_results(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Aggregate results from multiple simulations"""
@@ -287,7 +344,7 @@ class OutcomeAwareStrategy(MonteCarloStrategy):
     
     def select_pick(self, draft_state: DraftState, config: LeagueConfig) -> EnhancedPlayer:
         """Select pick considering outcome variance"""
-        available = draft_state.available_players
+        available = draft_state.get_available_players()
         
         if not available:
             return available[0]

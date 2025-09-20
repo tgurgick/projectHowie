@@ -32,8 +32,12 @@ def build_historical_adp(config: HistoricalADPConfig, test_mode: bool = False):
         print(f"\n📅 Processing {year}...")
         
         for scoring in config.scoring_formats:
-            db_name = f"fantasy_{scoring.replace('_', '')}.db"
-            db_url = f"sqlite:///data/{db_name}"
+            try:
+                from howie_cli.core.paths import get_db_url
+                db_url = get_db_url(scoring)
+            except Exception:
+                db_name = f"fantasy_{scoring.replace('_', '')}.db"
+                db_url = f"sqlite:///data/{db_name}"
             
             print(f"  📊 {scoring.upper()} scoring...")
             

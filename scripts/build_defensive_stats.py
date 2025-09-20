@@ -23,7 +23,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 # Database setup
-DEFAULT_DB_URL = os.getenv("DB_URL", "sqlite:///data/fantasy_ppr.db")
+try:
+    from howie_cli.core.paths import get_db_url
+    DEFAULT_DB_URL = os.getenv("DB_URL", get_db_url("ppr"))
+except Exception:
+    # Fallback to previous behavior if package import not available
+    DEFAULT_DB_URL = os.getenv("DB_URL", "sqlite:///data/fantasy_ppr.db")
 Base = declarative_base(metadata=MetaData(schema=None))
 
 @dataclass

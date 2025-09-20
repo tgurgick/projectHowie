@@ -22,6 +22,11 @@ from scripts.build_fantasy_db import (
     PlayerAdvancedStats, Base, ensure_dt,
     DEFAULT_DB_URL
 )
+try:
+    from howie_cli.core.paths import get_db_url
+    _DEFAULT_URL = os.getenv("DB_URL", get_db_url("ppr"))
+except Exception:
+    _DEFAULT_URL = DEFAULT_DB_URL
 
 @dataclass
 class Args:
@@ -264,7 +269,7 @@ def build_pff_route_data_batch(args: Args):
 def parse_args() -> Args:
     p = argparse.ArgumentParser(description="Build route data from PFF regular season CSV files (2018-2024).")
     p.add_argument("--csv-dir", type=str, default="data/pff_csv", help="Directory containing PFF CSV files")
-    p.add_argument("--db-url", type=str, default=DEFAULT_DB_URL, help="SQLAlchemy DB URL")
+    p.add_argument("--db-url", type=str, default=_DEFAULT_URL, help="SQLAlchemy DB URL")
     p.add_argument("--seasons", type=int, nargs="+", help="Specific seasons to process (default: all)")
     
     a = p.parse_args()

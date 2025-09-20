@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich import print as rprint
 
 from .models import Player, LeagueConfig
+from ..core.paths import get_data_dir
 
 
 class MonteCarloResultsViewer:
@@ -19,7 +20,9 @@ class MonteCarloResultsViewer:
     
     def __init__(self):
         self.console = Console()
-        self.results_dir = Path("data/monte_carlo_results")
+        # Use portable data directory for Monte Carlo results
+        data_dir = get_data_dir()
+        self.results_dir = data_dir / "monte_carlo_results"
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.last_results = None
     

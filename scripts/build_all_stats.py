@@ -7,6 +7,10 @@ Builds advanced stats and fantasy market data for all scoring types
 import subprocess
 import sys
 import os
+try:
+    from howie_cli.core.paths import get_db_path
+except Exception:
+    get_db_path = None
 
 def build_stats_for_database(db_path, db_name, start_year=2018, end_year=2024):
     """Build advanced stats and market data for a specific database"""
@@ -64,11 +68,18 @@ def main():
     print(f"Building advanced stats and market data for {start_year}-{end_year}")
     
     # Define databases to process
-    databases = [
-        ("data/fantasy_ppr.db", "PPR Database"),
-        ("data/fantasy_halfppr.db", "Half-PPR Database"),
-        ("data/fantasy_standard.db", "Standard Database")
-    ]
+    if get_db_path:
+        databases = [
+            (str(get_db_path("ppr")), "PPR Database"),
+            (str(get_db_path("half_ppr")), "Half-PPR Database"),
+            (str(get_db_path("standard")), "Standard Database"),
+        ]
+    else:
+        databases = [
+            ("data/fantasy_ppr.db", "PPR Database"),
+            ("data/fantasy_halfppr.db", "Half-PPR Database"),
+            ("data/fantasy_standard.db", "Standard Database")
+        ]
     
     results = {}
     for db_path, db_name in databases:

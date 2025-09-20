@@ -27,6 +27,8 @@ from howie_cli.core.enhanced_agent import EnhancedHowieAgent
 from howie_cli.core.model_manager import ModelManager
 from howie_cli.core.context import ConversationContext
 from howie_cli.draft.draft_cli import DraftCLI
+from howie_cli.core.paths import get_db_path, get_db_url
+from howie_cli.core.commands import REGISTRY as COMMAND_REGISTRY
 
 # Eagles green color theme
 console = Console(style="green")
@@ -36,22 +38,31 @@ __version__ = "2.3.0"
 
 
 def get_database_path():
-    """Get the correct path to the fantasy database"""
-    # Get the directory where this script is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(script_dir, "data", "fantasy_ppr.db")
-    
-    # Check if database exists at the expected location
-    if os.path.exists(db_path):
-        return db_path
-    
-    # Fallback to current directory (for backward compatibility)
-    fallback_path = "data/fantasy_ppr.db"
-    if os.path.exists(fallback_path):
-        return fallback_path
-    
-    # If neither exists, return the expected path (will show clear error)
-    return db_path
+    """Resolve a user-writable database path independent of CWD.
+
+    Priority:
+    1) If DB_URL is set and uses sqlite, return its file path
+    2) Else use per-user data dir (e.g., ~/.howie/data/fantasy_ppr.db)
+    """
+    db_url = os.getenv("DB_URL")
+    if db_url and db_url.startswith("sqlite:///"):
+        # Strip scheme and return path
+        return db_url.replace("sqlite:///", "")
+    # Preferred per-user path
+    user_path = get_db_path("ppr")
+    if user_path.exists():
+        return str(user_path)
+    # Fallback to repo data directory
+    from pathlib import Path as _Path
+    repo_path = _Path(__file__).parent / "data" / "fantasy_ppr.db"
+    if repo_path.exists():
+        return str(repo_path)
+    # Fallback to CWD data directory
+    cwd_path = _Path.cwd() / "data" / "fantasy_ppr.db"
+    if cwd_path.exists():
+        return str(cwd_path)
+    # Default to user path (will raise helpful error later if missing)
+    return str(user_path)
 
 
 def detect_accidental_rapid_stats(user_input: str) -> bool:
@@ -204,6 +215,31 @@ def chat(model, config, resume, no_intro):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
+
+
+@cli.command()
+def tui():
+    """Launch the Textual TUI with slash menu and suggestions."""
+    try:
+        from howie_cli.tui.app import run as run_tui
+    except Exception as e:
+        console.print("[red]Textual not installed. Please `pip install textual`.[/red]")
+        console.print(f"[dim]Error: {e}[/dim]")
+        sys.exit(1)
+    run_tui()
+
+
+def tui_cli():
+    """Entry point for primary TUI executable (howie command) - TUI is now the main interface"""
+    try:
+        from howie_cli.tui.app import run as run_tui
+    except Exception as e:
+        print("Textual not installed. Please `pip install textual`.")
+        print(f"Error: {e}")
+        print("Falling back to CLI mode...")
+        print("Use 'howie-cli' for command-line interface.")
+        sys.exit(1)
+    run_tui()
 
 
 async def enhanced_chat_loop(agent: EnhancedHowieAgent):
@@ -1645,7 +1681,7 @@ def handle_rapid_stats_command(command: str):
         import sqlite3
         from pathlib import Path
         
-        db_path = Path(__file__).parent / "data" / "fantasy_ppr.db"
+        db_path = Path(get_database_path())
         if not db_path.exists():
             console.print(f"[red]Database not found: {db_path}[/red]")
             return
@@ -4210,7 +4246,7 @@ def handle_bye_week_command(position: str, parts: list):
         import sqlite3
         from pathlib import Path
         
-        db_path = Path(__file__).parent / "data" / "fantasy_ppr.db"
+        db_path = Path(get_database_path())
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
         

@@ -139,7 +139,9 @@ class DistributionFactory:
             return str(db_path)
         
         # Fallback
-        fallback = Path("data/fantasy_ppr.db")
+        # Use portable database path
+        from ..core.paths import get_db_path
+        fallback = get_db_path("ppr")
         if fallback.exists():
             return str(fallback)
         

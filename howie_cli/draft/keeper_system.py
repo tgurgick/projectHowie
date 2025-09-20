@@ -80,7 +80,9 @@ class KeeperValidator:
         if db_path.exists():
             return str(db_path)
         
-        fallback = Path("data/fantasy_ppr.db")
+        # Use portable database path
+        from ..core.paths import get_db_path
+        fallback = get_db_path("ppr")
         if fallback.exists():
             return str(fallback)
         

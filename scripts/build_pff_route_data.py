@@ -22,6 +22,11 @@ from scripts.build_fantasy_db import (
     PlayerAdvancedStats, Base, ensure_dt,
     DEFAULT_DB_URL
 )
+try:
+    from howie_cli.core.paths import get_db_url
+    _DEFAULT_URL = os.getenv("DB_URL", get_db_url("ppr"))
+except Exception:
+    _DEFAULT_URL = DEFAULT_DB_URL
 
 @dataclass
 class Args:
@@ -190,7 +195,7 @@ def parse_args() -> Args:
     p = argparse.ArgumentParser(description="Build PFF route data for fantasy DB.")
     p.add_argument("--start", type=int, default=2018, help="Start season (YYYY)")
     p.add_argument("--end", type=int, default=2024, help="End season (YYYY)")
-    p.add_argument("--db-url", type=str, default=DEFAULT_DB_URL, help="SQLAlchemy DB URL")
+    p.add_argument("--db-url", type=str, default=_DEFAULT_URL, help="SQLAlchemy DB URL")
     p.add_argument("--pff-api-key", type=str, required=True, help="PFF API key")
     p.add_argument("--pff-base-url", type=str, default="https://api.profootballfocus.com/v1", 
                    help="PFF API base URL")

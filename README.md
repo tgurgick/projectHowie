@@ -1,12 +1,14 @@
-# 🏈 Howie CLI - Fantasy Football AI Command Center
+# 🏈 Howie - Fantasy Football AI Command Center
 
 > **Transform your fantasy football strategy with AI-powered analysis, real-time intelligence, and comprehensive draft tools.**
+> 
+> **🖥️ TUI Primary Interface** | **💻 CLI Fallback** | **📱 Mobile Optimized**
 
-[![Version](https://img.shields.io/badge/version-2.4.0-brightgreen.svg)](https://github.com/tgurgick/projectHowie)
+[![Version](https://img.shields.io/badge/version-2.5.0-brightgreen.svg)](https://github.com/tgurgick/projectHowie)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 
-## 🚀 What's New in v2.4.0
+## 🚀 What's New in v2.5.0
 
 ### 🎯 **Three-Layer Draft Analysis System**
 - **Pick Recommendations** - Top 10 picks for any round with 6-factor scoring
@@ -120,24 +122,30 @@
 
 ## 🔧 Installation & Setup
 
-### **📦 Quick Install**
+### **📦 Portable Install (Recommended)**
 ```bash
 # Clone repository
 git clone https://github.com/tgurgick/projectHowie.git
 cd projectHowie
 
-# Install dependencies
-pip install -r requirements_enhanced.txt
+# Create virtual environment
+python -m venv howie-env
+source howie-env/bin/activate  # On Windows: howie-env\Scripts\activate
 
-# Set up API keys (required)
-export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"
-export PERPLEXITY_API_KEY="your-perplexity-key"
+# Run portable installer
+./install_portable.sh
 
-# Build databases (one-time setup)
-python scripts/build_fantasy_db.py
-python scripts/build_pff_projections.py
-python scripts/build_defensive_stats.py
+# Use from anywhere!
+cd ~/Desktop
+howie                    # 🖥️  Launch TUI (primary interface)
+howie-cli chat           # 💻 Launch CLI (fallback)
+```
+
+### **🔑 API Keys Setup**
+```bash
+# Create .env file in your home directory
+echo "OPENAI_API_KEY=your-openai-key" >> ~/.env
+echo "ANTHROPIC_API_KEY=your-anthropic-key" >> ~/.env  # Optional
 ```
 
 ### **🗄️ Database Setup**

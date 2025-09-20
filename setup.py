@@ -16,13 +16,14 @@ with open("requirements.txt", "r") as f:
 
 setup(
     name="howie-cli",
-    version="2.2.0",
+    version="2.5.0",
     author="Trevor Gurgick",
     description="Advanced Fantasy Football AI Assistant with Comprehensive Search Workflow",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/tgurgick/projectHowie",
     packages=find_packages(),
+    py_modules=["howie_enhanced"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: End Users/Desktop",
@@ -38,11 +39,13 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "howie=howie_enhanced:cli",
+            "howie=howie_enhanced:tui_cli",
+            "howie-cli=howie_enhanced:cli",
         ],
     },
     include_package_data=True,
     package_data={
         "howie_cli": ["*.json", "*.yaml"],
+        "": ["data/*.db", "data/*.pkl"],
     },
 )

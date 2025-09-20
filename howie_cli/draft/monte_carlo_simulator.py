@@ -434,28 +434,96 @@ class MonteCarloSimulator:
         return realistic
     
     def _calculate_roster_strength(self, roster: Roster) -> float:
-        """Calculate overall roster strength score"""
+        """Calculate STARTING LINEUP strength score (not bench depth)"""
         if not roster.players:
             return 0.0
         
-        # Simple strength calculation - sum of projections
-        total_projection = sum(player.projection for player in roster.players)
+        # Get optimal starting lineup from roster
+        starting_lineup = self._get_optimal_starting_lineup(roster.players)
         
-        # Bonus for roster balance
+        # Score starters only - bench depth doesn't matter for weekly scoring
+        starter_projection = sum(player.projection for player in starting_lineup)
+        
+        # Bonus for complete starting lineup
         position_counts = defaultdict(int)
-        for player in roster.players:
+        for player in starting_lineup:
             position_counts[player.position] += 1
         
-        # Penalty for imbalanced rosters
+        # Penalty for missing essential starting positions
         balance_penalty = 0
         if position_counts.get('QB', 0) == 0:
-            balance_penalty += 50  # No QB is bad
-        if position_counts.get('RB', 0) == 0:
-            balance_penalty += 30  # No RB is bad
+            balance_penalty += 60  # No starting QB is catastrophic
+        if position_counts.get('RB', 0) < 2:
+            balance_penalty += 40 * (2 - position_counts.get('RB', 0))  # Need 2 starting RBs
         if position_counts.get('WR', 0) < 2:
-            balance_penalty += 20  # Need multiple WRs
+            balance_penalty += 40 * (2 - position_counts.get('WR', 0))  # Need 2 starting WRs
+        if position_counts.get('TE', 0) == 0:
+            balance_penalty += 30  # No starting TE
+        if position_counts.get('K', 0) == 0:
+            balance_penalty += 15  # No kicker
+        if position_counts.get('DEF', 0) == 0:
+            balance_penalty += 15  # No defense
         
-        return total_projection - balance_penalty
+        return starter_projection - balance_penalty
+    
+    def _get_optimal_starting_lineup(self, roster_players: List[Player]) -> List[Player]:
+        """Select optimal starting lineup from roster (QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1)"""
+        if not roster_players:
+            return []
+        
+        # Sort players by position and projection
+        by_position = {}
+        for player in roster_players:
+            pos = player.position.upper()
+            if pos not in by_position:
+                by_position[pos] = []
+            by_position[pos].append(player)
+        
+        # Sort each position by projection (highest first)
+        for pos in by_position:
+            by_position[pos].sort(key=lambda p: p.projection, reverse=True)
+        
+        starting_lineup = []
+        
+        # Fill required starting positions
+        # QB: 1
+        if 'QB' in by_position and by_position['QB']:
+            starting_lineup.append(by_position['QB'][0])
+        
+        # RB: 2 
+        if 'RB' in by_position:
+            starting_lineup.extend(by_position['RB'][:2])
+        
+        # WR: 2
+        if 'WR' in by_position:
+            starting_lineup.extend(by_position['WR'][:2])
+        
+        # TE: 1
+        if 'TE' in by_position and by_position['TE']:
+            starting_lineup.append(by_position['TE'][0])
+        
+        # FLEX: 1 (best remaining RB/WR/TE)
+        flex_candidates = []
+        if 'RB' in by_position and len(by_position['RB']) > 2:
+            flex_candidates.extend(by_position['RB'][2:])  # RB3+
+        if 'WR' in by_position and len(by_position['WR']) > 2:
+            flex_candidates.extend(by_position['WR'][2:])  # WR3+
+        if 'TE' in by_position and len(by_position['TE']) > 1:
+            flex_candidates.extend(by_position['TE'][1:])  # TE2+
+        
+        if flex_candidates:
+            best_flex = max(flex_candidates, key=lambda p: p.projection)
+            starting_lineup.append(best_flex)
+        
+        # K: 1
+        if 'K' in by_position and by_position['K']:
+            starting_lineup.append(by_position['K'][0])
+        
+        # DEF: 1
+        if 'DEF' in by_position and by_position['DEF']:
+            starting_lineup.append(by_position['DEF'][0])
+        
+        return starting_lineup
     
     def generate_availability_report(self, results: MonteCarloResults, top_n: int = 50) -> str:
         """Generate human-readable availability report"""

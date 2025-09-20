@@ -15,6 +15,7 @@ from rich import print as rprint
 
 from .strategy_tree_search import DraftStrategy, PositionTarget
 from .models import LeagueConfig
+from ..core.paths import get_data_dir
 
 
 @dataclass
@@ -34,7 +35,9 @@ class StrategyManager:
     
     def __init__(self):
         self.console = Console()
-        self.strategy_dir = Path("data/strategies")
+        # Use portable data directory for strategies
+        data_dir = get_data_dir()
+        self.strategy_dir = data_dir / "strategies"
         self.strategy_dir.mkdir(parents=True, exist_ok=True)
         self.current_strategy: Optional[DraftStrategy] = None
     
@@ -113,21 +116,21 @@ class StrategyManager:
         if not sessions:
             return "[yellow]No saved strategies found. Run a simulation first to generate strategies.[/yellow]"
         
-        # Create strategy menu table
-        table = Table(title="🎯 Draft Strategy Quick Menu")
+        # Create strategy menu table with proper width constraints
+        table = Table(title="🎯 Draft Strategy Quick Menu", width=100)
         table.add_column("#", style="cyan", width=3)
-        table.add_column("Name", style="bold", width=25)
-        table.add_column("League", style="dim", width=15)
-        table.add_column("Created", style="dim", width=12)
-        table.add_column("Summary", width=40)
+        table.add_column("Name", style="bold", width=20)
+        table.add_column("League", style="dim", width=12)
+        table.add_column("Created", style="dim", width=10)
+        table.add_column("Summary", width=30, overflow="ellipsis")
         
         for i, session in enumerate(sessions[:10], 1):  # Show top 10
             strategy = session.strategy
             league_info = f"{strategy.league_config.num_teams}T, {strategy.league_config.scoring_type.upper()}"
             created = session.created_at.split()[0] if session.created_at else "Unknown"
             
-            # Truncate summary
-            summary = strategy.strategy_summary.split('\n')[0][:35] + "..." if len(strategy.strategy_summary) > 35 else strategy.strategy_summary
+            # Truncate summary to fit column width
+            summary = strategy.strategy_summary.split('\n')[0][:25] + "..." if len(strategy.strategy_summary) > 25 else strategy.strategy_summary
             
             table.add_row(
                 str(i),
@@ -137,18 +140,29 @@ class StrategyManager:
                 summary
             )
         
-        self.console.print(table)
+        # Render table to string for TUI compatibility
+        from io import StringIO
+        from rich.console import Console
         
-        # Add usage instructions
-        instructions = """
-[bold]Usage:[/bold]
-• [yellow]/draft/strategy/1[/yellow] - Load strategy #1
-• [yellow]/draft/strategy/current[/yellow] - Show current strategy details
-• [yellow]/draft/strategy/generate[/yellow] - Generate new strategy
-        """
+        buf = StringIO()
+        temp_console = Console(file=buf, width=100, force_terminal=False, no_color=False)
+        temp_console.print(table)
         
-        self.console.print(Panel(instructions, title="Commands", border_style="dim"))
-        return ""
+        # Add usage instructions in a more compact format
+        instructions = Panel(
+            "[bold]Usage:[/bold]\n"
+            "• [yellow]/draft/strategy/1[/yellow] - Load strategy #1\n"
+            "• [yellow]/draft/strategy/current[/yellow] - Show current strategy details\n"
+            "• [yellow]/draft/strategy/generate[/yellow] - Generate new strategy",
+            title="Commands", 
+            border_style="dim",
+            width=80
+        )
+        
+        temp_console.print(instructions)
+        
+        # Return the rendered content
+        return buf.getvalue()
     
     def show_current_strategy(self) -> str:
         """Display detailed view of current strategy"""
@@ -156,6 +170,13 @@ class StrategyManager:
             return "[yellow]No current strategy loaded. Use '/draft/strategy' to see available strategies.[/yellow]"
         
         strategy = self.current_strategy
+        
+        # Render to string for TUI compatibility
+        from io import StringIO
+        from rich.console import Console
+        
+        buf = StringIO()
+        temp_console = Console(file=buf, width=100, force_terminal=False, no_color=False)
         
         # Strategy overview
         overview_panel = Panel(
@@ -170,7 +191,7 @@ class StrategyManager:
             border_style="green"
         )
         
-        self.console.print(overview_panel)
+        temp_console.print(overview_panel)
         
         # Round-by-round targets
         targets_table = Table(title="🎯 Round-by-Round Targets")
@@ -194,15 +215,16 @@ class StrategyManager:
                 confidence_display
             )
         
-        self.console.print(targets_table)
+        temp_console.print(targets_table)
         
         # Key insights
         if strategy.key_insights:
             insights_text = "\n".join([f"• {insight}" for insight in strategy.key_insights])
             insights_panel = Panel(insights_text, title="💡 Key Insights", border_style="blue")
-            self.console.print(insights_panel)
+            temp_console.print(insights_panel)
         
-        return ""
+        # Return the rendered content
+        return buf.getvalue()
     
     def show_round_details(self, round_number: int) -> str:
         """Show detailed information for a specific round"""
