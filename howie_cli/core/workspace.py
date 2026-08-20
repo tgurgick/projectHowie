@@ -35,10 +35,25 @@ class WorkspaceManager:
         session_path.mkdir(parents=True, exist_ok=True)
         return session_path
     
+    def _confine(self, path: Path, roots: Optional[List[Path]] = None) -> Path:
+        """Resolve a path and require it to live under an allowed root
+        (the session workspace or the current working directory)."""
+        resolved = Path(path).expanduser().resolve()
+        allowed = roots or [self.base_path.resolve(), Path.cwd().resolve()]
+        for root in allowed:
+            try:
+                resolved.relative_to(root)
+                return resolved
+            except ValueError:
+                continue
+        raise PermissionError(
+            f"Path {path} is outside the allowed workspace/current directory"
+        )
+
     def read_file(self, file_path: Union[str, Path], file_type: Optional[str] = None) -> Any:
         """Read a file and return its contents"""
-        path = Path(file_path)
-        
+        path = self._confine(Path(file_path))
+
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
@@ -73,17 +88,20 @@ class WorkspaceManager:
                 return f.read()
     
     def write_file(self, data: Any, file_name: str, file_type: Optional[str] = None,
-                   subfolder: Optional[str] = None) -> Path:
-        """Write data to a file in the workspace"""
+                   subfolder: Optional[str] = None, overwrite: bool = True) -> Path:
+        """Write data to a file in the workspace (never outside it)"""
         # Determine subfolder
         if subfolder:
             target_dir = self.session_path / subfolder
-            target_dir.mkdir(parents=True, exist_ok=True)
         else:
             target_dir = self.session_path
-        
-        # Construct file path
-        file_path = target_dir / file_name
+
+        # Construct and confine the file path to the session workspace —
+        # a file_name/subfolder containing ../ must not escape it
+        file_path = self._confine(target_dir / file_name, roots=[self.session_path.resolve()])
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        if file_path.exists() and not overwrite:
+            raise FileExistsError(f"{file_path} exists and overwrite=False")
         
         # Auto-detect file type if not provided
         if not file_type:

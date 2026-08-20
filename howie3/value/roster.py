@@ -1,0 +1,220 @@
+"""Roster-conditional pick valuation.
+
+Value of taking player X at your current pick = optimal-lineup points of the
+roster you END the draft with, assuming you draft optimally afterward against
+expected availability at each of your future picks.
+
+The rollout is greedy over positions per future pick, pricing each position
+at E[k-th best available] (k tracks how many of that position the plan has
+already claimed from the market). Greedy is a lower bound on optimal play,
+but it is the same bound for every candidate X, so the *ranking* is fair —
+and it inherently encodes roster fit: a 4th WR only adds value through the
+flex or by beating a current starter.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Tuple
+
+from ..config import LeagueConfig
+from .board import POSITIONS, PoolPlayer, expected_kth_best
+from .lineup import lineup_points
+
+
+@dataclass
+class PickPlan:
+    """Result of evaluating one candidate at the current pick."""
+    player: PoolPlayer
+    final_value: float           # expected optimal-lineup points at draft end
+    plan: List[Tuple[str, float]] = field(default_factory=list)  # (position, expected pts) per future pick
+    sim: Optional[object] = None  # SimResult once Monte Carlo reranking runs
+
+    @property
+    def plan_positions(self) -> List[str]:
+        return [pos for pos, _ in self.plan]
+
+
+def _rollout(
+    roster_pts: Dict[str, List[float]],
+    pools: Dict[str, List[PoolPlayer]],
+    future_picks: Sequence[int],
+    league: LeagueConfig,
+    taken: frozenset,
+) -> (float, List[str]):
+    """Greedily complete the draft; returns (final lineup value, plan)."""
+    by_pos = {pos: list(pts) for pos, pts in roster_pts.items()}
+    claims = {pos: 0 for pos in POSITIONS}
+    plan: List[Tuple[str, float]] = []
+    current = lineup_points(by_pos, league)
+    for i, pick in enumerate(future_picks):
+        next_pick = future_picks[i + 1] if i + 1 < len(future_picks) else None
+        # Urgency greedy: value of taking the position now minus taking it at
+        # the next pick instead. Flat positions (K/DST: replacement is free
+        # all draft) defer to the end on their own; steep tiers get grabbed.
+        best = None  # (urgency, gain_now, pos, pts)
+        for pos in POSITIONS:
+            pts_now = expected_kth_best(pools[pos], pick, claims[pos] + 1, taken)
+            if pts_now <= 0:
+                continue
+            trial = dict(by_pos)
+            trial[pos] = by_pos.get(pos, []) + [pts_now]
+            gain_now = lineup_points(trial, league) - current
+            if gain_now <= 0:
+                continue
+            if next_pick is not None:
+                pts_later = expected_kth_best(pools[pos], next_pick, claims[pos] + 1, taken)
+                trial[pos] = by_pos.get(pos, []) + [pts_later]
+                gain_later = lineup_points(trial, league) - current
+                urgency = gain_now - gain_later
+            else:
+                urgency = gain_now
+            key = (urgency, gain_now)
+            if best is None or key > (best[0], best[1]):
+                best = (urgency, gain_now, pos, pts_now)
+        if best is None:
+            plan.append(("—", 0.0))
+            continue
+        _, gain_now, pos, pts = best
+        by_pos[pos] = by_pos.get(pos, []) + [pts]
+        claims[pos] += 1
+        current += gain_now
+        plan.append((pos, pts))
+    return current, plan
+
+
+def evaluate_candidates(
+    pool: Sequence[PoolPlayer],
+    roster: Sequence[PoolPlayer],
+    current_pick: int,
+    future_picks: Sequence[int],
+    league: LeagueConfig,
+    taken: frozenset = frozenset(),
+    min_p_available: float = 0.10,
+    top_n: int = 12,
+) -> List[PickPlan]:
+    """Rank the realistic candidates at the current pick by final roster value."""
+    pools: Dict[str, List[PoolPlayer]] = {pos: [] for pos in POSITIONS}
+    roster_uids = {p.uid for p in roster}
+    for player in pool:
+        if player.uid not in taken and player.uid not in roster_uids:
+            pools[player.position].append(player)
+
+    roster_pts: Dict[str, List[float]] = {}
+    for p in roster:
+        roster_pts.setdefault(p.position, []).append(p.proj)
+
+    # Realistic candidates: available now with meaningful probability; cap the
+    # field per position to keep the rollout cheap
+    candidates: List[PoolPlayer] = []
+    for pos in POSITIONS:
+        avail = [p for p in pools[pos] if p.p_available(current_pick) >= min_p_available]
+        candidates.extend(avail[:8])
+
+    results: List[PickPlan] = []
+    for cand in candidates:
+        take_pts = dict(roster_pts)
+        take_pts[cand.position] = roster_pts.get(cand.position, []) + [cand.proj]
+        pools_after = dict(pools)
+        pools_after[cand.position] = [p for p in pools[cand.position] if p.uid != cand.uid]
+        value, plan = _rollout(take_pts, pools_after, future_picks, league, taken)
+        results.append(PickPlan(cand, value, plan))
+
+    results.sort(key=lambda r: -r.final_value)
+    return results[:top_n]
+
+
+def mc_rerank(
+    conn,
+    results: List[PickPlan],
+    roster: Sequence[PoolPlayer],
+    pool: Sequence[PoolPlayer],
+    league: LeagueConfig,
+    season: int,
+    n_sims: int = 200,
+) -> List[PickPlan]:
+    """Re-rank candidate plans by Monte Carlo expected season lineup points.
+
+    The candidate and current roster are simulated as themselves; the rest of
+    the plan is simulated as phantom players carrying the rollout's expected
+    points, with variance/availability from the empirical bucket their
+    projection would fall into.
+    """
+    import numpy as np
+
+    from .distributions import (
+        STATIC_BUCKETS, SimPlayer, build_sim_players, calibrate, tier_of,
+    )
+    from .simulate import simulate_roster
+
+    fmt = league.scoring_format
+    buckets = calibrate(conn, fmt)
+    games_by_uid = {
+        r["player_uid"]: r["games"]
+        for r in conn.execute(
+            "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'",
+            (season,),
+        )
+    }
+    # Projection rank within position (pool is already sorted by proj desc)
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    pos_projs: Dict[str, List[float]] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+        pos_projs.setdefault(p.position, []).append(p.proj)
+
+    def phantom(pos: str, pts: float) -> SimPlayer:
+        rank = 1 + sum(1 for v in pos_projs.get(pos, []) if v > pts)
+        if pos in STATIC_BUCKETS:
+            cv, p_play = STATIC_BUCKETS[pos]
+        else:
+            b = buckets.get((pos, tier_of(pos, rank)))
+            cv, p_play = (b.cv, b.p_play) if b else (0.5, 0.9)
+        # Same calibration invariant as real players: E[season] == pts
+        return SimPlayer(
+            name=f"~{pos}{rank}", position=pos, proj=pts,
+            weekly_mu=pts / (17.0 * p_play), cv=cv, p_play=p_play,
+            bye_week=None, sos_mult=np.ones(18),
+        )
+
+    for r in results:
+        concrete = list(roster) + [r.player]
+        sim_players = build_sim_players(
+            conn, concrete, season, fmt, proj_rank, games_by_uid
+        )
+        sim_players += [phantom(pos, pts) for pos, pts in r.plan if pos != "—" and pts > 0]
+        r.sim = simulate_roster(sim_players, league, n_sims=n_sims)
+
+    results.sort(key=lambda r: -(r.sim.mean if r.sim else r.final_value))
+    return results
+
+
+def resolve_names(conn, names: Sequence[str], pool: Sequence[PoolPlayer]) -> (List[PoolPlayer], List[str]):
+    """Map user-typed names (or DST team codes) to pool players."""
+    from ..data.names import name_key
+
+    by_uid = {p.uid: p for p in pool}
+    by_key: Dict[str, PoolPlayer] = {}
+    for p in pool:
+        by_key.setdefault(name_key(p.name), p)
+
+    found, missing = [], []
+    for raw in names:
+        raw = raw.strip()
+        if not raw:
+            continue
+        key = name_key(raw)
+        hit: Optional[PoolPlayer] = by_key.get(key)
+        if hit is None and len(raw) <= 3:  # bare team code -> that team's DST
+            hit = by_uid.get(f"dst:{raw.upper()}")
+        if hit is None and conn is not None:
+            row = conn.execute(
+                "SELECT player_uid FROM name_aliases WHERE name_key = ?", (key,)
+            ).fetchone()
+            if row:
+                hit = by_uid.get(row["player_uid"])
+        if hit:
+            found.append(hit)
+        else:
+            missing.append(raw)
+    return found, missing

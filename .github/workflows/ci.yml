@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e ".[dev,ai]"
+      - name: Repo data boundary
+        run: |
+          # No raw data may be tracked: db/csv/parquet files or anything under /data
+          tracked=$(git ls-files | grep -E '\.(db|sqlite3?|csv|parquet|pkl)$|^data/' || true)
+          if [ -n "$tracked" ]; then echo "Raw data tracked in git:"; echo "$tracked"; exit 1; fi
+      - name: Tests (no local database)
+        run: python -m pytest tests/ -q

@@ -147,6 +147,13 @@ def show_eagles_intro():
     console.print("\n")
 
 
+def _deprecation_notice():
+    print("=" * 70)
+    print("DEPRECATED: this is the legacy Howie v2 interface. Use `howie` (v3).")
+    print("v2 will be removed in a future release.")
+    print("=" * 70)
+
+
 @click.group(invoke_without_command=True)
 @click.option('--version', is_flag=True, help='Show version')
 @click.pass_context
@@ -161,6 +168,7 @@ def cli(ctx, version):
     - GPT-4o for complex reasoning
     - Fast models for quick lookups
     """
+    _deprecation_notice()
     if version:
         console.print(f"[bright_green]Howie Enhanced CLI v{__version__}[/bright_green]")
         return
@@ -230,7 +238,8 @@ def tui():
 
 
 def tui_cli():
-    """Entry point for primary TUI executable (howie command) - TUI is now the main interface"""
+    """Entry point for the LEGACY v2 TUI (howie-legacy). Deprecated."""
+    _deprecation_notice()
     try:
         from howie_cli.tui.app import run as run_tui
     except Exception as e:

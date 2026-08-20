@@ -1,0 +1,153 @@
+"""Draft-board math: expected best available and marginal value.
+
+The core quantity is marginal value at a pick:
+
+    MV(player X at pick k) = proj(X) - E[best projection at pos(X) at your next pick]
+
+i.e. what you actually gain by taking X *now* instead of addressing the
+position one pick later. A great player who will still be there next round
+has low marginal value now; a mid tier-break player about to be swept has
+high marginal value. This replaces static VORP as the ranking signal.
+"""
+
+import sqlite3
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Sequence
+
+from ..config import LeagueConfig
+from .availability import p_available
+
+POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
+
+
+@dataclass
+class PoolPlayer:
+    uid: str
+    name: str
+    position: str
+    team: Optional[str]
+    proj: float                 # season points in the league's scoring format
+    adp: Optional[float]
+    stdev: Optional[float]
+    bye: Optional[int]
+
+    def p_available(self, pick: float) -> float:
+        return p_available(self.adp, self.stdev, pick)
+
+
+def load_pool(
+    conn: sqlite3.Connection,
+    season: int,
+    fmt: str,
+    proj_source: str = "pff",
+    adp_source: str = "ffc",
+) -> List[PoolPlayer]:
+    rows = conn.execute(
+        f"""
+        SELECT pr.player_uid, p.name, pr.position, pr.team,
+               pr.pts_{fmt} AS proj, a.adp, a.stdev, a.bye_week
+        FROM projections pr
+        JOIN players p ON p.player_uid = pr.player_uid
+        LEFT JOIN adp a ON a.player_uid = pr.player_uid
+             AND a.season = pr.season AND a.source = ? AND a.format = ?
+        WHERE pr.season = ? AND pr.source = ? AND pr.pts_{fmt} IS NOT NULL
+        ORDER BY proj DESC
+        """,
+        (adp_source, fmt, season, proj_source),
+    ).fetchall()
+    return [
+        PoolPlayer(
+            r["player_uid"], r["name"], r["position"], r["team"],
+            float(r["proj"]), r["adp"], r["stdev"], r["bye_week"],
+        )
+        for r in rows
+        if r["position"] in POSITIONS
+    ]
+
+
+def snake_picks(league: LeagueConfig, rounds: Optional[int] = None) -> List[int]:
+    """Your overall pick numbers in a snake draft."""
+    t, p = league.num_teams, league.draft_position
+    rounds = rounds or league.roster_size
+    return [
+        (r - 1) * t + p if r % 2 == 1 else r * t - p + 1
+        for r in range(1, rounds + 1)
+    ]
+
+
+def expected_kth_best(
+    candidates: Sequence[PoolPlayer],
+    pick: float,
+    k: int = 1,
+    taken: frozenset = frozenset(),
+) -> float:
+    """E[projection of the k-th best player still available at `pick`].
+
+    k=1 is expected best available. Higher k matters when a draft plan takes
+    the same position more than once: the second claim gets the second-best
+    expected player, not the best again.
+
+    Scans candidates in descending projection order with a DP over how many
+    better players are still available. Availability is treated as
+    independent across players — acceptable at this granularity because ADP
+    already encodes market ordering.
+    """
+    # dp[j] = P(exactly j of the players scanned so far are available), j < k
+    dp = [0.0] * k
+    dp[0] = 1.0
+    expected = 0.0
+    tail = 1.0  # P(fewer than k better players available) upper-bound tracker
+    for player in candidates:
+        if player.uid in taken:
+            continue
+        p_here = player.p_available(pick)
+        # player is the k-th best available iff they survive and exactly k-1
+        # better players survived
+        expected += player.proj * p_here * dp[k - 1]
+        for j in range(k - 1, 0, -1):
+            dp[j] = dp[j] * (1.0 - p_here) + dp[j - 1] * p_here
+        dp[0] *= 1.0 - p_here
+        tail = sum(dp)
+        if tail < 1e-6:
+            break
+    return expected
+
+
+def expected_best_available(
+    candidates: Sequence[PoolPlayer], pick: float, taken: frozenset = frozenset()
+) -> float:
+    return expected_kth_best(candidates, pick, 1, taken)
+
+
+def marginal_values(
+    pool: Sequence[PoolPlayer],
+    current_pick: int,
+    next_pick: int,
+    taken: frozenset = frozenset(),
+    top_n: int = 5,
+) -> Dict[str, List[dict]]:
+    """Per position: top available players at current_pick with their marginal
+    value over waiting until next_pick."""
+    by_pos: Dict[str, List[PoolPlayer]] = {pos: [] for pos in POSITIONS}
+    for player in pool:
+        if player.uid not in taken:
+            by_pos[player.position].append(player)
+
+    out: Dict[str, List[dict]] = {}
+    for pos, candidates in by_pos.items():
+        eba_next = expected_best_available(candidates, next_pick, taken)
+        rows = []
+        # Only show players with a real chance of being there at this pick
+        likely = [p for p in candidates if p.p_available(current_pick) >= 0.10]
+        for player in likely[:top_n]:
+            rows.append(
+                {
+                    "player": player,
+                    "p_now": player.p_available(current_pick),
+                    "p_next": player.p_available(next_pick),
+                    "eba_next": eba_next,
+                    "marginal": player.proj - eba_next,
+                }
+            )
+        out[pos] = rows
+    return out

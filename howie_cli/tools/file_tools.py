@@ -131,7 +131,8 @@ class WriteFileTool(BaseTool):
                 data=data,
                 file_name=file_name,
                 file_type=file_type,
-                subfolder=subfolder
+                subfolder=subfolder,
+                overwrite=overwrite
             )
             
             return ToolResult(

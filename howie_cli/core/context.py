@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 import json
-import pickle
 from pathlib import Path
 from collections import deque
 import hashlib
@@ -189,44 +188,56 @@ class ConversationContext:
         }
     
     def save_session(self, path: Optional[Path] = None):
-        """Save session to disk"""
+        """Save session to disk as JSON (pickle is unsafe for untrusted files)"""
         if not path:
-            path = Path.home() / ".howie" / "sessions" / f"{self.session_id}.pkl"
-        
+            path = Path.home() / ".howie" / "sessions" / f"{self.session_id}.json"
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(path, 'wb') as f:
-            pickle.dump({
-                "session_id": self.session_id,
-                "messages": list(self.messages),
-                "players_discussed": self.players_discussed,
-                "league_context": self.league_context,
-                "user_preferences": self.user_preferences,
-                "analysis_cache": self.analysis_cache,
-                "tool_history": self.tool_history,
-                "session_start": self.session_start,
-                "current_topic": self.current_topic
-            }, f)
-    
+
+        payload = {
+            "session_id": self.session_id,
+            "messages": list(self.messages),
+            "players_discussed": {
+                k: v.dict() for k, v in self.players_discussed.items()
+            },
+            "league_context": self.league_context.dict() if self.league_context else None,
+            "user_preferences": self.user_preferences.dict(),
+            "analysis_cache": self.analysis_cache,
+            "tool_history": self.tool_history,
+            "session_start": self.session_start.isoformat(),
+            "current_topic": self.current_topic,
+        }
+        with open(path, 'w') as f:
+            json.dump(payload, f, default=str)
+
     @classmethod
     def load_session(cls, session_id: str) -> 'ConversationContext':
-        """Load session from disk"""
-        path = Path.home() / ".howie" / "sessions" / f"{session_id}.pkl"
-        
+        """Load session from disk (JSON only — legacy .pkl files are rejected)"""
+        base = Path.home() / ".howie" / "sessions"
+        path = base / f"{session_id}.json"
+
         if not path.exists():
+            if (base / f"{session_id}.pkl").exists():
+                raise ValueError(
+                    f"Session {session_id} is a legacy pickle file, which is no "
+                    "longer loaded for safety. Start a fresh session."
+                )
             raise FileNotFoundError(f"Session {session_id} not found")
-        
-        with open(path, 'rb') as f:
-            data = pickle.load(f)
-        
+
+        with open(path) as f:
+            data = json.load(f)
+
         context = cls(session_id=data["session_id"])
         context.messages = deque(data["messages"], maxlen=100)
-        context.players_discussed = data["players_discussed"]
-        context.league_context = data["league_context"]
-        context.user_preferences = data["user_preferences"]
-        context.analysis_cache = data["analysis_cache"]
-        context.tool_history = data["tool_history"]
-        context.session_start = data["session_start"]
+        context.players_discussed = {
+            k: PlayerContext(**v) for k, v in data.get("players_discussed", {}).items()
+        }
+        if data.get("league_context"):
+            context.league_context = LeagueContext(**data["league_context"])
+        context.user_preferences = UserPreferences(**data.get("user_preferences", {}))
+        context.analysis_cache = data.get("analysis_cache", {})
+        context.tool_history = data.get("tool_history", [])
+        context.session_start = datetime.fromisoformat(data["session_start"])
         context.current_topic = data.get("current_topic")
         
         return context

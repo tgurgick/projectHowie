@@ -141,13 +141,14 @@ dmypy.json
 *.sqlite
 *.sqlite3
 
-# Data files
-data/
+# Raw/local data lives ONLY in the repository-level data/ directory.
+# Anchored so source packages like howie3/data/ stay trackable.
+/data/
 *.csv
-*.json
 *.parquet
 *.h5
 *.hdf5
+*.pkl
 
 # Log files
 *.log

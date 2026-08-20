@@ -1,0 +1,14 @@
+{
+  "num_teams": 12,
+  "draft_position": 8,
+  "scoring_type": "half_ppr",
+  "qb_slots": 1,
+  "rb_slots": 2,
+  "wr_slots": 3,
+  "te_slots": 1,
+  "flex_slots": 1,
+  "k_slots": 1,
+  "dst_slots": 1,
+  "bench_slots": 6,
+  "roster_size": 16
+}
