@@ -43,6 +43,11 @@ class LeagueConfig:
     dst_slots: int = 1
     bench_slots: int = 6
     roster_size: int = 16
+    # How far projections shrink toward market-implied value (0 = pure
+    # projections, 1 = pure market). 0.75 won the 2025 replay backtest
+    # (+48 pts vs follow-ADP with snake-correct opponents; pure projections
+    # lost by ~200). Re-sweep with `howie eval run` as seasons accumulate.
+    market_anchor: float = 0.75
 
     @property
     def scoring_format(self) -> str:
@@ -69,6 +74,8 @@ class LeagueConfig:
             raise ValueError(
                 f"roster_size {self.roster_size} is smaller than {starters} starting slots"
             )
+        if not 0.0 <= self.market_anchor <= 1.0:
+            raise ValueError(f"market_anchor must be 0..1, got {self.market_anchor}")
 
     @classmethod
     def load(cls, path: Path) -> "LeagueConfig":

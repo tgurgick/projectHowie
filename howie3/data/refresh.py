@@ -30,12 +30,18 @@ def _ensure_dst_players(conn: sqlite3.Connection) -> int:
     return len(NFL_TEAMS)
 
 
-STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "sos", "intel", "verify"]
+STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "sos", "intel", "graph", "verify"]
+
+
+def _rebuild_graph(conn, season: int) -> int:
+    from ..graph import rebuild_derived
+    return rebuild_derived(conn, season)
 # Steps that need earlier data present before they can run correctly
 STEP_PRECONDITIONS = {
     "weekly": ("games", "Load games first (weekly stats attach to the schedule)."),
     "adp": ("players", "Load the crosswalk/players first (ADP resolves against them)."),
     "pff": ("players", "Load the crosswalk/players first (projections resolve against them)."),
+    "graph": ("weekly_stats", "Load weekly stats first (shares/vacated volume derive from them)."),
 }
 
 
@@ -72,6 +78,7 @@ def run_refresh(
         ("intel", lambda: legacy_intel.port_legacy_intel(
             conn, settings.data_dir / "fantasy_ppr.db"
         )),
+        ("graph", lambda: _rebuild_graph(conn, settings.current_season)),
         ("verify", lambda: verify_integrity(conn)),
     ]
     if steps:

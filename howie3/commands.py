@@ -97,14 +97,18 @@ def _run_ask(settings: Settings, tokens: List[str]) -> List:
         return [Text("usage: ask <question>", style="yellow")]
     from rich.markdown import Markdown
 
-    from .agent import run_agent
+    from .agent import AgentEventType, run_agent_events
 
     out: List = []
-    for chunk in run_agent(" ".join(tokens), settings):
-        if chunk.startswith("["):
-            out.append(Text.from_markup(chunk))
-        else:
-            out.append(Markdown(chunk))
+    for event in run_agent_events(" ".join(tokens), settings):
+        if event.kind == AgentEventType.TEXT:
+            out.append(Markdown(event.text))
+        elif event.kind == AgentEventType.TOOL_CALL:
+            out.append(Text(f"→ {event.text}", style="dim"))
+        elif event.kind == AgentEventType.RETRY:
+            out.append(Text(event.text, style="yellow"))
+        elif event.kind in {AgentEventType.ERROR, AgentEventType.STOP}:
+            out.append(Text(event.text, style="yellow"))
     return out
 
 

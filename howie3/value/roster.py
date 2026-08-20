@@ -103,9 +103,19 @@ def evaluate_candidates(
         roster_pts.setdefault(p.position, []).append(p.proj)
 
     # Realistic candidates: available now with meaningful probability; cap the
-    # field per position to keep the rollout cheap
+    # field per position to keep the rollout cheap. Positional sanity caps stop
+    # useless stockpiling (a 3rd QB or 2nd K can never start).
+    pos_counts: Dict[str, int] = {}
+    for p in roster:
+        pos_counts[p.position] = pos_counts.get(p.position, 0) + 1
+    caps = {
+        "QB": league.qb_slots + 1, "TE": league.te_slots + 1,
+        "K": league.k_slots, "DST": league.dst_slots,
+    }
     candidates: List[PoolPlayer] = []
     for pos in POSITIONS:
+        if pos in caps and pos_counts.get(pos, 0) >= caps[pos]:
+            continue
         avail = [p for p in pools[pos] if p.p_available(current_pick) >= min_p_available]
         candidates.extend(avail[:8])
 
@@ -118,7 +128,19 @@ def evaluate_candidates(
         value, plan = _rollout(take_pts, pools_after, future_picks, league, taken)
         results.append(PickPlan(cand, value, plan))
 
-    results.sort(key=lambda r: -r.final_value)
+    # Primary: expected final lineup points. Secondary (breaks the late-round
+    # ties where every bench pick adds zero deterministic value): prefer the
+    # bench with real insurance value — flex-eligible positions first, QBs
+    # weighted up in multi-QB formats.
+    bench_weight = {
+        "RB": 1.0, "WR": 1.0, "TE": 0.6,
+        "QB": 0.8 if league.qb_slots >= 2 else 0.35,
+        "K": 0.0, "DST": 0.0,
+    }
+    results.sort(key=lambda r: (
+        -round(r.final_value),
+        -r.player.proj * bench_weight.get(r.player.position, 0.0),
+    ))
     return results[:top_n]
 
 
@@ -141,7 +163,7 @@ def mc_rerank(
     import numpy as np
 
     from .distributions import (
-        STATIC_BUCKETS, SimPlayer, build_sim_players, calibrate, tier_of,
+        SEASON_SIGMA, STATIC_BUCKETS, SimPlayer, build_sim_players, calibrate, tier_of,
     )
     from .simulate import simulate_roster
 
@@ -175,6 +197,7 @@ def mc_rerank(
             name=f"~{pos}{rank}", position=pos, proj=pts,
             weekly_mu=pts / (17.0 * p_play), cv=cv, p_play=p_play,
             bye_week=None, sos_mult=np.ones(18),
+            season_sigma=SEASON_SIGMA.get(pos, 0.3),
         )
 
     for r in results:

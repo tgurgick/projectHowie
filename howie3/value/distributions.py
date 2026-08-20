@@ -24,6 +24,13 @@ TIER_FRACS = (0.125, 0.25, 0.5, 1.0)   # elite / starter / mid / depth bands
 POOL_SIZE = {"QB": 32, "RB": 60, "WR": 72, "TE": 32}
 STATIC_BUCKETS = {"K": (0.45, 0.97), "DST": (0.55, 1.0)}  # (cv, p_play)
 
+# Season-level projection error (one multiplicative shock per player-season):
+# weekly noise averages out over 17 weeks, so without this the simulated
+# p10-p90 bands cover only ~35% of real outcomes. Values are the measured
+# std of (actual ppg / projected ppg) for healthy players, 2025 backtest
+# (`howie eval run`, tier B): QB .21, RB .47, WR .30, TE .30.
+SEASON_SIGMA = {"QB": 0.20, "RB": 0.40, "WR": 0.30, "TE": 0.30, "K": 0.15, "DST": 0.20}
+
 
 @dataclass
 class Bucket:
@@ -32,18 +39,24 @@ class Bucket:
     n: int  # player-seasons observed
 
 
-_cache: Dict[Tuple[int, str], Dict[Tuple[str, int], Bucket]] = {}
+_cache: Dict[Tuple, Dict[Tuple[str, int], Bucket]] = {}
 
 
-def calibrate(conn: sqlite3.Connection, fmt: str) -> Dict[Tuple[str, int], Bucket]:
-    """(position, tier_index) -> Bucket, measured from all completed seasons."""
-    key = (id(conn), fmt)
+def calibrate(conn: sqlite3.Connection, fmt: str,
+              max_season: Optional[int] = None) -> Dict[Tuple[str, int], Bucket]:
+    """(position, tier_index) -> Bucket, measured from completed seasons.
+    Pass max_season to exclude later years (no-leakage backtests)."""
+    # keyed by database file, not connection identity — server request paths
+    # open a fresh connection each time and must still hit this cache
+    db_file = conn.execute("PRAGMA database_list").fetchone()[2]
+    key = (db_file, fmt, max_season)
     if key in _cache:
         return _cache[key]
 
     df = pd.read_sql_query(
         f"SELECT season, player_uid, position, week, pts_{fmt} AS pts "
-        "FROM weekly_stats WHERE week <= 17 AND position IN ('QB','RB','WR','TE')",
+        "FROM weekly_stats WHERE week <= 17 AND position IN ('QB','RB','WR','TE')"
+        + (f" AND season <= {int(max_season)}" if max_season else ""),
         conn,
     )
     per = (
@@ -94,6 +107,7 @@ class SimPlayer:
     p_play: float
     bye_week: Optional[int]
     sos_mult: np.ndarray  # length-18 multiplier indexed by week-1 (1.0 = neutral)
+    season_sigma: float = 0.0  # per-season multiplicative projection-error shock
 
 
 # SoS scale is PFF's 0-10 (higher = easier). +/-3% per point around neutral 5:
@@ -167,6 +181,7 @@ def build_sim_players(
                 p_play=p_play,
                 bye_week=bye,
                 sos_mult=mults,
+                season_sigma=SEASON_SIGMA.get(p.position, 0.3),
             )
         )
     return out

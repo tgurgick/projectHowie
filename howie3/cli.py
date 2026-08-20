@@ -137,11 +137,131 @@ def context_import(path: str) -> None:
                   "Draft views will use it whenever the local db is absent.")
 
 
+@main.group()
+def graph() -> None:
+    """Knowledge graph: entities, edges, facts, fast search."""
+
+
+@graph.command("rebuild")
+def graph_rebuild() -> None:
+    """Rebuild the derived layer (rooms, shares, vacated volume, team YoY)."""
+    from .db import connect
+    from .graph import rebuild_derived
+
+    settings = Settings()
+    conn = connect(settings.db_path)
+    n = rebuild_derived(conn, settings.current_season)
+    conn.close()
+    console.print(f"[green]Graph rebuilt: {n} derived entities/edges/facts[/green]")
+
+
+@graph.command("search")
+@click.argument("query", nargs=-1, required=True)
+def graph_search(query) -> None:
+    """Lightning search over players, teams, and rooms."""
+    from .db import connect
+    from .graph import search as g_search
+
+    conn = connect(Settings().db_path)
+    for r in g_search(conn, " ".join(query)):
+        console.print(f"[dim]{r['kind']:<7}[/dim] {r['name']}"
+                      + (f"  [dim]{r['position'] or ''} {r['team'] or ''}[/dim]"))
+    conn.close()
+
+
+@graph.command("context")
+@click.argument("query", nargs=-1, required=True)
+def graph_context(query) -> None:
+    """1-hop context for an entity (what the agent and player card consume)."""
+    import json as _json
+
+    from .db import connect
+    from .graph import entity_context, search as g_search
+
+    conn = connect(Settings().db_path)
+    hits = g_search(conn, " ".join(query), limit=1)
+    if not hits:
+        console.print("[red]No entity found[/red]")
+        raise SystemExit(1)
+    console.print_json(_json.dumps(entity_context(conn, hits[0]["id"]), default=str))
+    conn.close()
+
+
+@graph.command("import")
+@click.argument("path")
+def graph_import(path: str) -> None:
+    """Import researched facts (the research-skill output contract)."""
+    from pathlib import Path
+
+    from .db import connect
+    from .graph import import_facts
+
+    settings = Settings()
+    conn = connect(settings.db_path)
+    n = import_facts(conn, Path(path), settings.current_season)
+    conn.close()
+    console.print(f"[green]Imported {n} facts/edges from {path}[/green]")
+
+
 @main.command()
 @click.argument("name", nargs=-1, required=True)
 def player(name) -> None:
     """One player's projection, ADP, and history."""
     _show(views.player_view(Settings(), " ".join(name)))
+
+
+@main.group(name="eval")
+def eval_group() -> None:
+    """Backtests against realized results."""
+
+
+@eval_group.command("run")
+@click.option("--reps", default=3, help="Draft replays per slot per policy")
+@click.option("--skip-policy", is_flag=True, help="Only run input/calibration tiers")
+def eval_run(reps: int, skip_policy: bool) -> None:
+    """Evaluate projections, calibration, and draft policy on 2025 actuals."""
+    from rich.table import Table as RTable
+
+    from .evals import (eval_calibration, eval_inputs_report, eval_policy,
+                        load_eval_players)
+
+    settings = Settings()
+    players = load_eval_players(settings)
+    console.print(f"Loaded {len(players)} 2025 players with preseason projections + actuals\n")
+
+    t = RTable(title="A · 2025 preseason projection quality (top-of-pool)")
+    for c in ("pos", "n", "MAE (pts)", "rank corr"):
+        t.add_column(c, justify="right")
+    for r in eval_inputs_report(players):
+        t.add_row(r["pos"], str(r["n"]), str(r["proj_mae"]), str(r["rank_corr"]))
+    console.print(t)
+
+    cal = eval_calibration(settings, players)
+    console.print(
+        f"\nB · calibration: p10–p90 coverage {cal['coverage_all']:.0%} all / "
+        f"{cal['coverage_8plus_games']:.0%} with 8+ games (target ~{cal['target']:.0%}, "
+        f"n={cal['n']}; buckets fit on ≤2024 only)\n"
+    )
+
+    if not skip_policy:
+        t = RTable(title=f"C · 2025 draft replay, realized weekly scoring ({reps} reps × 4 slots)")
+        for c in ("policy", "mean pts", "std", "vs ADP", "drafts"):
+            t.add_column(c, justify="right")
+        for r in eval_policy(settings, players, reps=reps):
+            style = "green" if r["policy"] == "howie" and r["vs_adp"] > 0 else ""
+            t.add_row(r["policy"], str(r["mean"]), str(r["std"]),
+                      f"[{style}]{r['vs_adp']:+}[/{style}]" if style else f"{r['vs_adp']:+}",
+                      str(r["n_drafts"]))
+        console.print(t)
+
+
+@main.command()
+@click.option("--port", default=8787, help="Localhost port")
+def serve(port: int) -> None:
+    """Launch the draft-night cockpit (local web UI)."""
+    from .server import main as serve_main
+
+    serve_main(port=port)
 
 
 @main.command()
@@ -156,10 +276,17 @@ def tui() -> None:
 @click.argument("question", nargs=-1, required=True)
 def ask(question) -> None:
     """Ask Howie a question in natural language (needs ANTHROPIC_API_KEY)."""
-    from .agent import run_agent
+    from .agent import AgentEventType, run_agent_events
 
-    for chunk in run_agent(" ".join(question), Settings()):
-        console.print(chunk)
+    for event in run_agent_events(" ".join(question), Settings()):
+        if event.kind == AgentEventType.TEXT:
+            console.print(event.text)
+        elif event.kind == AgentEventType.TOOL_CALL:
+            console.print(f"[dim]→ {event.text}[/dim]")
+        elif event.kind == AgentEventType.RETRY:
+            console.print(f"[yellow]{event.text}[/yellow]")
+        elif event.kind in {AgentEventType.ERROR, AgentEventType.STOP}:
+            console.print(f"[yellow]{event.text}[/yellow]")
 
 
 if __name__ == "__main__":

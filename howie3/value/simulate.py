@@ -60,12 +60,16 @@ def simulate_roster(
     # E[weekly points] == week_mu exactly
     trunc = np.array([truncation_factor(p.cv) for p in players])
     sample_mu = week_mu / trunc[:, None]
+    sigma = np.array([p.season_sigma for p in players])
 
     totals = np.empty(n_sims)
     for s in range(n_sims):
+        # one projection-error shock per player per season (see SEASON_SIGMA)
+        shock = np.clip(rng.normal(1.0, sigma), 0.25, 2.2)
+        mu_s = sample_mu * shock[:, None]
         available = rng.random((n, FANTASY_WEEKS)) < p_play[:, None]
         available &= week_mu > 0
-        raw = rng.normal(sample_mu, np.maximum(cv[:, None] * sample_mu, 1e-9))
+        raw = rng.normal(mu_s, np.maximum(cv[:, None] * mu_s, 1e-9))
         scores = np.clip(raw, 0.0, None) * available
 
         season_total = 0.0
@@ -90,13 +94,11 @@ def simulate_player_totals(player: SimPlayer, n_sims: int = 300, seed: int = 7) 
         week_mu = week_mu.copy()
         week_mu[player.bye_week - 1] = 0.0
     sample_mu = week_mu / truncation_factor(player.cv)
+    shock = np.clip(rng.normal(1.0, player.season_sigma, size=(n_sims, 1)), 0.25, 2.2)
+    mu_s = sample_mu[None, :] * shock
     available = rng.random((n_sims, FANTASY_WEEKS)) < player.p_play
     available &= week_mu[None, :] > 0
-    raw = rng.normal(
-        np.broadcast_to(sample_mu, (n_sims, FANTASY_WEEKS)),
-        np.broadcast_to(np.maximum(player.cv * sample_mu, 1e-9), (n_sims, FANTASY_WEEKS)),
-        size=(n_sims, FANTASY_WEEKS),
-    )
+    raw = rng.normal(mu_s, np.maximum(player.cv * mu_s, 1e-9), size=(n_sims, FANTASY_WEEKS))
     return (np.clip(raw, 0.0, None) * available).sum(axis=1)
 
 

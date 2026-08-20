@@ -28,7 +28,8 @@ def _pool_source(settings: Settings, context: Optional[str]) -> Tuple:
         return None, league, pool, f"context:{context}"
     if settings.db_path.exists():
         conn = connect(settings.db_path)
-        pool = load_pool(conn, settings.current_season, settings.league.scoring_format)
+        pool = load_pool(conn, settings.current_season, settings.league.scoring_format,
+                         market_anchor=settings.league.market_anchor)
         if pool:
             return conn, settings.league, pool, "local db"
         conn.close()
@@ -140,7 +141,10 @@ def board_view(settings: Settings, round_num: int = 1, top_n: int = 5,
             f"Your picks: {', '.join(map(str, picks))}"
         )
     ]
-    mv = marginal_values(pool, current_pick, next_pick, top_n=top_n)
+    from .state import DraftState
+
+    taken = DraftState.load(settings).taken_uids() if conn is not None else frozenset()
+    mv = marginal_values(pool, current_pick, next_pick, taken=taken, top_n=top_n)
     order = sorted(
         (pos for pos in mv if mv[pos]),
         key=lambda pos: -max(r["marginal"] for r in mv[pos]),
@@ -159,7 +163,7 @@ def board_view(settings: Settings, round_num: int = 1, top_n: int = 5,
             mv_style = "green" if r["marginal"] > 10 else ("red" if r["marginal"] < 0 else "yellow")
             table.add_row(
                 f"{pl.name} ({pl.team})",
-                f"{pl.proj:.0f}",
+                f"{(pl.raw or pl.proj):.0f}",
                 f"{pl.adp:.1f}" if pl.adp else "—",
                 f"{r['p_now']:.0%}",
                 f"{r['p_next']:.0%}",
@@ -202,6 +206,19 @@ def pick_view(
     for name in missing_h + missing_t:
         out.append(Text(f"Unrecognized player: {name!r} — check spelling", style="yellow"))
     taken_uids = frozenset(p.uid for p in taken_players)
+
+    # No explicit roster/taken: fall back to the shared draft event log so the
+    # CLI and agent see the same live draft the cockpit and MCP write to
+    if not have_names and not taken_names:
+        from .state import DraftState
+
+        state = DraftState.load(settings)
+        if state.events:
+            pool_by_uid = {p.uid: p for p in pool}
+            roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+            taken_uids = state.taken_uids()
+            out.append(Text(f"Using live draft log: {len(state.events)} picks recorded",
+                            style="dim"))
 
     picks = snake_picks(league)
     rnd = round_num or len(roster) + 1
@@ -249,7 +266,7 @@ def pick_view(
         row = [
             f"{r.player.name} ({r.player.team})",
             r.player.position,
-            f"{r.player.proj:.0f}",
+            f"{(r.player.raw or r.player.proj):.0f}",
             f"{r.player.adp:.1f}" if r.player.adp else "—",
             f"{value_of(r):.0f}",
         ]

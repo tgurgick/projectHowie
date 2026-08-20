@@ -26,13 +26,45 @@ class PoolPlayer:
     name: str
     position: str
     team: Optional[str]
-    proj: float                 # season points in the league's scoring format
+    proj: float                 # the engine's value estimate (market-anchored)
     adp: Optional[float]
     stdev: Optional[float]
     bye: Optional[int]
+    raw: Optional[float] = None  # the source projection, for display (None = proj is raw)
 
     def p_available(self, pick: float) -> float:
         return p_available(self.adp, self.stdev, pick)
+
+
+def apply_market_anchor(pool: List[PoolPlayer], weight: float) -> List[PoolPlayer]:
+    """Shrink projections toward market-implied value (winner's-curse control).
+
+    For each position, the market-implied value of the k-th player by ADP is
+    the k-th best projection at that position — the market's ordering priced
+    on the projection scale. blended = (1-w)*proj + w*market_implied.
+    Measured on the 2025 backtest: projection-only drafting systematically
+    overweights proj-vs-market outliers, and the market wins those arguments
+    more often than not.
+    """
+    if weight <= 0:
+        return pool
+    by_pos: dict = {}
+    for p in pool:
+        by_pos.setdefault(p.position, []).append(p)
+    blended: List[PoolPlayer] = []
+    for pos, plist in by_pos.items():
+        proj_sorted = sorted((p.proj for p in plist), reverse=True)
+        with_adp = sorted((p for p in plist if p.adp is not None), key=lambda p: p.adp)
+        market = {p.uid: proj_sorted[min(i, len(proj_sorted) - 1)]
+                  for i, p in enumerate(with_adp)}
+        for p in plist:
+            implied = market.get(p.uid)
+            new_proj = (1 - weight) * p.proj + weight * implied if implied is not None else p.proj
+            blended.append(PoolPlayer(p.uid, p.name, p.position, p.team,
+                                      round(new_proj, 1), p.adp, p.stdev, p.bye,
+                                      raw=p.raw if p.raw is not None else p.proj))
+    blended.sort(key=lambda p: -p.proj)
+    return blended
 
 
 def load_pool(
@@ -41,6 +73,7 @@ def load_pool(
     fmt: str,
     proj_source: str = "pff",
     adp_source: str = "ffc",
+    market_anchor: float = 0.75,
 ) -> List[PoolPlayer]:
     rows = conn.execute(
         f"""
@@ -55,7 +88,7 @@ def load_pool(
         """,
         (adp_source, fmt, season, proj_source),
     ).fetchall()
-    return [
+    pool = [
         PoolPlayer(
             r["player_uid"], r["name"], r["position"], r["team"],
             float(r["proj"]), r["adp"], r["stdev"], r["bye_week"],
@@ -63,6 +96,7 @@ def load_pool(
         for r in rows
         if r["position"] in POSITIONS
     ]
+    return apply_market_anchor(pool, market_anchor)
 
 
 def snake_picks(league: LeagueConfig, rounds: Optional[int] = None) -> List[int]:

@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Howie — Draft Cockpit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #0a0d0b; --panel: #10150f; --panel2: #0e130f; --line: #1a221c;
+    --line2: #24352a; --hi: #e8f0e9; --mid: #9fb0a4; --dim: #5c6b60;
+    --acc: #3ddb84; --amber: #e8b84b; --red: #e06456;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    --sans: 'Space Grotesk', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--hi); font-family: var(--sans); font-size: 14px; }
+  .mono { font-family: var(--mono); }
+  .dim { color: var(--dim); } .mid { color: var(--mid); }
+  .green { color: var(--acc); } .amber { color: var(--amber); } .red { color: var(--red); }
+  button { font-family: var(--mono); font-size: 11px; background: none; border: 1px solid var(--line2); color: var(--mid); padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--acc); color: var(--hi); }
+  button.primary { background: var(--acc); color: #0a0d0b; border-color: var(--acc); font-weight: 600; }
+  button.danger { color: var(--red); border-color: #4a2622; }
+
+  header { height: 54px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  .wordmark { font-family: var(--mono); font-weight: 600; font-size: 17px; letter-spacing: 2px; color: var(--acc); }
+  .tabs { display: flex; gap: 16px; align-self: stretch; }
+  .tab { display: flex; align-items: center; font-size: 12px; letter-spacing: 1.5px; color: var(--dim); border-bottom: 2px solid transparent; cursor: pointer; }
+  .tab.active { color: var(--acc); border-bottom-color: var(--acc); font-weight: 600; }
+  #draftpos { flex: 1; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .clockchip { font-size: 11px; font-weight: 600; letter-spacing: 2px; color: var(--acc); border: 1px solid var(--acc); padding: 3px 9px; }
+  .modechip { font-family: var(--mono); font-size: 11px; color: var(--dim); border: 1px solid var(--line); padding: 4px 9px; }
+
+  .cmdbar { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); position: relative; }
+  .searchbox { flex: 1; max-width: 620px; position: relative; }
+  .searchbox input { width: 100%; height: 44px; background: var(--panel2); border: 1px solid var(--line2); color: var(--hi); font-family: var(--mono); font-size: 14px; padding: 0 14px; outline: none; }
+  .searchbox input:focus { border-color: var(--acc); }
+  .hint { position: absolute; right: 12px; top: 14px; font-size: 11px; color: var(--dim); pointer-events: none; }
+  #results { position: absolute; top: 48px; left: 0; right: 0; background: var(--panel2); border: 1px solid var(--line2); box-shadow: 0 16px 40px rgba(0,0,0,.6); z-index: 30; display: none; }
+  .result { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); cursor: default; }
+  .result:first-child { border-top: none; }
+  .result.sel { background: #121a14; }
+  .kindtag { font-family: var(--mono); font-size: 10px; border: 1px solid var(--line2); color: var(--mid); padding: 1px 5px; }
+  .kindtag.P { background: var(--acc); color: #0a0d0b; border-color: var(--acc); font-weight: 600; }
+  .poschips { display: flex; gap: 2px; }
+  .poschip { font-size: 11px; color: var(--mid); padding: 5px 10px; border: 1px solid var(--line); cursor: pointer; }
+  .poschip.active { background: var(--acc); color: #0a0d0b; font-weight: 600; border-color: var(--acc); }
+
+  main { display: flex; min-height: calc(100vh - 140px); }
+  .content { flex: 1; padding: 16px 20px; min-width: 0; }
+  .rail { width: 290px; border-left: 1px solid var(--line); padding: 16px; flex-shrink: 0; }
+  .sechead { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin: 0 0 8px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 10px; letter-spacing: 1.5px; color: var(--dim); text-align: left; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid #131a15; font-size: 13px; white-space: nowrap; }
+  td.mono, th.r { font-family: var(--mono); }
+  .r { text-align: right; }
+  tr.best { background: rgba(61,219,132,.06); }
+  .besttag { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #0a0d0b; background: var(--acc); padding: 2px 6px; margin-left: 8px; }
+  .ruletag { font-size: 9px; letter-spacing: 1px; padding: 2px 5px; margin-left: 6px; border: 1px solid; }
+  .ruletag.target { color: var(--acc); border-color: var(--acc); }
+  .ruletag.wait, .ruletag.ban { color: var(--amber); border-color: #3a3115; }
+  .bar { height: 5px; background: var(--line); width: 48px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  .bar > i { display: block; height: 5px; }
+  .dist { position: relative; height: 12px; background: var(--panel); width: 120px; }
+  .dist .band { position: absolute; top: 3px; bottom: 3px; background: #23392c; }
+  .dist .core { position: absolute; top: 3px; bottom: 3px; background: #2f5a3e; }
+  .dist .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--acc); }
+
+  .slotrow { display: flex; align-items: center; gap: 8px; height: 30px; border: 1px solid var(--line); border-style: dashed; padding: 0 9px; margin-bottom: 4px; }
+  .slotrow.filled { border-style: solid; }
+  .slotrow .slot { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 28px; }
+  .logrow { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; font-size: 12px; }
+  .logrow.mine { background: rgba(61,219,132,.07); }
+
+  #strategyView { display: none; }
+  .posrow { display: grid; grid-template-columns: 140px 1fr 90px 170px; gap: 14px; align-items: center; padding: 10px 8px; border-bottom: 1px solid #131a15; }
+  .nwbar { height: 9px; background: var(--panel); }
+  .nwbar > i { display: block; height: 9px; }
+  .rulerow { display: flex; align-items: center; gap: 10px; height: 34px; border: 1px solid var(--line2); padding: 0 10px; margin-bottom: 5px; }
+  .rulerow.off { border-color: var(--line); color: var(--dim); }
+  .dot { width: 8px; height: 8px; background: var(--acc); cursor: pointer; flex-shrink: 0; }
+  .rulerow.off .dot { background: #3a4a40; }
+  #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
+
+  #drawer { position: fixed; top: 0; right: -500px; width: 480px; height: 100vh; background: #0c100d; border-left: 1px solid var(--line2); z-index: 50; transition: right .18s ease; overflow-y: auto; padding: 20px 22px; }
+  #drawer.open { right: 0; }
+  .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 14px 0; }
+  .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
+  .stat4 .lbl { font-size: 9px; letter-spacing: 1.5px; color: var(--dim); }
+  .stat4 .val { font-family: var(--mono); font-size: 16px; font-weight: 600; margin-top: 3px; }
+  .factcard { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; margin: 6px 0; font-size: 12.5px; line-height: 1.5; color: #c9d6cc; }
+  .fmeta { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 6px; }
+  .roomrow { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; }
+  .roomrow .rbar { flex: 1; height: 6px; background: var(--line); }
+  .roomrow .rbar > i { display: block; height: 6px; background: #3a4a40; }
+  .overlay { position: fixed; inset: 0; z-index: 40; display: none; }
+  #banner { display: none; padding: 12px 20px; background: #12241a; border-bottom: 1px solid var(--acc); font-family: var(--mono); font-size: 13px; color: var(--acc); }
+  .footnote { display: flex; gap: 8px; align-items: center; padding: 12px 8px 0; font-size: 12px; color: var(--dim); }
+  @media (max-width: 900px) {
+    .rail { display: none; }
+    #drawer { width: 100vw; right: -100vw; }
+    header { flex-wrap: wrap; height: auto; padding: 10px; gap: 10px; }
+    #draftpos { justify-content: flex-start; }
+    td, th { padding: 6px 4px; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="wordmark">HOWIE_</span>
+  <nav class="tabs">
+    <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
+    <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
+  </nav>
+  <div id="draftpos" class="mono mid"></div>
+  <span class="modechip" id="modechip">—</span>
+  <button id="mockBtn" onclick="startMock()">START MOCK</button>
+  <button class="danger" onclick="resetDraft()">RESET</button>
+</header>
+
+<div id="banner"></div>
+
+<div class="cmdbar">
+  <div class="searchbox">
+    <input id="q" placeholder="Search player, team, room…" autocomplete="off">
+    <span class="hint">⏎ taken · ⌘⏎ mine · ⇥ card</span>
+    <div id="results"></div>
+  </div>
+  <div class="poschips" id="poschips"></div>
+  <span class="mono dim" id="mcstatus" style="font-size:11px"></span>
+</div>
+
+<main>
+  <div class="content">
+    <div id="boardView">
+      <table>
+        <thead><tr>
+          <th>#</th><th>PLAYER</th><th class="r">PROJ</th><th class="r">ADP</th>
+          <th id="availHead">AVAIL @NEXT</th><th class="r">VALUE</th>
+          <th>OUTCOMES P10–P90</th><th class="r">Δ BEST</th><th>THEN DRAFT</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="footnote" id="boardFoot"></div>
+    </div>
+
+    <div id="strategyView">
+      <p class="sechead" id="posHead">POSITIONAL IMPACT</p>
+      <div id="posRows"></div>
+      <div class="footnote">WAIT = same roster with this position taken at your next pick instead (expected best still there); both paths complete the draft optimally.</div>
+      <div style="display:flex; gap:40px; margin-top:26px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:300px;">
+          <p class="sechead">PINNED RULES <span class="dim" style="letter-spacing:0">— bias the board; tag candidates when they fire</span></p>
+          <div id="rules"></div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <input id="newRule" placeholder='e.g. WAIT QB UNTIL R6 · TARGET McBride · NO K BEFORE R14' style="flex:1; background:var(--panel2); border:1px solid var(--line2); color:var(--hi); font-family:var(--mono); font-size:12px; padding:8px 10px; outline:none;">
+            <button onclick="addRule()">ADD</button>
+          </div>
+        </div>
+        <div style="flex:1; min-width:300px;">
+          <p class="sechead">NOTES <span class="dim" style="letter-spacing:0" id="notesSaved"></span></p>
+          <textarea id="notes" placeholder="Your read on the draft — travels into the agent's context and the pre-draft brief."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <p class="sechead">MY ROSTER <span class="mono" id="rosterCount"></span></p>
+    <div id="roster"></div>
+    <p class="sechead" style="margin-top:18px">PICK LOG <button style="float:right; padding:2px 8px" onclick="undoPick()">UNDO</button></p>
+    <div id="log"></div>
+    <p class="sechead" style="margin-top:18px">YOUR NEXT PICKS</p>
+    <div class="mono mid" id="nextPicks"></div>
+  </aside>
+</main>
+
+<div class="overlay" id="overlay" onclick="closeCard()"></div>
+<div id="drawer"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let ST = null, PICK = null, FILTER = 'ALL', selIdx = 0, results = [], notesTimer = null, strategy = {rules: [], notes: ''};
+
+async function api(path, body) {
+  const opts = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {};
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (j.error) { alert(j.error); throw new Error(j.error); }
+  return j;
+}
+
+// ---------------- state + board ----------------
+
+async function refresh(fast) {
+  ST = await api('/api/state');
+  renderHeader(); renderRail();
+  PICK = await api('/api/pick?top=25');
+  renderBoard();
+  if ($('strategyView').style.display !== 'none' && !fast) loadStrategyTab();
+}
+
+function renderHeader() {
+  const total = ST.total_picks;
+  $('draftpos').innerHTML = ST.complete
+    ? 'DRAFT COMPLETE'
+    : `ROUND ${ST.round} · PICK ${ST.next_pick_no}` +
+      (ST.you_are_on_clock ? ' <span class="clockchip">ON THE CLOCK</span>'
+        : ` <span class="dim">team ${ST.on_clock_team} up</span>`);
+  $('modechip').textContent = `${ST.mode} · ${ST.league.teams}t slot ${ST.league.slot} · ${ST.league.scoring}`;
+  $('mockBtn').style.display = (ST.mode === 'mock' && !ST.complete) ? 'none' : '';
+  $('banner').style.display = ST.complete ? 'block' : 'none';
+  if (ST.complete) $('banner').textContent = 'DRAFT COMPLETE — final roster on the right. RESET to run another mock.';
+}
+
+function renderRail() {
+  $('rosterCount').textContent = `${ST.roster.filter(s => s.name).length} / ${ST.roster.length}`;
+  $('roster').innerHTML = ST.roster.map(s =>
+    `<div class="slotrow ${s.name ? 'filled' : ''}">
+      <span class="slot">${s.slot}</span>
+      <span style="color:${s.name ? 'var(--hi)' : 'var(--dim)'}; overflow:hidden; text-overflow:ellipsis;">${s.name || '—'}</span>
+      <span style="flex:1"></span><span class="mono dim" style="font-size:11px">${s.proj ?? ''}</span>
+    </div>`).join('');
+  $('log').innerHTML = ST.log.map(l =>
+    `<div class="logrow ${l.mine ? 'mine' : ''}">
+      <span class="mono dim">${l.pick_no}</span><span>${l.name}</span>
+      <span class="mono dim" style="font-size:10px">${l.position || ''} · ${l.mine ? 'YOU' : 'T' + l.team}</span>
+    </div>`).join('') || '<span class="dim" style="font-size:12px">no picks yet</span>';
+  $('nextPicks').textContent = ST.my_next_picks.join(' · ') || '—';
+}
+
+function renderBoard() {
+  $('availHead').textContent = `AVAIL @${PICK.next_pick}`;
+  const mc = PICK.mc, span = mc ? mc.outcome_span : null;
+  const mcRows = mc ? Object.fromEntries(mc.rows.map(r => [r.uid, r])) : {};
+  let rows = PICK.rows.filter(r => FILTER === 'ALL' || r.pos === FILTER);
+  if (mc) rows = [...rows].sort((a, b) =>
+    (mcRows[b.uid] ? mcRows[b.uid].value : b.value - 900) - (mcRows[a.uid] ? mcRows[a.uid].value : a.value - 900));
+  rows = rows.slice(0, 10);
+  const best = rows.length ? (mc && mcRows[rows[0].uid] ? mcRows[rows[0].uid].value : rows[0].value) : 0;
+  $('rows').innerHTML = rows.map((r, i) => {
+    const m = mcRows[r.uid];
+    const value = m ? m.value : r.value;
+    const delta = Math.round(value - best);
+    const dc = delta === 0 ? 'green' : (delta > -8 ? 'mid' : 'red');
+    const availbar = (p, w) => `<span class="bar"><i style="width:${Math.round(p*100)}%; background:${p > .55 ? 'var(--acc)' : p > .25 ? 'var(--amber)' : 'var(--red)'}"></i></span><span class="mono mid" style="font-size:12px">${Math.round(p*100)}%</span>`;
+    let dist = '<span class="dim mono" style="font-size:11px">sims…</span>';
+    if (m && span) {
+      const [lo, hi] = span, w = hi - lo;
+      const L = (v) => ((v - lo) / w * 100).toFixed(1) + '%';
+      const W = (a, b) => ((b - a) / w * 100).toFixed(1) + '%';
+      const c1 = m.p10 + (m.p90 - m.p10) * .25, c2 = m.p10 + (m.p90 - m.p10) * .75;
+      dist = `<div class="dist"><div class="band" style="left:${L(m.p10)}; width:${W(m.p10, m.p90)}"></div><div class="core" style="left:${L(c1)}; width:${W(c1, c2)}"></div><div class="tick" style="left:${L(m.value)}"></div></div>`;
+    }
+    const tags = (r.rules || []).map(f => `<span class="ruletag ${f.type}">${f.text}</span>`).join('');
+    return `<tr class="${i === 0 && FILTER === 'ALL' ? 'best' : ''}" onclick="openCard('${r.uid}')" style="cursor:pointer">
+      <td class="mono dim">${i + 1}</td>
+      <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${i === 0 && FILTER === 'ALL' ? '<span class="besttag">BEST</span>' : ''}${tags}</td>
+      <td class="mono r mid">${r.proj}</td>
+      <td class="mono r mid">${r.adp ? r.adp.toFixed(1) : '—'}</td>
+      <td>${availbar(r.avail_next)}</td>
+      <td class="mono r" style="font-weight:600">${value}</td>
+      <td>${dist}</td>
+      <td class="mono r ${dc}" style="font-weight:600">${delta > 0 ? '+' : ''}${delta}</td>
+      <td class="mono dim" style="font-size:11px">${(r.plan || []).join(' ')}</td>
+    </tr>`;
+  }).join('');
+  $('mcstatus').textContent = mc ? `MC ${mc.sims} sims ready` : 'MC running…';
+  $('boardFoot').textContent = `Value = expected final starting-lineup points (take this player now, then draft optimally). Δ vs best. ` +
+    (span ? `Outcome bars: p10–p90 across ${mc.sims} simulated seasons, scale ${span[0]}–${span[1]}, tick = mean.` : 'Monte Carlo refinement runs after every pick.');
+}
+
+// ---------------- position filter chips ----------------
+
+['ALL','QB','RB','WR','TE','K','DST'].forEach(p => {
+  const el = document.createElement('span');
+  el.className = 'poschip' + (p === 'ALL' ? ' active' : '');
+  el.textContent = p;
+  el.onclick = () => { FILTER = p; document.querySelectorAll('.poschip').forEach(c => c.classList.toggle('active', c.textContent === p)); renderBoard(); };
+  $('poschips').appendChild(el);
+});
+
+// ---------------- search ----------------
+
+let searchTimer = null;
+$('q').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 130);
+});
+$('q').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { selIdx = Math.min(selIdx + 1, results.length - 1); renderResults(); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { selIdx = Math.max(selIdx - 1, 0); renderResults(); e.preventDefault(); }
+  else if (e.key === 'Enter') { const r = results[selIdx]; if (r && r.uid && !r.taken) mark(r.uid, e.metaKey || e.ctrlKey); e.preventDefault(); }
+  else if (e.key === 'Tab') { const r = results[selIdx]; if (r && r.uid) openCard(r.uid); e.preventDefault(); }
+  else if (e.key === 'Escape') { hideResults(); }
+});
+async function doSearch() {
+  const q = $('q').value.trim();
+  if (!q) { hideResults(); return; }
+  results = await api('/api/search?q=' + encodeURIComponent(q));
+  selIdx = 0; renderResults();
+}
+function renderResults() {
+  if (!results.length) { hideResults(); return; }
+  $('results').style.display = 'block';
+  $('results').innerHTML = results.map((r, i) => {
+    const tag = r.kind === 'player' ? 'P' : (r.kind === 'unit' ? 'U' : 'T');
+    const meta = r.kind === 'player'
+      ? `${r.position || ''} · ${r.team || ''} · ${r.proj} proj${r.adp ? ' · ADP ' + r.adp.toFixed(1) : ''}${r.taken ? ' · <span class="red">DRAFTED</span>' : ''}`
+      : r.kind;
+    const actions = (r.kind === 'player' && !r.taken)
+      ? `<button class="danger" onclick="event.stopPropagation(); mark('${r.uid}', false)">TAKEN</button>
+         <button class="primary" onclick="event.stopPropagation(); mark('${r.uid}', true)">MINE</button>
+         <button onclick="event.stopPropagation(); openCard('${r.uid}')">CARD</button>` : '';
+    return `<div class="result ${i === selIdx ? 'sel' : ''}" onmouseenter="hoverSel(${i})">
+      <span class="kindtag ${tag}">${tag}</span><b style="font-weight:500">${r.name}</b>
+      <span class="mono dim" style="font-size:11px">${meta}</span>
+      <span style="flex:1"></span>${actions}</div>`;
+  }).join('');
+}
+function hideResults() { $('results').style.display = 'none'; results = []; }
+function hoverSel(i) {
+  selIdx = i;
+  document.querySelectorAll('.result').forEach((el, j) => el.classList.toggle('sel', j === i));
+}
+
+// ---------------- actions ----------------
+
+async function mark(uid, mine) {
+  hideResults(); $('q').value = '';
+  await api('/api/mark', {uid, mine});
+  closeCard(); await refresh(true);
+}
+async function undoPick() { await api('/api/undo', {}); await refresh(true); }
+async function startMock() {
+  if (ST && ST.log.length && !confirm('Start a fresh mock draft? Current draft state is cleared.')) return;
+  await api('/api/mock/start', {}); await refresh(true);
+}
+async function resetDraft() {
+  if (!confirm('Reset the draft log?')) return;
+  await api('/api/reset', {mode: 'live'}); await refresh(true);
+}
+
+// ---------------- tabs + strategy ----------------
+
+function showTab(t) {
+  $('boardView').style.display = t === 'board' ? '' : 'none';
+  $('strategyView').style.display = t === 'strategy' ? 'block' : 'none';
+  $('tabBoard').classList.toggle('active', t === 'board');
+  $('tabStrategy').classList.toggle('active', t === 'strategy');
+  if (t === 'strategy') loadStrategyTab();
+}
+
+async function loadStrategyTab() {
+  strategy = await api('/api/strategy');
+  renderRules();
+  if (!$('notes').matches(':focus')) $('notes').value = strategy.notes;
+  const pos = await api('/api/positions');
+  $('posHead').textContent = `POSITIONAL IMPACT AT PICK ${pos.current_pick} — DRAFT NOW vs WAIT UNTIL ${pos.next_pick}`;
+  const vals = pos.rows.flatMap(r => [r.now, r.wait]);
+  const lo = Math.min(...vals) - 8, hi = Math.max(...vals) + 4, w = hi - lo;
+  $('posRows').innerHTML = pos.rows.map((r, i) => {
+    const W = (v) => Math.max(((v - lo) / w * 100), 2).toFixed(1) + '%';
+    const cost = r.cost;
+    const cc = cost >= 10 ? 'amber' : (cost > 0 ? 'mid' : 'dim');
+    return `<div class="posrow">
+      <div><span class="kindtag">${r.pos}</span> ${i === 0 ? '<span class="besttag">TOP</span>' : ''}<br>
+        <span class="mid" style="font-size:12px">${r.player} · ${r.player_proj}</span></div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span class="mono dim" style="font-size:9px;width:28px">NOW</span><div class="nwbar" style="flex:1"><i style="width:${W(r.now)};background:${i===0?'var(--acc)':'#3a4a40'}"></i></div><span class="mono" style="font-size:12px;width:38px;text-align:right">${r.now}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span class="mono dim" style="font-size:9px;width:28px">WAIT</span><div class="nwbar" style="flex:1"><i style="width:${W(r.wait)};background:#2a3a30"></i></div><span class="mono mid" style="font-size:12px;width:38px;text-align:right">${r.wait}</span></div>
+      </div>
+      <div class="mono r ${cc}" style="font-size:16px;font-weight:600">+${cost}</div>
+      <div class="mid" style="font-size:11px; white-space:normal">${r.player.split(' ').slice(-1)[0]} ${Math.round(r.avail_next*100)}% at ${pos.next_pick} · next tier −${r.tier_drop} pts</div>
+    </div>`;
+  }).join('');
+}
+
+function renderRules() {
+  $('rules').innerHTML = strategy.rules.map((r, i) =>
+    `<div class="rulerow ${r.on ? '' : 'off'}">
+      <span class="dot" onclick="toggleRule(${i})"></span>
+      <span class="mono" style="font-size:12px">${r.text}</span>
+      ${r.inert ? '<span class="ruletag ban" title="Matches no known pattern — will not affect the board">INERT</span>' : ''}
+      <span style="flex:1"></span>
+      <span class="mono dim" style="font-size:10px">${r.on ? 'ON' : 'OFF'}</span>
+      <button style="padding:1px 7px" onclick="delRule(${i})">×</button>
+    </div>`).join('') || '<span class="dim" style="font-size:12px">no rules pinned</span>';
+}
+async function saveStrategy() {
+  strategy = await api('/api/strategy', {rules: strategy.rules, notes: $('notes').value});
+  renderRules();
+  $('notesSaved').textContent = '— saved';
+  setTimeout(() => $('notesSaved').textContent = '', 1500);
+  refresh(true);
+}
+function addRule() {
+  const t = $('newRule').value.trim();
+  if (!t) return;
+  strategy.rules.push({text: t, on: true}); $('newRule').value = '';
+  saveStrategy();
+}
+function toggleRule(i) { strategy.rules[i].on = !strategy.rules[i].on; saveStrategy(); }
+function delRule(i) { strategy.rules.splice(i, 1); saveStrategy(); }
+$('notes').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(saveStrategy, 900); });
+
+// ---------------- player card ----------------
+
+async function openCard(uid) {
+  const c = await api('/api/card?uid=' + encodeURIComponent(uid));
+  const room = c.room, facts = [...(c.facts || []), ...(c.team_facts || [])].filter(f => f.source !== 'derived').slice(0, 3);
+  const derived = [...(room && room.facts ? room.facts : []), ...(c.team_facts || [])].filter(f => f.source === 'derived').slice(0, 3);
+  const bandBar = () => {
+    const lo = c.band.p10 * .85, hi = c.band.p90 * 1.1, w = hi - lo;
+    const L = (v) => ((v - lo) / w * 100).toFixed(1) + '%', W2 = (a, b) => ((b - a) / w * 100).toFixed(1) + '%';
+    return `<div class="dist" style="width:72px;margin:4px auto 0"><div class="band" style="left:${L(c.band.p10)};width:${W2(c.band.p10, c.band.p90)}"></div><div class="tick" style="left:${L(c.band.p50)}"></div></div>`;
+  };
+  $('drawer').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div><div style="font-size:21px;font-weight:700">${c.name}</div>
+      <div class="mono mid" style="font-size:12px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
+      <span style="flex:1"></span><button onclick="closeCard()">✕</button>
+    </div>
+    <div class="stat4">
+      <div><div class="lbl">PROJ</div><div class="val">${c.proj}</div></div>
+      <div><div class="lbl">VS WAIT (${c.pos})</div><div class="val green">${c.mv_vs_wait > 0 ? '+' : ''}${c.mv_vs_wait}</div></div>
+      <div><div class="lbl">AVAIL @${c.next_pick}</div><div class="val amber">${Math.round(c.avail_next * 100)}%</div></div>
+      <div><div class="lbl">P10–P90</div><div class="val" style="font-size:13px">${c.band.p10}–${c.band.p90}</div>${bandBar()}</div>
+    </div>
+    ${room ? `<p class="sechead">ROOM · ${room.unit.replace('unit:', '')} — LAST-SEASON SHARE</p>` +
+      room.members.slice(0, 5).map(m => `<div class="roomrow"><span style="width:130px;overflow:hidden;text-overflow:ellipsis">${m.name}</span><div class="rbar"><i style="width:${Math.round((m.share || 0) * 300)}px;max-width:100%;${m.name === c.name ? 'background:var(--acc)' : ''}"></i></div><span class="mono mid" style="width:38px;text-align:right">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</span></div>`).join('') : ''}
+    ${derived.length ? derived.map(f => `<div class="factcard">${f.text}<div class="fmeta">derived from 2025 data</div></div>`).join('') : ''}
+    ${facts.length ? '<p class="sechead" style="margin-top:14px">RESEARCH</p>' + facts.map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source} · conf ${f.confidence}</div></div>`).join('') : '<p class="sechead" style="margin-top:14px">RESEARCH</p><div class="factcard dim">No researched facts yet — run the research skill, then `howie graph import`.</div>'}
+    ${c.playoff_sos.length ? `<p class="sechead" style="margin-top:14px">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
+      c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
+    ${c.trend.length ? `<p class="sechead" style="margin-top:14px">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:16px;height:70px">` +
+      c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.6, 52)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:4px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="danger" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
+      <button class="primary" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
+    </div>`;
+  $('drawer').classList.add('open');
+  $('overlay').style.display = 'block';
+}
+function closeCard() { $('drawer').classList.remove('open'); $('overlay').style.display = 'none'; }
+
+// ---------------- boot + poll ----------------
+
+refresh();
+setInterval(() => { if (!document.hidden) refresh(true); }, 2500);
+</script>
+</body>
+</html>

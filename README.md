@@ -10,21 +10,32 @@ distributions and Monte Carlo season simulation.
 
 ```bash
 pip install -e ".[ai]"
-howie                # TUI (type `help` inside)
+howie serve          # the draft-night cockpit → http://127.0.0.1:8787
 ```
 
 ## What it does
 
-- **`howie draft board --round 3`** — per position: who's likely to still be
-  there at your pick, the expected best available at your *next* pick, and the
-  marginal value of acting now.
-- **`howie draft pick --have "CMC, ARSB" --taken "..."`** — live draft help:
-  candidates ranked by expected final starting-lineup points, Monte Carlo
-  simulated (weekly lineups, injuries, byes, SoS), with floor–ceiling bands
-  and a positional plan for the rest of your draft.
-- **`howie player <name>`** — projection, ADP spread, history.
-- **`howie ask "..."`** — natural-language agent over the same engine
-  (requires `ANTHROPIC_API_KEY`, install with the `ai` extra).
+- **`howie serve`** — the draft cockpit: a local web app with the ranked
+  board (marginal value + Monte Carlo floor–ceiling bars), a strategy tab
+  (per-position draft-now-vs-wait impact, pinned rules, notes), knowledge-
+  graph player cards, search-first pick marking with undo, and **mock-draft
+  bots** — hit START MOCK and practice a full draft solo.
+- **`howie draft board / pick`** — the same engine from the CLI.
+- **`howie graph search|context|import`** — millisecond search over players,
+  teams, and position rooms; 1-hop context (room shares, vacated volume,
+  team trends, researched facts with provenance).
+- **`howie eval run`** — backtests on realized 2025 results: projection
+  quality, calibration coverage, and full draft replays vs follow-ADP and
+  VORP baselines. (Current scoreboard: Howie +48 pts vs ADP; the market
+  anchor and variance model came out of this harness.)
+- **`python3 -m howie3.mcp_server`** — the engine as MCP tools for Claude
+  Desktop/Code: chat marks picks into the same draft log the cockpit shows.
+- **`howie ask "..."`** — in-repo natural-language agent (needs
+  `ANTHROPIC_API_KEY`; `ai` extra).
+- **`skills/`** — research playbooks whose only output is structured facts
+  (`howie graph import`), never prose.
+
+Architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Data: build it locally
 

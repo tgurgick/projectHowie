@@ -42,7 +42,9 @@ def export_context(
     league = settings.league
     conn = connect(settings.db_path)
     fmt = league.scoring_format
-    pool = load_pool(conn, settings.current_season, fmt)
+    # market_anchor=0: the artifact's "projection" field is the SOURCE
+    # projection; anchoring is a valuation policy, applied at draft time
+    pool = load_pool(conn, settings.current_season, fmt, market_anchor=0.0)
     if not pool:
         raise RuntimeError("No projections in the local database — run `howie data refresh` first.")
     picks = snake_picks(league)
