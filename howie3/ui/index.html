@@ -641,7 +641,7 @@ async function openCard(uid) {
         <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
     </div>
   </div>`;
-  $('drawer').classList.add('open'); $('dockBody').classList.add('hascard'); dockExpand();
+  $('drawer').classList.add('open'); $('dockBody').classList.add('hascard'); dockExpand(340);
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -1001,7 +1001,13 @@ loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
 // The dock (card + terminal output) is a real pane: the page above flexes
 // to whatever height it has, the grip resizes it, and one toggle collapses
 // everything to the input line. Height persists across reloads.
-function dockExpand() { const d = $('dock'); d.classList.remove('collapsed'); d.style.height = (localStorage.getItem('dockH') || '44vh'); $('termToggle').textContent = '▼'; }
+function dockExpand(minPx) {
+  const d = $('dock'); d.classList.remove('collapsed');
+  d.style.height = (localStorage.getItem('dockH') || '44vh');
+  // a card needs room to read: never open one into a sliver
+  if (minPx && d.getBoundingClientRect().height < minPx) d.style.height = Math.min(minPx, window.innerHeight * 0.6) + 'px';
+  $('termToggle').textContent = '▼';
+}
 function dockCollapse() { $('dock').classList.add('collapsed'); $('termToggle').textContent = '▲'; }
 function toggleDock() { $('dock').classList.contains('collapsed') ? dockExpand() : dockCollapse(); }
 function termPrint(kind, html) {
