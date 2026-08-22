@@ -19,24 +19,19 @@
   .wordmark { cursor: pointer; min-width: 92px; display: inline-block; }
   .wordmark .cur { animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  .rail { transition: width .15s ease; position: relative; }
-  .rail.collapsed { flex: 0 0 38px; min-width: 38px; width: 38px; padding: 12px 4px; overflow: hidden; }
-  .rail.collapsed > *:not(.railtab) { display: none; }
-  .railtab { display: none; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--dim); cursor: pointer; margin: 0 auto; }
-  .rail.collapsed .railtab { display: block; }
+  .ptoggle { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; }
+  .ptoggle.on { background: #12241a; color: var(--acc); border-color: var(--acc); }
+  .phead { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .phead .x { padding: 1px 7px; font-size: 12px; }
   .slotrow.warn { border-color: var(--amber); border-style: solid; }
   .slotrow.danger { border-color: var(--red); border-style: solid; }
   .riskchip { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border: 1px solid; margin: 2px 4px 2px 0; display: inline-block; }
   .riskchip.warn { color: var(--amber); border-color: #3a3115; } .riskchip.danger { color: var(--red); border-color: #4a2622; }
-  #dock { flex: none; height: 44vh; min-height: 48px; display: flex; flex-direction: column; background: #0c100d; border-top: 1px solid var(--line2); position: relative; }
-  #dock.collapsed { height: 48px !important; }
-  #dockGrip { height: 7px; cursor: ns-resize; background: linear-gradient(var(--line2), var(--line2)) center / 48px 2px no-repeat; flex: none; }
-  #dock.collapsed #dockGrip, #dock.collapsed #dockBody { display: none; }
-  #dockBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #dock { flex: none; height: 48px; display: flex; flex-direction: column; background: #0c100d; border-top: 1px solid var(--line2); }
   #termOut .tl { margin: 4px 0; white-space: pre-wrap; } #termOut .tl.cmd { color: var(--acc); font-family: var(--mono); margin-top: 10px; }
   #termOut .tl.out { color: #c9d6cc; font-family: var(--mono); font-size: 12px; } #termOut .tl.howie { color: var(--hi); border-left: 2px solid var(--acc); padding-left: 10px; }
   #termOut .tl.dim { color: var(--dim); font-family: var(--mono); font-size: 11px; }
-  #termLine { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 48px; border-top: 1px solid var(--line); }
+  #termLine { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 48px; }
   #termLine .prompt { font-family: var(--mono); color: var(--acc); font-weight: 600; }
   #termLine input { flex: 1; background: transparent; border: none; color: var(--hi); font-family: var(--mono); font-size: 14px; outline: none; }
   .acdrop.up { top: auto; bottom: 100%; }
@@ -78,7 +73,16 @@
   #chatHead { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   #termOut { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px; font-size: 12.5px; line-height: 1.5; }
   .content { flex: 1 1 900px; padding: 16px 20px; min-width: 360px; overflow: auto; container-type: inline-size; }
-  .rail { flex: 0 1 290px; min-width: 200px; border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; }
+  #side { flex: 0 1 430px; min-width: 320px; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #0c100d; }
+  #side.collapsed { display: none; }
+  #drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; }
+  #drawer .cardgrid { display: flex; flex-direction: column; gap: 18px; height: auto; }
+  #drawer .cardcol { overflow: visible; }
+  #drawer .cardcol .fill { overflow: visible; }
+  #rosterView { display: none; }
+  .rgrid { display: grid; grid-template-columns: 320px 1fr 260px; gap: 28px; }
+  @container (max-width: 900px) { .rgrid { grid-template-columns: 1fr 1fr; } }
+  .strip { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--mid); padding: 0 0 10px; flex-wrap: wrap; }
   .sechead { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin: 0 0 8px; }
 
   table { width: 100%; border-collapse: collapse; }
@@ -139,17 +143,13 @@
   .rulerow.off .dot { background: #3a4a40; }
   #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
 
-  #drawer { display: none; flex: 1; min-height: 0; padding: 12px 22px; overflow: hidden; }
-  #drawer.open { display: block; }
-  .cardgrid { display: grid; grid-template-columns: 0.95fr 1.1fr 0.9fr 1.35fr; grid-template-rows: minmax(0, 1fr); gap: 22px; height: 100%; }
   .cardcol { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .cardcol > * { flex: none; }
   .cardcol .fill { flex: 1 1 0; min-height: 0; overflow-y: auto; }
   .cardcol .shrink { flex: 0 1 auto; min-height: 0; overflow: hidden; }
-  .glog { flex: 0 1 64px; min-height: 28px; }
+  .glog { height: 64px; }
   .cta { display: flex; gap: 6px; flex: none; }
   .cta button { padding: 7px 12px; }
-  @media (max-width: 1100px) { .cardgrid { grid-template-columns: 1fr 1fr; } }
   .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
   .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
   .stat4 .lbl { font-size: 9px; letter-spacing: 1.5px; color: var(--dim); }
@@ -171,7 +171,7 @@
   #banner { display: none; padding: 12px 20px; background: #12241a; border-bottom: 1px solid var(--acc); font-family: var(--mono); font-size: 13px; color: var(--acc); }
   .footnote { display: flex; gap: 8px; align-items: center; padding: 12px 8px 0; font-size: 12px; color: var(--dim); }
   @media (max-width: 900px) {
-    .rail { display: none; }
+    #side { display: none; }
     header { flex-wrap: wrap; height: auto; padding: 10px; gap: 10px; }
     #draftpos { justify-content: flex-start; }
     td, th { padding: 6px 4px; }
@@ -182,9 +182,10 @@
 <body>
 
 <header>
-  <span class="wordmark" id="wordmark" onclick="openTerminal()" title="Open the Howie terminal"></span>
+  <span class="wordmark" id="wordmark" onclick="openTerminal()" title="Open the Howie panel"></span>
   <nav class="tabs">
     <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
+    <span class="tab" id="tabRoster" onclick="showTab('roster')">ROSTER</span>
     <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
     <span class="tab" id="tabSim" onclick="showTab('sim')">LAB</span>
     <span class="tab" id="tabData" onclick="showTab('data')">DATA</span>
@@ -193,7 +194,8 @@
   <span class="modechip" id="modechip">—</span>
   <button id="mockBtn" onclick="startMock()">START MOCK</button>
   <button class="danger" onclick="resetDraft()">RESET</button>
-  <button onclick="toggleRail()" title="Collapse / expand roster">ROSTER</button>
+  <button class="ptoggle" id="tglChat" onclick="toggleChat()" title="Howie panel (⌘`)">◧ HOWIE</button>
+  <button class="ptoggle" id="tglSide" onclick="toggleSide()" title="Player card panel">CARD ◨</button>
 </header>
 
 <div id="banner"></div>
@@ -201,17 +203,18 @@
 
 <main>
   <aside id="chat" class="collapsed">
-    <div id="chatHead">
+    <div id="chatHead" class="phead">
       <span class="mono green" style="font-size:11px;letter-spacing:2px;font-weight:600">HOWIE</span>
       <span class="dim" style="font-size:11px">chats · actions · history</span>
       <span style="flex:1"></span>
       <button style="padding:2px 8px" onclick="clearChat()">CLEAR</button>
-      <button style="padding:2px 8px" onclick="toggleChat()">◀</button>
+      <button class="x" onclick="toggleChat()" title="Close">✕</button>
     </div>
     <div id="termOut"></div>
   </aside>
   <div class="content">
     <div id="boardView">
+      <div class="strip" id="rosterStrip"></div>
       <div class="ctl" style="justify-content:space-between">
         <div class="poschips" id="poschips"></div>
         <span class="mono dim" id="mcstatus" style="font-size:11px"></span>
@@ -300,6 +303,26 @@
       </div>
     </div>
 
+    <div id="rosterView">
+      <div class="rgrid">
+        <div>
+          <p class="sechead">MY ROSTER <span class="mono" id="rosterCount"></span></p>
+          <div id="riskChips" style="margin-bottom:6px"></div>
+          <div id="roster"></div>
+        </div>
+        <div>
+          <p class="sechead">PICK LOG <button style="float:right; padding:2px 8px" onclick="undoPick()">UNDO</button></p>
+          <div id="log"></div>
+        </div>
+        <div>
+          <p class="sechead">YOUR NEXT PICKS</p>
+          <div class="mono mid" id="nextPicks" style="font-size:15px"></div>
+          <p class="sechead" style="margin-top:18px">RISK</p>
+          <div id="riskDetail" class="mid" style="font-size:12px;line-height:1.5"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="dataView">
       <div class="dsec">
         <p class="sechead">GAME DISTRIBUTIONS — EVERY PLAYER-GAME, LAST THREE SEASONS <span class="dim" style="letter-spacing:0">hover a dot</span></p>
@@ -358,29 +381,17 @@
     </div>
   </div>
 
-  <aside class="rail" id="rail">
-    <span class="railtab" onclick="toggleRail()">ROSTER <span id="railBadge"></span></span>
-    <p class="sechead">MY ROSTER <span class="mono" id="rosterCount"></span></p>
-    <div id="riskChips" style="margin-bottom:6px"></div>
-    <div id="roster"></div>
-    <p class="sechead" style="margin-top:18px">PICK LOG <button style="float:right; padding:2px 8px" onclick="undoPick()">UNDO</button></p>
-    <div id="log"></div>
-    <p class="sechead" style="margin-top:18px">YOUR NEXT PICKS</p>
-    <div class="mono mid" id="nextPicks"></div>
+  <aside id="side" class="collapsed">
+    <div class="phead"><span class="mono green" style="font-size:11px;letter-spacing:2px;font-weight:600">PLAYER</span><span class="dim" style="font-size:11px" id="sideHint">type a name below or click a row</span><span style="flex:1"></span><button class="x" onclick="closeCard()" title="Close (esc)">✕</button></div>
+    <div id="drawer"></div>
   </aside>
 </main>
 
 <div id="dock">
-  <div id="dockGrip" title="Drag to resize"></div>
-  <div id="dockBody">
-    <div id="drawer"></div>
-  </div>
   <div id="termLine">
     <span class="prompt">›</span>
     <span class="acwrap" style="flex:1;display:flex"><input id="termIn" placeholder="player name → card · /mine · /taken · /sim · /mock · /research · /sql · /help · or just ask Howie" data-ac="any" autocomplete="off"></span>
     <span class="dim mono" style="font-size:11px" id="termHint">↑↓ pick · ⏎ run · esc closes card</span>
-    <button onclick="toggleChat()" title="Howie panel">HOWIE ◀</button>
-    <button onclick="toggleDock()" id="termToggle" title="Collapse / expand card">▼</button>
   </div>
 </div>
 <div id="tip"></div>
@@ -426,8 +437,13 @@ function renderRail() {
   const lvl = (slot) => { const pos = slot === 'FLX' ? null : slot; const r = pos && RISK && RISK.positions[pos]; return r && r.level !== 'ok' ? r.level : ''; };
   const why = (slot) => { const r = RISK && RISK.positions[slot]; return r && r.reasons.length ? r.reasons.join(' · ') : ''; };
   const risks = RISK ? Object.entries(RISK.positions).filter(([p, r]) => r.level !== 'ok') : [];
-  $('riskChips').innerHTML = risks.map(([p, r]) => `<span class="riskchip ${r.level}" title="${r.reasons.join(' · ')}">${p} ${r.level === 'danger' ? 'THIN' : 'DUE'}</span>`).join('');
-  $('railBadge').textContent = risks.length ? ` ${risks.length}!` : '';
+  const chips = risks.map(([p, r]) => `<span class="riskchip ${r.level}" title="${r.reasons.join(' · ')}">${p} ${r.level === 'danger' ? 'THIN' : 'DUE'}</span>`).join('');
+  $('riskChips').innerHTML = chips;
+  $('riskDetail').innerHTML = risks.length ? risks.map(([p, r]) => `<div><b class="${r.level === 'danger' ? 'red' : 'amber'}">${p}</b> — ${r.reasons.join(' · ')}</div>`).join('') : '<span class="dim">no positional risk right now</span>';
+  const mine = ST.roster.filter(s => s.name);
+  $('rosterStrip').innerHTML = `<span class="mono dim" style="font-size:10px;letter-spacing:1.5px">ROSTER</span>` +
+    (mine.length ? mine.map(s => `<span><span class="kindtag">${s.pos}</span> ${s.name}</span>`).join('') : '<span class="dim">empty</span>') +
+    `<span class="dim">· ${ST.roster.length - mine.length} open</span>` + chips + `<span style="flex:1"></span><span class="dim" style="cursor:pointer" onclick="showTab('roster')">full roster →</span>`;
   $('roster').innerHTML = ST.roster.map(s =>
     `<div class="slotrow ${s.name ? 'filled' : lvl(s.slot)}" title="${s.name ? '' : why(s.slot)}">
       <span class="slot">${s.slot}</span>
@@ -517,6 +533,8 @@ function showTab(t) {
   $('strategyView').style.display = t === 'strategy' ? 'block' : 'none';
   $('dataView').style.display = t === 'data' ? 'block' : 'none';
   $('simView').style.display = t === 'sim' ? 'block' : 'none';
+  $('rosterView').style.display = t === 'roster' ? 'block' : 'none';
+  $('tabRoster').classList.toggle('active', t === 'roster');
   $('tabBoard').classList.toggle('active', t === 'board');
   $('tabStrategy').classList.toggle('active', t === 'strategy');
   $('tabData').classList.toggle('active', t === 'data');
@@ -655,7 +673,7 @@ async function openCard(uid) {
         <div class="mono dim shrink" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
     </div>
   </div>`;
-  $('drawer').classList.add('open'); dockExpand(260);
+  sideOpen(); $('drawer').scrollTop = 0; $('sideHint').textContent = c.team ? `${c.pos} · ${c.team}` : '';
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -687,7 +705,7 @@ function showTip(ev, i, active) {
   t.style.top = (ev.clientY - 10) + 'px';
 }
 function hideTip() { $('tip').style.display = 'none'; }
-function closeCard() { $('drawer').classList.remove('open'); dockCollapse(); }
+function closeCard() { $('side').classList.add('collapsed'); syncToggles(); }
 
 // ---------------- DATA tab ----------------
 
@@ -1012,17 +1030,12 @@ loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
 
 // ---------------- terminal (the Howie command line) ----------------
 
-// Dock = the player card + the command line. Chat/history = the left panel.
-function dockExpand(minPx) {
-  const d = $('dock'); d.classList.remove('collapsed');
-  d.style.height = (localStorage.getItem('dockH') || '44vh');
-  if (minPx && d.getBoundingClientRect().height < minPx) d.style.height = Math.min(minPx, window.innerHeight * 0.6) + 'px';
-  $('termToggle').textContent = '▼';
-}
-function dockCollapse() { $('dock').classList.add('collapsed'); $('termToggle').textContent = '▲'; }
-function toggleDock() { if ($('dock').classList.contains('collapsed')) { if ($('drawer').innerHTML) { $('drawer').classList.add('open'); dockExpand(260); } } else dockCollapse(); }
-function chatOpen() { $('chat').classList.remove('collapsed'); localStorage.setItem('chatOpen', '1'); }
-function toggleChat() { const c = $('chat'); c.classList.toggle('collapsed'); localStorage.setItem('chatOpen', c.classList.contains('collapsed') ? '0' : '1'); }
+// Panels: Howie (left) and the player card (right). The dock is the command line.
+function syncToggles() { $('tglChat').classList.toggle('on', !$('chat').classList.contains('collapsed')); $('tglSide').classList.toggle('on', !$('side').classList.contains('collapsed')); }
+function chatOpen() { $('chat').classList.remove('collapsed'); localStorage.setItem('chatOpen', '1'); syncToggles(); }
+function toggleChat() { const c = $('chat'); c.classList.toggle('collapsed'); localStorage.setItem('chatOpen', c.classList.contains('collapsed') ? '0' : '1'); syncToggles(); }
+function sideOpen() { $('side').classList.remove('collapsed'); syncToggles(); }
+function toggleSide() { const sd = $('side'); if (sd.classList.contains('collapsed')) { sideOpen(); if (!$('drawer').innerHTML) $('termIn').focus(); } else { sd.classList.add('collapsed'); syncToggles(); } }
 function clearChat() { $('termOut').innerHTML = ''; localStorage.removeItem('howieChat'); }
 function termPrint(kind, html) {
   chatOpen();
@@ -1036,20 +1049,9 @@ function openTerminal() { chatOpen(); $('termIn').focus(); if (!$('termOut').chi
 (function restoreChat() {
   const saved = localStorage.getItem('howieChat'); if (saved) { $('termOut').innerHTML = saved; $('termOut').scrollTop = 1e9; }
   if (localStorage.getItem('chatOpen') === '1') chatOpen();
+  syncToggles();
 })();
-(function dockDrag() {
-  const grip = $('dockGrip'), dock = $('dock'); let dragging = false;
-  const move = (y) => { const h = Math.min(Math.max(window.innerHeight - y, 120), window.innerHeight * 0.85); dock.style.height = h + 'px'; localStorage.setItem('dockH', h + 'px'); };
-  grip.addEventListener('mousedown', e => { dragging = true; document.body.style.userSelect = 'none'; e.preventDefault(); });
-  window.addEventListener('mousemove', e => { if (dragging) move(e.clientY); });
-  window.addEventListener('mouseup', () => { dragging = false; document.body.style.userSelect = ''; });
-  grip.addEventListener('touchstart', e => { dragging = true; }, {passive: true});
-  window.addEventListener('touchmove', e => { if (dragging) move(e.touches[0].clientY); }, {passive: true});
-  window.addEventListener('touchend', () => { dragging = false; });
-  const saved = localStorage.getItem('dockH'); if (saved) dock.style.height = saved;
-  dockCollapse();  // start compact; opening a card or printing expands it
-})();
-function toggleRail() { $('rail').classList.toggle('collapsed'); }
+
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCard(); } if (e.key === '`' && (e.ctrlKey || e.metaKey)) { openTerminal(); e.preventDefault(); } });
 
 attachAutocomplete($('termIn'), (r) => { if (r.uid) { openCard(r.uid); termPrint('cmd', '› ' + r.name); $('termIn').value = ''; } }, {up: true, enterRequiresNav: true});
