@@ -18,6 +18,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e ".[dev,ai]"
+      - name: Type check
+        run: python -m mypy howie3 --ignore-missing-imports
       - name: Repo data boundary
         run: |
           # No raw data may be tracked: db/csv/parquet files or anything under /data

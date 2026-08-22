@@ -16,22 +16,33 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
 ## What it does
 
 - **`howie serve`** — the draft cockpit: a local web app with the ranked
-  board (marginal value + Monte Carlo floor–ceiling bars), a strategy tab
-  (per-position draft-now-vs-wait impact, pinned rules, notes), knowledge-
-  graph player cards, search-first pick marking with undo, and **mock-draft
-  bots** — hit START MOCK and practice a full draft solo.
+  board (marginal value with bench insurance + Monte Carlo floor–ceiling
+  bars), a strategy tab (per-position draft-now-vs-wait impact, pinned
+  rules, notes), knowledge-graph player cards, a Mock Draft Lab whose
+  availability rates feed back into the engine, and a command line built
+  for the clock: type a name, **⏎ marks him taken, ⇧⏎ drafts him to you,
+  ⇥ opens the card**, `?…` asks Howie. Mock-draft bots (they react to
+  positional runs and their own needs) let you practice a full draft solo.
 - **`howie draft board / pick`** — the same engine from the CLI.
 - **`howie graph search|context|import`** — millisecond search over players,
   teams, and position rooms; 1-hop context (room shares, vacated volume,
   team trends, researched facts with provenance).
 - **`howie eval run`** — backtests on realized 2025 results: projection
-  quality, calibration coverage, and full draft replays vs follow-ADP and
-  VORP baselines. (Current scoreboard: Howie +48 pts vs ADP; the market
-  anchor and variance model came out of this harness.)
+  quality, calibration coverage, and paired full-draft replays (same seeded
+  opponents for every policy) vs follow-ADP, ADP-with-need, pure-projection
+  and VORP baselines, with bootstrap confidence intervals. Current
+  scoreboard (n=40 paired replays, one season): **Howie +101 pts vs ADP,
+  95% CI [+42, +158], wins 65%**; the bench-insurance objective, market
+  anchor and variance model all came out of this harness. One season of
+  preseason inputs exists, so the CI covers draft-to-draft variance, not
+  season-to-season.
 - **`python3 -m howie3.mcp_server`** — the engine as MCP tools for Claude
   Desktop/Code: chat marks picks into the same draft log the cockpit shows.
 - **`howie ask "..."`** — in-repo natural-language agent (needs
-  `ANTHROPIC_API_KEY`; `ai` extra).
+  `ANTHROPIC_API_KEY`; `ai` extra). Everything sent to a model or an MCP
+  client passes through one redaction policy (`howie3/egress.py`): derived
+  context only, never per-game stat lines; the agent's raw SQL tool is
+  opt-in (`HOWIE_AGENT_SQL=1`).
 - **`skills/`** — research playbooks whose only output is structured facts
   (`howie graph import`), never prose.
 
@@ -61,8 +72,12 @@ machine — the `data/` directory is never committed.
 
 `howie context export` writes a **strategy-context artifact**: a small,
 versioned JSON of derived abstractions (tiers, availability probabilities,
-outcome summaries) with no provider rows. It can be imported elsewhere
-(`howie context import`) and powers the draft views without a database.
+outcome summaries, the simulation parameters and variance buckets, and
+provenance) with no provider rows. It can be imported elsewhere
+(`howie context import`) and powers the draft views — Monte Carlo
+included — without a database. Packaging is an explicit allowlist
+(`MANIFEST.in`, `setup.py`): databases, `.env`, and `data/` never ship, and
+`tests/test_boundary.py` builds an sdist to prove it.
 
 ## Architecture (v3)
 
@@ -74,11 +89,19 @@ howie3/
   value/           # the engine: availability, marginal value, distributions, MC
   commands.py      # one registry serving both frontends
   views.py         # command output as renderables
-  tui/             # Textual app
-  agent.py         # Anthropic tool-calling agent (read-only SQL + engine tools)
+  state.py         # the draft event log (validated schema; every surface writes it)
+  service.py       # the JSON contract every surface calls
+  server.py        # cockpit HTTP server (session token on writes, CSP, body limit)
+  ui/              # index.html (markup) + style.css + lib.js (pure helpers) + app.js
+  egress.py        # the one redaction policy for model/MCP-bound payloads
+  mcp_server.py    # MCP tools over the service layer
+  agent.py         # Anthropic tool-calling agent (engine tools; SQL opt-in)
+  evals.py         # paired backtests with bootstrap CIs
 ```
 
-Tests: `python -m pytest tests/ -q`
+Tests: `python -m pytest tests/ -q` (backend, HTTP, boundary, and — with
+node installed — the front-end helpers via `node --test`). Type check:
+`python -m mypy howie3 --ignore-missing-imports` (clean; CI enforces both).
 
 ## Legacy (v2)
 

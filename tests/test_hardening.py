@@ -340,3 +340,46 @@ def test_rule_reconciliation_keeps_latest_per_constraint():
                                     Rule("NO QB BEFORE R3"), Rule("WAIT RB UNTIL R9", on=False)])
     assert [r.on for r in rules] == [False, True, True, False]
     assert len(notes) == 1 and "superseded" in notes[0]
+
+
+def test_pick_context_follows_the_draft_not_the_roster(settings, tmp_path, monkeypatch):
+    """Marking your own slot as taken (live mode) must not rewind the engine
+    to an earlier round; and a mock refuses 'taken' while you're on the clock."""
+    from howie3 import service
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    st = DraftState(created="x", mode="live"); st.save(settings)
+    conn = service._conn(settings); pool = service._pool(settings, conn); conn.close()
+    # slot 8: picks 8, 17, 32, 41 ... fill picks 1-7 as other teams, then skip pick 8 via 'taken'
+    for p in pool[:7]:
+        service.mark_pick(settings, p.uid, mine=False)
+    service.mark_pick(settings, pool[7].uid, mine=False)       # own slot, live: allowed, team 0
+    for p in pool[8:16]:
+        service.mark_pick(settings, p.uid, mine=False)
+    state = DraftState.load(settings)
+    assert state.next_pick_no() == 17 and not state.my_uids(settings.league)
+    rnd, cur, nxt, future = service._pick_context(settings, state)
+    assert (rnd, cur, nxt) == (2, 17, 32), "round 2 at pick 17 even with an empty roster"
+    payload = service.pick_payload(settings, state, top_n=3)
+    assert payload["current_pick"] == 17 and payload["next_pick"] == 32
+    # mock mode: 'taken' on your own turn is refused instead of corrupting the log
+    service.start_mock(settings)
+    state = DraftState.load(settings)
+    assert state.next_pick_no() == 8
+    avail = next(p for p in pool if p.uid not in state.taken_uids())
+    with pytest.raises(ValueError, match="on the clock"):
+        service.mark_pick(settings, avail.uid, mine=False)
+
+
+def test_card_reports_taken_players(settings, tmp_path, monkeypatch):
+    from howie3 import service
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    st = DraftState(created="x", mode="live"); st.save(settings)
+    conn = service._conn(settings); pool = service._pool(settings, conn); conn.close()
+    assert service.card_payload(settings, pool[0].uid)["taken"] is False
+    service.mark_pick(settings, pool[0].uid, mine=False)
+    c = service.card_payload(settings, pool[0].uid)
+    assert c["taken"] is True and c["taken_pick"] == 1 and c["taken_by"] == "team 1"
+    hit = [x for x in service.search_payload(settings, pool[0].name) if x.get("uid") == pool[0].uid][0]
+    assert hit["taken"] is True

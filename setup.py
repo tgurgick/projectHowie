@@ -28,7 +28,7 @@ CORE_REQUIREMENTS = [
 EXTRAS = {
     "ai": ["anthropic>=0.21.0"],
     "viz": ["matplotlib>=3.5.0", "seaborn>=0.12.0"],
-    "dev": ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "black>=22.0.0", "mypy>=1.0.0"],
+    "dev": ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "black>=22.0.0", "mypy>=1.0.0", "types-requests"],
     # Everything the deprecated v2 stack additionally needs
     "legacy": [
         "openai>=1.0.0", "anthropic>=0.21.0", "sqlalchemy>=2.0.0",

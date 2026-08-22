@@ -13,11 +13,14 @@ flex or by beating a current starter.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from ..config import LeagueConfig
 from .board import POSITIONS, PoolPlayer, expected_kth_best
 from .lineup import expected_lineup_points as lineup_points
+
+if TYPE_CHECKING:  # simulate pulls in numpy; only needed here for the annotation
+    from .simulate import SimResult
 
 
 @dataclass
@@ -26,7 +29,7 @@ class PickPlan:
     player: PoolPlayer
     final_value: float           # expected optimal-lineup points at draft end
     plan: List[Tuple[str, float]] = field(default_factory=list)  # (position, expected pts) per future pick
-    sim: Optional[object] = None  # SimResult once Monte Carlo reranking runs
+    sim: Optional["SimResult"] = None  # set once Monte Carlo reranking runs
 
     @property
     def plan_positions(self) -> List[str]:
@@ -39,7 +42,7 @@ def _rollout(
     future_picks: Sequence[int],
     league: LeagueConfig,
     taken: frozenset,
-) -> (float, List[str]):
+) -> Tuple[float, List[Tuple[str, float]]]:
     """Greedily complete the draft; returns (final lineup value, plan)."""
     by_pos = {pos: list(pts) for pos, pts in roster_pts.items()}
     claims = {pos: 0 for pos in POSITIONS}
@@ -233,7 +236,7 @@ def _proj_ranks(pool: Sequence[PoolPlayer]) -> Dict[str, int]:
     return proj_rank
 
 
-def resolve_names(conn, names: Sequence[str], pool: Sequence[PoolPlayer]) -> (List[PoolPlayer], List[str]):
+def resolve_names(conn, names: Sequence[str], pool: Sequence[PoolPlayer]) -> Tuple[List[PoolPlayer], List[str]]:
     """Map user-typed names (or DST team codes) to pool players."""
     from ..data.names import name_key
 

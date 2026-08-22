@@ -83,7 +83,7 @@ def bot_pick(pool: List[PoolPlayer], taken: frozenset, team_positions: Dict[str,
                 shift[pos] = shift.get(pos, 0.0) + NEED_SHIFT
     window = sorted(candidates, key=lambda p: p.adp if p.adp else 999)[:24]
     perceived = [
-        rng.normal(p.adp, max((p.stdev or 2.0), 2.0) * 1.25) - shift.get(p.position, 0.0)
+        rng.normal(p.adp, max((p.stdev or 2.0), 2.0) * 1.25) - shift.get(p.position, 0.0)  # type: ignore[arg-type]  # adp is None only via the no-candidates fallback; guarding it would change pick behavior
         for p in window
     ]
     return window[int(np.argmin(perceived))]

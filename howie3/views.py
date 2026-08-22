@@ -285,6 +285,7 @@ def pick_view(
             f"{value_of(r):.0f}",
         ]
         if use_mc:
+            assert r.sim is not None  # mc_rerank* attach a SimResult to every result
             row.append(f"{r.sim.p10:.0f}–{r.sim.p90:.0f}")
         row.append(f"[{style}]{delta:+.0f}[/{style}]")
         row.append(" ".join(r.plan_positions[:8]))

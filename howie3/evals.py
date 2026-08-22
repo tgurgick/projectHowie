@@ -492,7 +492,8 @@ def eval_sos(settings: Settings, players: List[EvalPlayer]) -> dict:
         team_of[r["player_uid"]] = r["team"]  # last row per uid = most games
     conn.close()
 
-    season_x, season_y, by_pos = [], [], {}
+    season_x, season_y = [], []
+    by_pos: Dict[str, Tuple[List[float], List[float]]] = {}
     weekly_x, weekly_y = [], []
     for p in _top_pool(players):
         team = team_of.get(p.uid)
@@ -530,7 +531,7 @@ def eval_sos(settings: Settings, players: List[EvalPlayer]) -> dict:
         sched[(r["home_team"], r["week"])] = r["away_team"]
         sched[(r["away_team"], r["week"])] = r["home_team"]
     conn.close()
-    allowed = defaultdict(float)
+    allowed: Dict[Tuple[str, str, int], float] = defaultdict(float)
     for r in rows:
         allowed[(r["opponent"], r["position"], r["week"])] += r["pts"] or 0.0
     weeks_by_def = defaultdict(set)

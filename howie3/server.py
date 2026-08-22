@@ -82,7 +82,7 @@ def _kick_mc(settings: Settings, gen: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    settings: Settings = None  # injected by serve()
+    settings: Settings = None  # type: ignore[assignment]  # injected by serve() before any request is handled
     # Per-process session token: every mutating request must carry it in
     # X-Howie-Token. The page receives it in a <meta> tag, so a hostile
     # site that can reach 127.0.0.1 cannot drive the draft or spend API

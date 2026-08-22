@@ -13,7 +13,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -137,7 +137,7 @@ def import_external(settings: Settings, text: str, source: str = "external") -> 
     conn = connect(settings.db_path)
     pool = load_pool(conn, settings.current_season, settings.league.scoring_format)
     conn.close()
-    by_key = {}
+    by_key: Dict[str, str] = {}
     for p in pool:
         by_key.setdefault(name_key(p.name), p.uid)
     picks, unresolved = [], []
@@ -223,7 +223,7 @@ def aggregates(settings: Settings) -> dict:
     per_pick = {}
     for k in my_picks:
         eligible = [d for d in drafts if len(d) >= k - 1]
-        rows = []
+        rows: List[Dict[str, Any]] = []
         if eligible:
             for p in pool:
                 if p.adp is None or p.adp > k + 80:

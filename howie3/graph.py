@@ -84,6 +84,7 @@ def rebuild_derived(conn: sqlite3.Connection, season: int) -> int:
         teams = [r["home_team"] for r in conn.execute(
             "SELECT DISTINCT home_team AS home_team FROM games WHERE season = ?", (season,))]
 
+    pos: Optional[str]  # room position (str) below, then fix_position() per player
     # team + unit entities
     for t in teams:
         conn.execute(

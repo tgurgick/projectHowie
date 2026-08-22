@@ -6,10 +6,11 @@ state beyond the draft event log it is handed. This module IS the API.
 """
 
 import sqlite3
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import LeagueConfig, Settings
 from .db import connect
+from .payloads import JsonDict, RosterSimPayload
 from .state import DraftState, snake_team_for_pick, state_lock
 from .value.board import POSITIONS, PoolPlayer, expected_kth_best, load_pool, snake_picks
 
@@ -40,14 +41,22 @@ def _me(settings: Settings) -> int:
 
 def _pick_context(settings: Settings, state: DraftState,
                   league: Optional[LeagueConfig] = None) -> Tuple[int, int, int, List[int]]:
-    """(round, current_pick, next_pick, future_picks) for the user's turn."""
+    """(round, current_pick, next_pick, future_picks) for the user's turn.
+
+    Derived from the draft's actual position (the next overall pick), never
+    from roster size: a user who skipped a pick, marked his own slot as
+    taken, or imported a partial log must still be evaluated at the pick the
+    draft is really at. `round` is the index of the user's pick (1-based),
+    which is what WAIT/NO-BEFORE rules compare against."""
     league = league or settings.league
     picks = snake_picks(league)
-    rnd = min(len(state.my_uids(league)) + 1, len(picks))
-    current_pick = picks[rnd - 1]
-    future = picks[rnd:]
+    upcoming = [k for k in picks if k >= state.next_pick_no()]
+    if not upcoming:  # the user's picks are all behind him
+        return len(picks), picks[-1], picks[-1] + league.num_teams, []
+    current_pick = upcoming[0]
+    future = upcoming[1:]
     next_pick = future[0] if future else current_pick + league.num_teams
-    return rnd, current_pick, next_pick, future
+    return picks.index(current_pick) + 1, current_pick, next_pick, future
 
 
 # ------------------------------------------------------------ state & picks
@@ -142,7 +151,11 @@ def mark_pick(settings: Settings, player_uid: str, mine: bool,
         else:
             team = snake_team_for_pick(league, pick_no)
             if team == me:
-                team = 0  # attribution unknown (log lagging); never the user's slot
+                if state.mode == "mock":
+                    raise ValueError(
+                        f"You're on the clock at pick {pick_no} — draft {player.name} or "
+                        "someone else (in a mock the bots have already picked)")
+                team = 0  # live: attribution unknown (log lagging); never the user's slot
         event = state.add_pick(pick_no, team, player.uid, player.name,
                                player.position, source, mine=mine, league=league)
         state.save(settings)
@@ -242,7 +255,8 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
         results = mc_rerank(conn, results, roster, pool, league,
                             settings.current_season, n_sims=sims)
 
-    rows, span = [], _outcome_span(results, sims)
+    rows: List[JsonDict] = []
+    span = _outcome_span(results, sims)
     for r in results:
         fired = _fired_rules(r.player, rnd, effects)
         value = r.sim.mean if (sims and r.sim) else r.final_value
@@ -321,7 +335,7 @@ def positions_payload(settings: Settings, state: DraftState) -> dict:
     for p in roster:
         roster_pts.setdefault(p.position, []).append(p.proj)
 
-    out = []
+    out: List[JsonDict] = []
     for pos in POSITIONS:
         likely = [p for p in pools[pos] if p.p_available(current_pick) >= 0.10]
         if not likely:
@@ -375,11 +389,11 @@ def card_payload(settings: Settings, uid: str) -> dict:
     for p in pool:
         counts[p.position] = counts.get(p.position, 0) + 1
         proj_rank[p.uid] = counts[p.position]
-    games = {r["player_uid"]: r["games"] for r in conn.execute(
+    games_proj = {r["player_uid"]: r["games"] for r in conn.execute(
         "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'",
         (settings.current_season,))}
     sp = build_sim_players(conn, [player], settings.current_season,
-                           league.scoring_format, proj_rank, games)[0]
+                           league.scoring_format, proj_rank, games_proj)[0]
     totals = simulate_player_totals(sp, n_sims=300, seed=7)
 
     # marginal value vs waiting at the position
@@ -412,8 +426,12 @@ def card_payload(settings: Settings, uid: str) -> dict:
     conn.close()
 
     import numpy as np
+    taken_event = next((e for e in state.events if e.player_uid == uid), None)
     return {
         "uid": uid, "name": player.name, "pos": player.position, "team": player.team,
+        "taken": taken_event is not None,
+        "taken_pick": taken_event.pick_no if taken_event else None,
+        "taken_by": ("you" if taken_event.mine else f"team {taken_event.team}" if taken_event.team else "another team") if taken_event else None,
         "bye": player.bye, "proj": round(player.raw or player.proj, 1),
         "value": round(player.proj, 1),  # market-anchored (what the engine ranks on)
         "adp": player.adp, "adp_stdev": player.stdev,
@@ -516,6 +534,7 @@ def games_distribution(settings: Settings, position: str, stat: str = "pts",
     seasons = list(range(last - n_seasons + 1, last + 1))
     conn = _conn(settings)
     rows = []
+    params: Tuple[Any, ...]
     for season in seasons:
         if tier == "starter":
             sql = f"""WITH s AS (SELECT player_uid FROM weekly_stats WHERE season=? AND position=?
@@ -582,7 +601,7 @@ def sim_payload(settings: Settings, uid: str, n_sims: int = 400) -> dict:
     }
 
 
-def roster_sim_payload(settings: Settings, state: DraftState, n_sims: int = 300) -> dict:
+def roster_sim_payload(settings: Settings, state: DraftState, n_sims: int = 300) -> RosterSimPayload:
     """The current roster's simulated season-total distribution."""
     from .value.distributions import build_sim_players
     from .value.simulate import simulate_roster
@@ -607,6 +626,7 @@ def roster_sim_payload(settings: Settings, state: DraftState, n_sims: int = 300)
                             proj_rank, games)
     conn.close()
     res = simulate_roster(sps, league, n_sims=n_sims, playoff_weight=league.playoff_weight)
+    assert res.samples is not None  # only an empty roster yields no samples, handled above
     return {
         "players": [p.name for p in roster],
         "samples": [round(float(x), 1) for x in res.samples],
@@ -813,7 +833,7 @@ def update_config(settings: Settings, values: dict) -> dict:
     from dataclasses import replace as dc_replace
 
     current = settings.league
-    clean = {}
+    clean: Dict[str, Any] = {}
     for f in CONFIG_FIELDS:
         if f in values and values[f] is not None and values[f] != "":
             v = values[f]

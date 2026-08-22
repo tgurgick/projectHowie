@@ -9,14 +9,15 @@ same draft event log — chat and cockpit stay in sync during a draft.
 
 import json
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .config import Settings
+from .payloads import JsonDict, JsonRpcResponse, ToolSpec
 from .state import DraftState
 
 PROTOCOL = "2024-11-05"
 
-TOOLS = [
+TOOLS: List[ToolSpec] = [
     {
         "name": "get_draft_state",
         "description": "Current draft state: round, pick, who's on the clock, the user's roster, recent picks, and their strategy notes/rules.",
@@ -109,9 +110,10 @@ def call_tool(settings: Settings, name: str, args: Dict[str, Any]) -> Any:
     raise ValueError(f"Unknown tool {name}")
 
 
-def handle(settings: Settings, req: dict) -> dict:
+def handle(settings: Settings, req: dict) -> JsonRpcResponse:
     method = req.get("method")
     rid = req.get("id")
+    result: JsonDict
     if method == "initialize":
         result = {
             "protocolVersion": PROTOCOL,

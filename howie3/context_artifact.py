@@ -17,10 +17,14 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .config import LeagueConfig, Settings
 from .db import connect
+
+if TYPE_CHECKING:  # value.* is imported lazily at runtime (numpy/pandas)
+    from .value.board import PoolPlayer
+    from .value.distributions import Bucket, SimPlayer
 
 SCHEMA_VERSION = 2
 SUPPORTED_VERSIONS = (1, 2)   # v1 loads without sim params (deterministic only)
@@ -47,9 +51,9 @@ BANDS = ("elite", "starter", "mid", "depth")
 class ContextBundle:
     """What load_context returns: everything the draft views need."""
     league: LeagueConfig
-    pool: List                                  # PoolPlayer, sorted by proj desc
-    sims: Dict[str, object] = field(default_factory=dict)   # uid -> SimPlayer (schema 2)
-    buckets: Dict[Tuple[str, int], object] = field(default_factory=dict)
+    pool: List["PoolPlayer"]                    # sorted by proj desc
+    sims: Dict[str, "SimPlayer"] = field(default_factory=dict)   # uid -> SimPlayer (schema 2)
+    buckets: Dict[Tuple[str, int], "Bucket"] = field(default_factory=dict)
     schema_version: int = SCHEMA_VERSION
 
     @property
@@ -93,7 +97,7 @@ def export_context(
     for p, sp in zip(pool, sim_players):
         totals = simulate_player_totals(sp, n_sims=n_sims, seed=seed)
         tier = tier_of(p.position, proj_rank[p.uid])
-        entry = {
+        entry: Dict[str, Any] = {
             "uid": p.uid,
             "name": p.name,
             "position": p.position,
@@ -236,8 +240,8 @@ def load_context(path: Path) -> ContextBundle:
         flex_slots=roster.get("FLEX", 1), k_slots=roster.get("K", 1),
         dst_slots=roster.get("DST", 1), bench_slots=roster.get("BENCH", 6),
     )
-    pool = []
-    sims: Dict[str, object] = {}
+    pool: List[PoolPlayer] = []
+    sims: Dict[str, SimPlayer] = {}
     for p in artifact["players"]:
         market = p.get("market") or {}
         pool.append(
@@ -258,7 +262,7 @@ def load_context(path: Path) -> ContextBundle:
                 bye_week=p.get("bye"), sos_mult=mults, season_sigma=float(sm["season_sigma"]),
             )
     pool.sort(key=lambda p: -p.proj)
-    buckets = {}
+    buckets: Dict[Tuple[str, int], Bucket] = {}
     for key, b in (artifact.get("buckets") or {}).items():
         pos, tier = key.split(":")
         buckets[(pos, int(tier))] = Bucket(cv=float(b["cv"]), p_play=float(b["p_play"]), n=int(b["n"]))
