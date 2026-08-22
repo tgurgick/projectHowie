@@ -154,7 +154,7 @@ def test_db_has_all_datasets(settings):
     assert counts["weekly_stats"] > 50000
     assert counts["projections"] >= 500
     assert counts["adp"] > 600
-    assert counts["sos"] == 2560
+    assert counts["sos"] >= 2560  # 2026 weekly values (+2025 once evals load it)
     assert counts["team_intel"] > 200
 
 

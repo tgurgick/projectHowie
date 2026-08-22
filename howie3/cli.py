@@ -223,7 +223,7 @@ def eval_run(reps: int, skip_policy: bool) -> None:
     from rich.table import Table as RTable
 
     from .evals import (eval_calibration, eval_inputs_report, eval_policy,
-                        load_eval_players)
+                        eval_sos, load_eval_players)
 
     settings = Settings()
     players = load_eval_players(settings)
@@ -242,6 +242,16 @@ def eval_run(reps: int, skip_policy: bool) -> None:
         f"{cal['coverage_8plus_games']:.0%} with 8+ games (target ~{cal['target']:.0%}, "
         f"n={cal['n']}; buckets fit on ≤2024 only)\n"
     )
+
+    sos = eval_sos(settings, players)
+    if sos.get("available"):
+        console.print(
+            f"D · does preseason SoS predict anything? season-level corr "
+            f"{sos['season_corr']:+.3f} (n={sos['season_n']}; by pos "
+            + ", ".join(f"{k} {v:+.2f}" for k, v in sos["season_by_pos"].items())
+            + f") · weekly within-player corr {sos['weekly_corr']:+.3f} "
+            f"(n={sos['weekly_n']}). ~0 on both = keep SoS normalized, playoff_weight neutral.\n"
+        )
 
     if not skip_policy:
         t = RTable(title=f"C · 2025 draft replay, realized weekly scoring ({reps} reps × 4 slots)")

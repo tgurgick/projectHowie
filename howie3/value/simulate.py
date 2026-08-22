@@ -20,6 +20,7 @@ from .distributions import SimPlayer, truncation_factor
 from .lineup import FLEX_ELIGIBLE
 
 FANTASY_WEEKS = 17
+PLAYOFF_WEEKS = (15, 16, 17)
 
 
 @dataclass
@@ -35,9 +36,13 @@ def simulate_roster(
     league: LeagueConfig,
     n_sims: int = 300,
     seed: int = 7,
+    playoff_weight: float = 1.0,
 ) -> SimResult:
     if not players:
         return SimResult(0.0, 0.0, 0.0, 0.0)
+    week_weight = np.ones(FANTASY_WEEKS)
+    for w in PLAYOFF_WEEKS:
+        week_weight[w - 1] = playoff_weight
     rng = np.random.default_rng(seed)
     n = len(players)
 
@@ -75,7 +80,8 @@ def simulate_roster(
         season_total = 0.0
         for w in range(FANTASY_WEEKS):
             exp_w = np.where(available[:, w], week_mu[:, w], -1.0)
-            season_total += _week_lineup_score(positions, exp_w, scores[:, w], slots, league)
+            season_total += week_weight[w] * _week_lineup_score(
+                positions, exp_w, scores[:, w], slots, league)
         totals[s] = season_total
 
     return SimResult(

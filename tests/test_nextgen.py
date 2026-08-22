@@ -267,3 +267,19 @@ def test_mcp_handshake_and_tools(settings):
     assert any("Gibbs" in p["name"] for p in payload)
     unknown = handle(settings, {"jsonrpc": "2.0", "id": 4, "method": "nope"})
     assert unknown["error"]["code"] == -32601
+
+
+# ---------------- playoff weighting knob ----------------
+
+def test_playoff_weight_scales_objective():
+    from howie3.value.distributions import SimPlayer
+    from howie3.value.simulate import simulate_roster
+
+    roster = [SimPlayer(name="QB", position="QB", proj=300, weekly_mu=300 / 17,
+                        cv=0.01, p_play=1.0, bye_week=None, sos_mult=np.ones(18))]
+    neutral = simulate_roster(roster, LEAGUE, n_sims=50, seed=1, playoff_weight=1.0)
+    heavy = simulate_roster(roster, LEAGUE, n_sims=50, seed=1, playoff_weight=2.0)
+    # 3 playoff weeks of ~17.6 pts each counted twice → +~53 over a 300-pt season
+    assert heavy.mean - neutral.mean == pytest.approx(3 * 300 / 17, rel=0.05)
+    with pytest.raises(ValueError, match="playoff_weight"):
+        LeagueConfig(playoff_weight=0.5).validate()

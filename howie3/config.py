@@ -48,6 +48,11 @@ class LeagueConfig:
     # (+48 pts vs follow-ADP with snake-correct opponents; pure projections
     # lost by ~200). Re-sweep with `howie eval run` as seasons accumulate.
     market_anchor: float = 0.75
+    # Extra weight on fantasy-playoff weeks (15-17) in the simulated objective.
+    # Default 1.0 (neutral): the 2025 backtest (`howie eval run`, tier D)
+    # found preseason weekly SoS has ~zero predictive power, so weighting
+    # playoff weeks only earns value once in-season matchup data exists.
+    playoff_weight: float = 1.0
 
     @property
     def scoring_format(self) -> str:
@@ -76,6 +81,8 @@ class LeagueConfig:
             )
         if not 0.0 <= self.market_anchor <= 1.0:
             raise ValueError(f"market_anchor must be 0..1, got {self.market_anchor}")
+        if not 1.0 <= self.playoff_weight <= 3.0:
+            raise ValueError(f"playoff_weight must be 1..3, got {self.playoff_weight}")
 
     @classmethod
     def load(cls, path: Path) -> "LeagueConfig":

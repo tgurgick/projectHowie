@@ -318,3 +318,67 @@ def eval_policy(settings: Settings, players: List[EvalPlayer],
             "n_drafts": len(scores),
         })
     return out
+
+
+# ------------------------------------------------------------ tier D: does SoS predict anything?
+
+def eval_sos(settings: Settings, players: List[EvalPlayer]) -> dict:
+    """Two questions, both on 2025 actuals with PFF's 2025 PRESEASON SoS:
+    (1) season level — did an easier projected schedule predict beating the
+        projection? If ~0, projections already price schedule and SoS must
+        stay normalized (no effect on season totals).
+    (2) weekly level — within a player's season, did easier weeks score more
+        relative to his own average? If > 0, reshaping weeks by SoS is valid.
+    """
+    from .data.sources.pff_sos import refresh_sos
+
+    conn = connect(settings.db_path)
+    if not conn.execute("SELECT 1 FROM sos WHERE season = ? LIMIT 1", (EVAL_SEASON,)).fetchone():
+        try:
+            refresh_sos(conn, settings.pff_dir, EVAL_SEASON)
+        except FileNotFoundError:
+            conn.close()
+            return {"available": False}
+
+    fmt = settings.league.scoring_format
+    sos: Dict[tuple, float] = {}
+    for r in conn.execute("SELECT team, position, week, value FROM sos WHERE season = ?", (EVAL_SEASON,)):
+        sos[(r["team"], r["position"], r["week"])] = r["value"]
+    team_of: Dict[str, str] = {}
+    for r in conn.execute(
+        "SELECT player_uid, team, COUNT(*) n FROM weekly_stats WHERE season = ? "
+        "GROUP BY player_uid, team ORDER BY n", (EVAL_SEASON,)):
+        team_of[r["player_uid"]] = r["team"]  # last row per uid = most games
+    conn.close()
+
+    season_x, season_y, by_pos = [], [], {}
+    weekly_x, weekly_y = [], []
+    for p in _top_pool(players):
+        team = team_of.get(p.uid)
+        if not team or len(p.actual_weeks) < 8 or p.proj < 50:
+            continue
+        weeks = [w for w in range(1, 18) if (team, p.position, w) in sos]
+        if len(weeks) < 10:
+            continue
+        season_sos = float(np.mean([sos[(team, p.position, w)] for w in weeks]))
+        ratio = (p.actual_total / len(p.actual_weeks)) / (p.proj / max(p.games_proj, 1))
+        season_x.append(season_sos); season_y.append(ratio)
+        by_pos.setdefault(p.position, ([], []))
+        by_pos[p.position][0].append(season_sos); by_pos[p.position][1].append(ratio)
+        own_mean = p.actual_total / len(p.actual_weeks)
+        for w, pts in p.actual_weeks.items():
+            if (team, p.position, w) in sos and own_mean > 0:
+                weekly_x.append(sos[(team, p.position, w)]); weekly_y.append(pts / own_mean)
+
+    def corr(a, b):
+        a, b = np.array(a), np.array(b)
+        return float(np.corrcoef(a, b)[0, 1]) if len(a) > 3 and a.std() > 0 and b.std() > 0 else 0.0
+
+    return {
+        "available": True,
+        "season_n": len(season_x),
+        "season_corr": round(corr(season_x, season_y), 3),
+        "season_by_pos": {pos: round(corr(x, y), 3) for pos, (x, y) in by_pos.items() if len(x) > 8},
+        "weekly_n": len(weekly_x),
+        "weekly_corr": round(corr(weekly_x, weekly_y), 3),
+    }

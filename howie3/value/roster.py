@@ -206,7 +206,8 @@ def mc_rerank(
             conn, concrete, season, fmt, proj_rank, games_by_uid
         )
         sim_players += [phantom(pos, pts) for pos, pts in r.plan if pos != "—" and pts > 0]
-        r.sim = simulate_roster(sim_players, league, n_sims=n_sims)
+        r.sim = simulate_roster(sim_players, league, n_sims=n_sims,
+                                playoff_weight=league.playoff_weight)
 
     results.sort(key=lambda r: -(r.sim.mean if r.sim else r.final_value))
     return results
