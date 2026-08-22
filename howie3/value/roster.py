@@ -36,6 +36,9 @@ class PickPlan:
         return [pos for pos, _ in self.plan]
 
 
+KDST_RESERVE_PICKS = 2  # K/DST become candidates only in the last (open slots + 2) picks
+
+
 def _rollout(
     roster_pts: Dict[str, List[float]],
     pools: Dict[str, List[PoolPlayer]],
@@ -115,9 +118,18 @@ def evaluate_candidates(
         "QB": league.qb_slots + 1, "TE": league.te_slots + 1,
         "K": league.k_slots, "DST": league.dst_slots,
     }
+    # K/DST: projections barely separate them and the engine cannot measure
+    # them (the 2025 replay drops them), so they are a closing-rounds
+    # decision by policy — considered only once the remaining picks are down
+    # to the open K/DST slots plus a small reserve. Matches how the room
+    # drafts (bots: round 11+) and keeps a round-9 kicker off the board.
+    kdst_open = sum(max(caps[pos] - pos_counts.get(pos, 0), 0) for pos in ("K", "DST"))
+    defer_kdst = len(future_picks) > kdst_open + KDST_RESERVE_PICKS
     candidates: List[PoolPlayer] = []
     for pos in POSITIONS:
         if pos in caps and pos_counts.get(pos, 0) >= caps[pos]:
+            continue
+        if defer_kdst and pos in ("K", "DST"):
             continue
         avail = [p for p in pools[pos] if p.p_available(current_pick) >= min_p_available]
         candidates.extend(avail[:8])

@@ -383,3 +383,18 @@ def test_card_reports_taken_players(settings, tmp_path, monkeypatch):
     assert c["taken"] is True and c["taken_pick"] == 1 and c["taken_by"] == "team 1"
     hit = [x for x in service.search_payload(settings, pool[0].name) if x.get("uid") == pool[0].uid][0]
     assert hit["taken"] is True
+
+
+def test_kicker_and_dst_are_closing_round_candidates_only(settings):
+    from howie3 import service
+    from howie3.value.board import snake_picks
+    from howie3.value.roster import evaluate_candidates
+
+    conn = service._conn(settings); pool = service._pool(settings, conn); conn.close()
+    picks = snake_picks(settings.league)
+    # round 9 of 16 with an empty roster: no K/DST among the candidates
+    res = evaluate_candidates(pool, [], picks[8], picks[9:], settings.league, frozenset(), top_n=40)
+    assert res and not any(r.player.position in ("K", "DST") for r in res)
+    # last 4 picks with K and DST still open: both positions are on the table
+    res = evaluate_candidates(pool, [], picks[12], picks[13:], settings.league, frozenset(), top_n=60)
+    assert {r.player.position for r in res} >= {"K", "DST"}
