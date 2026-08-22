@@ -14,7 +14,8 @@
     --sans: 'Space Grotesk', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--hi); font-family: var(--sans); font-size: 14px; padding-bottom: 64px; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--hi); font-family: var(--sans); font-size: 14px; display: flex; flex-direction: column; overflow: hidden; }
   .wordmark { cursor: pointer; min-width: 92px; display: inline-block; }
   .wordmark .cur { animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -27,12 +28,16 @@
   .slotrow.danger { border-color: var(--red); border-style: solid; }
   .riskchip { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border: 1px solid; margin: 2px 4px 2px 0; display: inline-block; }
   .riskchip.warn { color: var(--amber); border-color: #3a3115; } .riskchip.danger { color: var(--red); border-color: #4a2622; }
-  #term { position: fixed; left: 0; right: 0; bottom: 0; background: #0c100d; border-top: 1px solid var(--line2); z-index: 45; }
-  #termOut { max-height: 32vh; overflow-y: auto; padding: 10px 20px; display: none; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; }
+  #dock { flex: none; height: 44vh; min-height: 48px; display: flex; flex-direction: column; background: #0c100d; border-top: 1px solid var(--line2); position: relative; }
+  #dock.collapsed { height: 48px !important; }
+  #dockGrip { height: 7px; cursor: ns-resize; background: linear-gradient(var(--line2), var(--line2)) center / 48px 2px no-repeat; flex: none; }
+  #dock.collapsed #dockGrip, #dock.collapsed #dockBody { display: none; }
+  #dockBody { flex: 1; min-height: 0; overflow-y: auto; }
+  #termOut { padding: 8px 20px 10px; font-size: 12.5px; line-height: 1.5; }
   #termOut .tl { margin: 3px 0; white-space: pre-wrap; } #termOut .tl.cmd { color: var(--acc); font-family: var(--mono); }
   #termOut .tl.out { color: #c9d6cc; font-family: var(--mono); font-size: 12px; } #termOut .tl.howie { color: var(--hi); border-left: 2px solid var(--acc); padding-left: 10px; }
   #termOut .tl.dim { color: var(--dim); font-family: var(--mono); font-size: 11px; }
-  #termLine { display: flex; align-items: center; gap: 12px; padding: 9px 20px; height: 48px; }
+  #termLine { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 48px; border-top: 1px solid var(--line); }
   #termLine .prompt { font-family: var(--mono); color: var(--acc); font-weight: 600; }
   #termLine input { flex: 1; background: transparent; border: none; color: var(--hi); font-family: var(--mono); font-size: 14px; outline: none; }
   .acdrop.up { top: auto; bottom: 100%; }
@@ -44,7 +49,7 @@
   button.primary { background: var(--acc); color: #0a0d0b; border-color: var(--acc); font-weight: 600; }
   button.danger { color: var(--red); border-color: #4a2622; }
 
-  header { height: 54px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  header { height: 54px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); }
   .wordmark { font-family: var(--mono); font-weight: 600; font-size: 17px; letter-spacing: 2px; color: var(--acc); }
   .tabs { display: flex; gap: 16px; align-self: stretch; }
   .tab { display: flex; align-items: center; font-size: 12px; letter-spacing: 1.5px; color: var(--dim); border-bottom: 2px solid transparent; cursor: pointer; }
@@ -68,9 +73,9 @@
   .poschip { font-size: 11px; color: var(--mid); padding: 5px 10px; border: 1px solid var(--line); cursor: pointer; }
   .poschip.active { background: var(--acc); color: #0a0d0b; font-weight: 600; border-color: var(--acc); }
 
-  main { display: flex; min-height: calc(100vh - 140px); }
-  .content { flex: 1; padding: 16px 20px; min-width: 0; }
-  .rail { width: 290px; border-left: 1px solid var(--line); padding: 16px; flex-shrink: 0; }
+  main { display: flex; flex: 1; min-height: 0; }
+  .content { flex: 1; padding: 16px 20px; min-width: 0; overflow-y: auto; }
+  .rail { width: 290px; border-left: 1px solid var(--line); padding: 16px; flex-shrink: 0; overflow-y: auto; }
   .sechead { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin: 0 0 8px; }
 
   table { width: 100%; border-collapse: collapse; }
@@ -128,8 +133,8 @@
   .rulerow.off .dot { background: #3a4a40; }
   #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
 
-  #drawer { position: fixed; left: 0; right: 0; bottom: 48px; height: 46vh; background: #0c100d; border-top: 1px solid var(--acc); z-index: 44; transform: translateY(120%); transition: transform .18s ease; overflow-y: auto; padding: 16px 22px; }
-  #drawer.open { transform: none; }
+  #drawer { display: none; padding: 14px 22px 10px; border-bottom: 1px solid var(--line); }
+  #drawer.open { display: block; }
   .cardgrid { display: grid; grid-template-columns: 1.05fr 1fr 0.9fr 1.4fr; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .cardgrid { grid-template-columns: 1fr 1fr; } }
   .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
@@ -342,14 +347,17 @@
   </aside>
 </main>
 
-<div id="drawer"></div>
-<div id="term">
-  <div id="termOut"></div>
+<div id="dock">
+  <div id="dockGrip" title="Drag to resize"></div>
+  <div id="dockBody">
+    <div id="drawer"></div>
+    <div id="termOut"></div>
+  </div>
   <div id="termLine">
     <span class="prompt">›</span>
     <span class="acwrap" style="flex:1;display:flex"><input id="termIn" placeholder="player name → card · /mine · /taken · /sim · /mock · /research · /sql · /help · or just ask Howie" data-ac="any" autocomplete="off"></span>
     <span class="dim mono" style="font-size:11px" id="termHint">↑↓ pick · ⏎ run · esc close</span>
-    <button onclick="toggleTermOut()" id="termToggle">▲</button>
+    <button onclick="toggleDock()" id="termToggle">▼</button>
   </div>
 </div>
 <div id="tip"></div>
@@ -615,7 +623,7 @@ async function openCard(uid) {
       <button class="danger" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
       <button class="primary" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
     </div></div></div>`;
-  $('drawer').classList.add('open');
+  $('drawer').classList.add('open'); dockExpand(); $('dockBody').scrollTop = 0;
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -971,12 +979,30 @@ loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
 
 // ---------------- terminal (the Howie command line) ----------------
 
+// The dock (card + terminal output) is a real pane: the page above flexes
+// to whatever height it has, the grip resizes it, and one toggle collapses
+// everything to the input line. Height persists across reloads.
+function dockExpand() { const d = $('dock'); d.classList.remove('collapsed'); d.style.height = (localStorage.getItem('dockH') || '44vh'); $('termToggle').textContent = '▼'; }
+function dockCollapse() { $('dock').classList.add('collapsed'); $('termToggle').textContent = '▲'; }
+function toggleDock() { $('dock').classList.contains('collapsed') ? dockExpand() : dockCollapse(); }
 function termPrint(kind, html) {
-  const out = $('termOut'); out.style.display = 'block'; $('termToggle').textContent = '▼';
-  const el = document.createElement('div'); el.className = 'tl ' + kind; el.innerHTML = html; out.appendChild(el); out.scrollTop = out.scrollHeight;
+  dockExpand();
+  const out = $('termOut'), body = $('dockBody');
+  const el = document.createElement('div'); el.className = 'tl ' + kind; el.innerHTML = html; out.appendChild(el); body.scrollTop = body.scrollHeight;
 }
-function toggleTermOut() { const o = $('termOut'); const show = o.style.display === 'none' || !o.style.display; o.style.display = show ? 'block' : 'none'; $('termToggle').textContent = show ? '▼' : '▲'; }
-function openTerminal() { $('termOut').style.display = 'block'; $('termToggle').textContent = '▼'; $('termIn').focus(); if (!$('termOut').children.length) termPrint('dim', 'Howie terminal. Type a player for a card, /help for commands, or ask anything.'); }
+function openTerminal() { dockExpand(); $('termIn').focus(); if (!$('termOut').children.length) termPrint('dim', 'Howie terminal. Type a player for a card, /help for commands, or ask anything.'); }
+(function dockDrag() {
+  const grip = $('dockGrip'), dock = $('dock'); let dragging = false;
+  const move = (y) => { const h = Math.min(Math.max(window.innerHeight - y, 120), window.innerHeight * 0.85); dock.style.height = h + 'px'; localStorage.setItem('dockH', h + 'px'); };
+  grip.addEventListener('mousedown', e => { dragging = true; document.body.style.userSelect = 'none'; e.preventDefault(); });
+  window.addEventListener('mousemove', e => { if (dragging) move(e.clientY); });
+  window.addEventListener('mouseup', () => { dragging = false; document.body.style.userSelect = ''; });
+  grip.addEventListener('touchstart', e => { dragging = true; }, {passive: true});
+  window.addEventListener('touchmove', e => { if (dragging) move(e.touches[0].clientY); }, {passive: true});
+  window.addEventListener('touchend', () => { dragging = false; });
+  const saved = localStorage.getItem('dockH'); if (saved) dock.style.height = saved;
+  dockCollapse();  // start compact; opening a card or printing expands it
+})();
 function toggleRail() { $('rail').classList.toggle('collapsed'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCard(); } if (e.key === '`' && (e.ctrlKey || e.metaKey)) { openTerminal(); e.preventDefault(); } });
 
