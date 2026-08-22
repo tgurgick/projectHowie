@@ -1,10 +1,11 @@
+# Explicit allowlist. Raw data (data/), credentials (.env), databases, pickles,
+# and research output never ship in a distribution — see tests/test_boundary.py.
 include README.md
-include requirements.txt
 include LICENSE
-include data/*.db
-include data/*.pkl
-include data/*.json
-include .env
-recursive-include howie_cli *.py
-recursive-include howie_cli *.json
-recursive-include howie_cli *.yaml
+include requirements.txt
+include howie3/schema.sql
+recursive-include howie3/ui *.html *.js *.css
+recursive-include howie_cli *.py *.json *.yaml
+global-exclude *.db *.sqlite *.sqlite3 *.pkl *.csv *.parquet .env
+prune data
+prune research

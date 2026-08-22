@@ -299,7 +299,12 @@ def _render(renderables: Any) -> str:
 
 
 def _query_tool(args: Dict[str, Any], settings: Settings) -> str:
-    return safe_query(settings, str(args.get("sql", "")))
+    from . import egress
+
+    if not egress.sql_tool_enabled():
+        return ("Error: query_database is disabled (raw SQL can return per-game stat "
+                "lines). Use the semantic tools, or set HOWIE_AGENT_SQL=1 to opt in.")
+    return egress.for_model(safe_query(settings, str(args.get("sql", ""))))
 
 
 def _draft_board_tool(args: Dict[str, Any], settings: Settings) -> str:
@@ -344,6 +349,15 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "player_info": _player_info_tool,
     "entity_context": _entity_context_tool,
 }
+
+
+def active_tool_schemas() -> List[Dict[str, Any]]:
+    """Tools offered to the model: raw SQL only when explicitly enabled."""
+    from . import egress
+
+    if egress.sql_tool_enabled():
+        return list(TOOLS)
+    return [t for t in TOOLS if t["name"] != "query_database"]
 
 
 def _run_tool(name: str, args: Dict[str, Any], settings: Settings) -> str:
@@ -461,7 +475,9 @@ async def _execute_tool(
             result = await handler(arguments, settings)
         else:
             result = await asyncio.to_thread(handler, arguments, settings)
-        content = str(result)
+        from . import egress
+
+        content = egress.for_model(str(result))  # the one egress boundary for tool output
         if len(content) > config.max_tool_result_chars:
             content = content[: config.max_tool_result_chars] + "\n[tool result truncated]"
         return _ToolOutcome(content)
@@ -512,10 +528,14 @@ async def run_agent_async(
             return
 
     state = AgentRunState(depth=depth, deadline=time.monotonic() + run_config.timeout_seconds)
-    active_tools = list(tools or TOOLS)
+    from . import egress
+
+    active_tools = list(tools or active_tool_schemas())
     handlers = tool_handlers or TOOL_HANDLERS
     selected_model = model or default_model()
     system = SYSTEM + f"\n\nLeague configuration:\n{json.dumps(asdict(settings.league), sort_keys=True)}"
+    if not egress.sql_tool_enabled():
+        system += "\n\nquery_database is disabled in this session; rely on the semantic tools."
     messages: List[Dict[str, Any]] = [{"role": "user", "content": question}]
 
     yield AgentEvent(AgentEventType.START, text=f"Using {selected_model}")

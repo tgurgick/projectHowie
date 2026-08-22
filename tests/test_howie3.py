@@ -342,9 +342,11 @@ def test_artifact_roundtrip_and_redaction(settings, tmp_path):
     for p in artifact["players"]:
         assert set(p) <= PLAYER_FIELDS
         assert "pass_yards" not in p and "rec_yards" not in p
-    league, pool = load_context(out)
-    assert len(pool) == len(artifact["players"])
-    assert league.num_teams == settings.league.num_teams
+    bundle = load_context(out)
+    assert len(bundle.pool) == len(artifact["players"])
+    assert bundle.league.num_teams == settings.league.num_teams
+    assert bundle.can_simulate and len(bundle.sims) == len(bundle.pool)
+    assert artifact["provenance"]["projection_source"] and artifact["buckets"]
 
 
 def test_views_run_from_artifact_without_db(settings, tmp_path, monkeypatch):
@@ -354,8 +356,27 @@ def test_views_run_from_artifact_without_db(settings, tmp_path, monkeypatch):
     export_context(settings, out, n_sims=50)
     board = views.board_view(settings, round_num=1, top_n=3, context=str(out))
     assert len(board) > 3
-    pick = views.pick_view(settings, round_num=1, sims=200, top_n=3, context=str(out))
-    # context mode forces deterministic and says so
+    pick = views.pick_view(settings, round_num=1, sims=100, top_n=3, context=str(out))
+    # schema 2: Monte Carlo runs from the artifact's derived parameters, no db needed
+    assert any("artifact simulation parameters" in getattr(r, "plain", "") for r in pick)
+    assert not any("deterministic" in getattr(r, "plain", "") for r in pick)
+
+
+def test_schema1_artifact_still_loads_without_simulation(settings, tmp_path):
+    import json
+    from howie3 import views
+    from howie3.context_artifact import export_context, load_context
+    out = tmp_path / "ctx.json"
+    export_context(settings, out, n_sims=20)
+    art = json.loads(out.read_text())
+    art["schema_version"] = 1
+    for p in art["players"]:
+        p.pop("sim", None)
+    art.pop("buckets"); art.pop("provenance")
+    out.write_text(json.dumps(art))
+    bundle = load_context(out)
+    assert not bundle.can_simulate
+    pick = views.pick_view(settings, round_num=1, sims=50, top_n=3, context=str(out))
     assert any("deterministic" in getattr(r, "plain", "") for r in pick)
 
 

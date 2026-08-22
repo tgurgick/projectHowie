@@ -193,3 +193,6 @@ secrets.json
 
 # Environment variables
 .env
+
+# Research workflow scratch output (validated facts live in data/research/, ignored via /data/)
+/research/

@@ -116,11 +116,18 @@ def rebuild_derived(conn: sqlite3.Connection, season: int) -> int:
     ).fetchall()
 
     # last-season volume: player and team totals
-    vol = {}
+    # A player traded mid-season has one row per team: attribute him to the
+    # team where he produced the MOST volume (deterministic; ties by team
+    # code) instead of whichever row the query happened to return last.
+    vol: Dict[str, tuple] = {}
     for r in conn.execute(
         "SELECT player_uid, team, SUM(targets) tg, SUM(rush_attempts) ca "
-        "FROM weekly_stats WHERE season = ? GROUP BY player_uid, team", (last,)):
-        vol[r["player_uid"]] = (r["team"], r["tg"] or 0.0, r["ca"] or 0.0)
+        "FROM weekly_stats WHERE season = ? GROUP BY player_uid, team "
+        "ORDER BY player_uid, team", (last,)):
+        cand = (r["team"], r["tg"] or 0.0, r["ca"] or 0.0)
+        cur = vol.get(r["player_uid"])
+        if cur is None or (cand[1] + cand[2]) > (cur[1] + cur[2]):
+            vol[r["player_uid"]] = cand
     team_vol = {}
     for r in conn.execute(
         "SELECT team, SUM(targets) tg, SUM(rush_attempts) ca "

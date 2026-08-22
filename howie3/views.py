@@ -16,27 +16,31 @@ from .db import connect
 
 
 def _pool_source(settings: Settings, context: Optional[str]) -> Tuple:
-    """Resolve (conn, league, pool, source_label). conn is None in context mode.
+    """Resolve (conn, league, pool, source_label, bundle). conn is None in
+    context mode; bundle is None in db mode.
 
     Priority: explicit --context file, then the local db, then an imported
     default artifact (data/strategy-context.json)."""
     from .context_artifact import default_context_path, load_context
-    from .value.board import load_pool
+    from .value.board import apply_market_anchor, load_pool
 
     if context:
-        league, pool = load_context(Path(context))
-        return None, league, pool, f"context:{context}"
+        b = load_context(Path(context))
+        # anchoring is a draft-time valuation policy; the artifact holds source projections
+        pool = apply_market_anchor(b.pool, settings.league.market_anchor)
+        return None, b.league, pool, f"context:{context}", b
     if settings.db_path.exists():
         conn = connect(settings.db_path)
         pool = load_pool(conn, settings.current_season, settings.league.scoring_format,
                          market_anchor=settings.league.market_anchor)
         if pool:
-            return conn, settings.league, pool, "local db"
+            return conn, settings.league, pool, "local db", None
         conn.close()
     default = default_context_path(settings)
     if default.exists():
-        league, pool = load_context(default)
-        return None, league, pool, f"context:{default.name}"
+        b = load_context(default)
+        pool = apply_market_anchor(b.pool, settings.league.market_anchor)
+        return None, b.league, pool, f"context:{default.name}", b
     raise RuntimeError(
         "No local data. Build it with `howie data refresh`, or import a "
         "strategy-context artifact with `howie context import <file>`."
@@ -123,7 +127,7 @@ def board_view(settings: Settings, round_num: int = 1, top_n: int = 5,
     from .value.board import marginal_values, snake_picks
 
     try:
-        conn, league, pool, source = _pool_source(settings, context)
+        conn, league, pool, source, _bundle = _pool_source(settings, context)
     except (RuntimeError, ValueError) as e:
         return [Text(str(e), style="red")]
     picks = snake_picks(league)
@@ -185,18 +189,19 @@ def pick_view(
     context: Optional[str] = None,
 ) -> List:
     from .value.board import snake_picks
-    from .value.roster import evaluate_candidates, mc_rerank, resolve_names
+    from .value.roster import evaluate_candidates, mc_rerank, mc_rerank_with, resolve_names
 
     try:
-        conn, league, pool, source = _pool_source(settings, context)
+        conn, league, pool, source, bundle = _pool_source(settings, context)
     except (RuntimeError, ValueError) as e:
         return [Text(str(e), style="red")]
 
     out: List = []
-    if conn is None and sims > 0:
+    if conn is None and sims > 0 and not (bundle and bundle.can_simulate):
         sims = 0
         out.append(Text(
-            f"Running from {source}: Monte Carlo needs the local db, using deterministic ranking.",
+            f"Running from {source} (schema 1, no simulation parameters): "
+            "using deterministic ranking. Re-export with `howie context export` for Monte Carlo.",
             style="dim",
         ))
     have_names = [s for s in have.split(",") if s.strip()]
@@ -241,8 +246,17 @@ def pick_view(
         return out + [Text("No candidates found.", style="red")]
 
     use_mc = sims > 0
-    if use_mc:
+    if use_mc and conn is not None:
         results = mc_rerank(conn, results, roster, pool, league, settings.current_season, n_sims=sims)
+    elif use_mc:
+        # context mode: SimPlayers come from the artifact (derived parameters only)
+        sims_by_uid = bundle.sims
+
+        def build(players):
+            return [sims_by_uid[p.uid] for p in players if p.uid in sims_by_uid]
+
+        results = mc_rerank_with(build, bundle.buckets, results, roster, pool, league, n_sims=sims)
+        out.append(Text(f"Monte Carlo from {source} (artifact simulation parameters)", style="dim"))
     value_of = (lambda r: r.sim.mean) if use_mc else (lambda r: r.final_value)
     best = value_of(results[0])
     title = (

@@ -69,9 +69,12 @@ _INSIGHT_PROMPTS = {
 
 
 def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) -> dict:
+    from . import egress
+
     client, err = _client()
     if client is None:
         return {"available": False, "reason": err}
+    payload = egress.redact(payload)  # the one egress boundary for insight requests
     league = settings.league
     system = (
         "You are Howie, a sharp, concise fantasy-football draft analyst. League: "

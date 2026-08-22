@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<meta name="howie-token" content="__HOWIE_TOKEN__">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Howie — Draft Cockpit</title>
@@ -433,7 +434,8 @@ const $ = (id) => document.getElementById(id);
 let ST = null, PICK = null, FILTER = 'ALL', selIdx = 0, results = [], notesTimer = null, strategy = {rules: [], notes: ''};
 
 async function api(path, body) {
-  const opts = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {};
+  const TOKEN = (document.querySelector('meta[name=howie-token]') || {}).content || '';
+  const opts = body ? {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Howie-Token': TOKEN}, body: JSON.stringify(body)} : {};
   const r = await fetch(path, opts);
   const j = await r.json();
   if (j.error) { if (!path.startsWith('/api/config')) alert(j.error); throw new Error(j.error); }

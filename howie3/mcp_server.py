@@ -41,7 +41,7 @@ TOOLS = [
     },
     {
         "name": "player_card",
-        "description": "One player's full card: projection, outcome band, availability, room shares, knowledge-graph facts, playoff SoS, trend.",
+        "description": "One player's card: projection, outcome band, availability, room shares, milestone rates, knowledge-graph facts, playoff SoS, trend (derived context only — no per-game stat lines).",
         "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}},
                         "required": ["name"]},
     },
@@ -123,7 +123,9 @@ def handle(settings: Settings, req: dict) -> dict:
     elif method == "tools/call":
         params = req.get("params", {})
         try:
-            payload = call_tool(settings, params.get("name", ""), params.get("arguments", {}))
+            from . import egress
+
+            payload = egress.redact(call_tool(settings, params.get("name", ""), params.get("arguments", {})))
             result = {"content": [{"type": "text", "text": json.dumps(payload, default=str)}]}
         except Exception as e:
             result = {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}

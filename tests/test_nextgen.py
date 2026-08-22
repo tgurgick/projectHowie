@@ -183,10 +183,13 @@ def _get(port, path):
         return json.loads(r.read())
 
 
-def _post(port, path, body):
+def _post(port, path, body, token=None):
+    from howie3 import server as srv
+
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"}, method="POST")
+        headers={"Content-Type": "application/json",
+                 "X-Howie-Token": srv.Handler.token if token is None else token}, method="POST")
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
 

@@ -71,9 +71,10 @@ setup(
         ],
     },
     include_package_data=True,
+    # Explicit allowlist — no databases, pickles, raw data, or .env (enforced
+    # by tests/test_boundary.py)
     package_data={
-        "howie3": ["schema.sql"],
+        "howie3": ["schema.sql", "ui/*.html", "ui/*.js", "ui/*.css"],
         "howie_cli": ["*.json", "*.yaml"],
-        "": ["data/*.db", "data/*.pkl"],
     },
 )

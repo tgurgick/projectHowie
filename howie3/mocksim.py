@@ -13,7 +13,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -22,6 +22,7 @@ from .state import snake_team_for_pick
 from .value.board import PoolPlayer, snake_picks
 
 STATUS: Dict[str, object] = {"running": False, "done": 0, "total": 0, "error": None}
+MIN_DRAFTS = 10  # below this the lab has nothing the ADP model doesn't
 
 
 def store_path(settings: Settings) -> Path:
@@ -82,6 +83,7 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
             picks: List[str] = []
             roster: List[PoolPlayer] = []
             team_positions: Dict[int, Dict[str, int]] = {}
+            recent: List[str] = []
             for pick_no in range(1, total + 1):
                 team = snake_team_for_pick(league, pick_no)
                 rng = np.random.default_rng((base_seed + d) * 100_000 + pick_no)
@@ -93,13 +95,15 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
                 else:
                     tp = team_positions.setdefault(team, {})
                     choice = bot_pick(pool, frozenset(taken), tp,
-                                      (pick_no - 1) // league.num_teams + 1, league, rng)
+                                      (pick_no - 1) // league.num_teams + 1, league, rng,
+                                      recent_positions=recent)
                     if choice:
                         tp[choice.position] = tp.get(choice.position, 0) + 1
                 if choice is None:
                     break
                 taken.add(choice.uid)
                 picks.append(choice.uid)
+                recent = (recent + [choice.position])[-5:]
             store["drafts"].append({"source": "local", "policy": policy,
                                     "seed": base_seed + d, "picks": picks})
             STATUS["done"] = d + 1
@@ -158,6 +162,37 @@ def import_external(settings: Settings, text: str, source: str = "external") -> 
     store["drafts"].append({"source": source, "policy": None, "seed": None, "picks": picks})
     save_store(settings, store)
     return {"stored": len(picks), "unresolved": unresolved, "drafts": len(store["drafts"])}
+
+
+_AVAIL_CACHE: Dict[str, object] = {"sig": None, "table": {}}
+
+
+def availability_table(settings: Settings) -> Dict[str, Dict[int, Tuple[float, int]]]:
+    """uid -> {my_pick -> (availability rate, n drafts)} over every stored
+    draft, for the engine's p_available blend. Cached on the store's mtime;
+    empty when fewer than MIN_DRAFTS drafts exist."""
+    p = store_path(settings)
+    if not p.exists():
+        return {}
+    sig = (p.stat().st_mtime_ns, p.stat().st_size, settings.league.draft_position, settings.league.num_teams)
+    if _AVAIL_CACHE["sig"] == sig:
+        return _AVAIL_CACHE["table"]  # type: ignore[return-value]
+    drafts = [d["picks"] for d in load_store(settings)["drafts"] if d["picks"]]
+    table: Dict[str, Dict[int, Tuple[float, int]]] = {}
+    if len(drafts) >= MIN_DRAFTS:
+        for k in snake_picks(settings.league):
+            eligible = [set(d[:k - 1]) for d in drafts if len(d) >= k - 1]
+            if len(eligible) < MIN_DRAFTS:
+                continue
+            seen: Dict[str, int] = {}
+            for gone in eligible:
+                for uid in gone:
+                    seen[uid] = seen.get(uid, 0) + 1
+            n = len(eligible)
+            for uid, cnt in seen.items():
+                table.setdefault(uid, {})[k] = (round(1 - cnt / n, 3), n)
+    _AVAIL_CACHE.update({"sig": sig, "table": table})
+    return table
 
 
 def aggregates(settings: Settings) -> dict:

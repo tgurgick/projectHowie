@@ -21,8 +21,17 @@ def _conn(settings: Settings) -> sqlite3.Connection:
 
 
 def _pool(settings: Settings, conn: sqlite3.Connection) -> List[PoolPlayer]:
-    return load_pool(conn, settings.current_season, settings.league.scoring_format,
+    """The draft pool with the Mock Draft Lab's empirical availability
+    attached (players never seen taken before a pick keep the ADP model)."""
+    from .mocksim import availability_table
+
+    pool = load_pool(conn, settings.current_season, settings.league.scoring_format,
                      market_anchor=settings.league.market_anchor)
+    table = availability_table(settings)
+    if table:
+        for p in pool:
+            p.emp_avail = table.get(p.uid)
+    return pool
 
 
 def _me(settings: Settings) -> int:
@@ -135,7 +144,7 @@ def mark_pick(settings: Settings, player_uid: str, mine: bool,
             if team == me:
                 team = 0  # attribution unknown (log lagging); never the user's slot
         event = state.add_pick(pick_no, team, player.uid, player.name,
-                               player.position, source, mine=mine)
+                               player.position, source, mine=mine, league=league)
         state.save(settings)
         result = {"seq": event.seq, "pick_no": event.pick_no,
                   "team": event.team, "name": player.name}
@@ -243,6 +252,7 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
             "adp": r.player.adp,
             "avail_now": round(r.player.p_available(current_pick), 2),
             "avail_next": round(r.player.p_available(next_pick), 2),
+            "avail_src": r.player.availability_source(next_pick),
             "value": round(value),
             "p10": round(r.sim.p10) if (sims and r.sim) else None,
             "p90": round(r.sim.p90) if (sims and r.sim) else None,
@@ -467,17 +477,21 @@ def strategy_payload(state: DraftState) -> dict:
 def update_strategy(settings: Settings,
                     rules: Optional[List[dict]] = None,
                     notes: Optional[str] = None) -> dict:
-    from .state import Rule
+    from .state import Rule, reconcile_rules
 
+    conflicts: List[str] = []
     with state_lock(settings):
         state = DraftState.load(settings)
         if rules is not None:
-            state.rules = [Rule(text=str(r["text"])[:120], on=bool(r.get("on", True)))
-                           for r in rules[:20]]
+            parsed = [Rule(text=str(r["text"])[:120], on=bool(r.get("on", True)))
+                      for r in rules[:20]]
+            state.rules, conflicts = reconcile_rules(parsed)
         if notes is not None:
             state.notes = str(notes)[:8000]
         state.save(settings)
-    return strategy_payload(state)
+    payload = strategy_payload(state)
+    payload["conflicts"] = conflicts
+    return payload
 
 
 # ------------------------------------------------------------ data tab

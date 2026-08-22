@@ -12,12 +12,13 @@ high marginal value. This replaces static VORP as the ranking signal.
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..config import LeagueConfig
 from .availability import p_available
 
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
+EMPIRICAL_PRIOR_N = 30  # drafts at which the lab's rate and the ADP model weigh equally
 
 
 @dataclass
@@ -31,9 +32,24 @@ class PoolPlayer:
     stdev: Optional[float]
     bye: Optional[int]
     raw: Optional[float] = None  # the source projection, for display (None = proj is raw)
+    # Empirical availability from the Mock Draft Lab: pick -> (rate, n_drafts).
+    # Blended into the ADP model with weight n / (n + EMPIRICAL_PRIOR_N), so a
+    # handful of drafts nudge and a large sample dominates.
+    emp_avail: Optional[Dict[int, Tuple[float, int]]] = None
 
     def p_available(self, pick: float) -> float:
-        return p_available(self.adp, self.stdev, pick)
+        model = p_available(self.adp, self.stdev, pick)
+        if self.emp_avail:
+            emp = self.emp_avail.get(int(pick))
+            if emp is not None and emp[1] > 0:
+                rate, n = emp
+                w = n / (n + EMPIRICAL_PRIOR_N)
+                return w * rate + (1 - w) * model
+        return model
+
+    def availability_source(self, pick: float) -> str:
+        emp = (self.emp_avail or {}).get(int(pick))
+        return f"blend n={emp[1]}" if emp else "model"
 
 
 def apply_market_anchor(pool: List[PoolPlayer], weight: float) -> List[PoolPlayer]:

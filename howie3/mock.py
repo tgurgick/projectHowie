@@ -25,8 +25,20 @@ def _caps(league) -> Dict[str, int]:
             "K": max(league.k_slots, 0), "DST": max(league.dst_slots, 0)}
 
 
+RUN_WINDOW = 5        # recent picks a bot looks back over
+RUN_MIN = 3           # same-position picks in that window that count as a run
+RUN_SHIFT = 5.0       # ADP picks of urgency a run adds to that position
+NEED_SHIFT = 4.0      # ADP picks of urgency for an unfilled starting slot (round 5+)
+
+
 def bot_pick(pool: List[PoolPlayer], taken: frozenset, team_positions: Dict[str, int],
-             rnd: int, league, rng: np.random.Generator) -> Optional[PoolPlayer]:
+             rnd: int, league, rng: np.random.Generator,
+             recent_positions: Optional[List[str]] = None) -> Optional[PoolPlayer]:
+    """One bot pick. Bots read the market (ADP + noise) and, like real
+    drafters, react to positional RUNS (three of the last five picks at one
+    position make that position feel urgent) and to their own NEEDS (an
+    unfilled starting slot from round 5 on). Both are modest ADP shifts,
+    so the bots stay market-driven rather than becoming a second engine."""
     caps = _caps(league)
     roster_size = league.roster_size
     candidates = []
@@ -57,9 +69,22 @@ def bot_pick(pool: List[PoolPlayer], taken: frozenset, team_positions: Dict[str,
         if forced:
             candidates = forced
 
+    shift: Dict[str, float] = {}
+    if recent_positions:
+        recent = [p for p in recent_positions[-RUN_WINDOW:] if p]
+        for pos in set(recent):
+            if recent.count(pos) >= RUN_MIN:
+                shift[pos] = shift.get(pos, 0.0) + RUN_SHIFT
+    if rnd >= 5:
+        starters = {"QB": league.qb_slots, "RB": league.rb_slots,
+                    "WR": league.wr_slots, "TE": league.te_slots}
+        for pos, need in starters.items():
+            if team_positions.get(pos, 0) < need:
+                shift[pos] = shift.get(pos, 0.0) + NEED_SHIFT
     window = sorted(candidates, key=lambda p: p.adp if p.adp else 999)[:24]
     perceived = [
-        rng.normal(p.adp, max((p.stdev or 2.0), 2.0) * 1.25) for p in window
+        rng.normal(p.adp, max((p.stdev or 2.0), 2.0) * 1.25) - shift.get(p.position, 0.0)
+        for p in window
     ]
     return window[int(np.argmin(perceived))]
 
@@ -85,12 +110,13 @@ def advance_bots(settings: Settings, state: DraftState, pool: List[PoolPlayer],
             if e.team == team and e.position:
                 team_positions[e.position] = team_positions.get(e.position, 0) + 1
         rng = np.random.default_rng(seed * 100_000 + pick_no)
+        recent = [e.position or "" for e in state.events[-RUN_WINDOW:]]
         choice = bot_pick(pool, state.taken_uids(), team_positions, rnd,
-                          league, rng)
+                          league, rng, recent_positions=recent)
         if choice is None:
             break
         event = state.add_pick(pick_no, team, choice.uid, choice.name,
-                               choice.position, source="mock")
+                               choice.position, source="mock", league=league)
         made.append({"pick_no": event.pick_no, "team": team, "name": choice.name,
                      "position": choice.position})
     state.save(settings)

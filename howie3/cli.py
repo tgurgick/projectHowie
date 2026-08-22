@@ -216,13 +216,14 @@ def eval_group() -> None:
 
 
 @eval_group.command("run")
-@click.option("--reps", default=3, help="Draft replays per slot per policy")
+@click.option("--reps", default=10, help="Paired draft replays per slot (each policy drafts every one)")
 @click.option("--skip-policy", is_flag=True, help="Only run input/calibration tiers")
 def eval_run(reps: int, skip_policy: bool) -> None:
     """Evaluate projections, calibration, and draft policy on 2025 actuals."""
     from rich.table import Table as RTable
 
-    from .evals import (eval_calibration, eval_inputs_report, eval_policy,
+    from .evals import (BASELINE_POLICY, BOOTSTRAP_RESAMPLES, EVAL_SLOTS,
+                        eval_calibration, eval_inputs_report, eval_policy,
                         eval_sos, load_eval_players)
 
     settings = Settings()
@@ -258,15 +259,44 @@ def eval_run(reps: int, skip_policy: bool) -> None:
         )
 
     if not skip_policy:
-        t = RTable(title=f"C · 2025 draft replay, realized weekly scoring ({reps} reps × 4 slots)")
-        for c in ("policy", "mean pts", "std", "vs ADP", "drafts"):
-            t.add_column(c, justify="right")
-        for r in eval_policy(settings, players, reps=reps):
-            style = "green" if r["policy"] == "howie" and r["vs_adp"] > 0 else ""
-            t.add_row(r["policy"], str(r["mean"]), str(r["std"]),
-                      f"[{style}]{r['vs_adp']:+}[/{style}]" if style else f"{r['vs_adp']:+}",
-                      str(r["n_drafts"]))
+        report = eval_policy(settings, players, reps=reps)
+        n = next(iter(report.values()))["n"]
+        t = RTable(
+            title=f"C · 2025 draft replay, realized weekly scoring "
+                  f"({reps} reps × {len(EVAL_SLOTS)} slots = {n} paired drafts per policy)")
+        for c in ("policy", "mean pts", "std", "vs ADP", "95% CI", "win rate", "n", "verdict"):
+            t.add_column(c, justify="right", no_wrap=c in ("95% CI", "verdict"))
+        for policy, r in report.items():
+            if policy == BASELINE_POLICY:
+                t.add_row(policy, str(r["mean_total"]), str(r["std_total"]),
+                          "baseline", "—", "—", str(r["n"]), "")
+                continue
+            ci = f"[{r['ci_low']:+.0f}, {r['ci_high']:+.0f}]"
+            if r["ci_low"] > 0:
+                style, verdict = "green", "beats ADP"
+            elif r["ci_high"] < 0:
+                style, verdict = "red", "loses to ADP"
+            else:
+                style, verdict = "yellow", "CI crosses 0"
+            t.add_row(policy, str(r["mean_total"]), str(r["std_total"]),
+                      f"[{style}]{r['delta_vs_adp']:+.0f}[/{style}]",
+                      f"[{style}]{ci}[/{style}]",
+                      f"{r['win_rate']:.0%}", str(r["n"]),
+                      f"[{style}]{verdict}[/{style}]")
         console.print(t)
+        for policy, r in report.items():
+            if policy != BASELINE_POLICY:
+                console.print(
+                    f"  {policy:<9}{r['delta_vs_adp']:+.0f}  "
+                    f"[95% CI  {r['ci_low']:+.0f}, {r['ci_high']:+.0f}]  n={r['n']}"
+                    + ("  (crosses zero)" if r["crosses_zero"] else ""))
+        console.print(
+            f"\n  Paired: every policy drafts the same {n} (slot, rep) replays against the same "
+            f"seeded opponents; vs ADP is the mean paired difference, CI is a percentile "
+            f"bootstrap ({BOOTSTRAP_RESAMPLES} resamples) of that mean, win rate is the share "
+            f"of replays the policy out-scored ADP. One season of preseason inputs (2025) — "
+            f"reps vary opponent noise, not the year.\n"
+        )
 
 
 @main.command()

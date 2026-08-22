@@ -4,8 +4,11 @@ Three tiers, run with `howie eval run`:
   A. Inputs   — how good were 2025 preseason projections and ADP at all?
   B. Calibration — did simulated p10-p90 bands cover realized outcomes?
   C. Policy   — replay 2025 drafts: Howie's marginal-value policy vs
-                follow-ADP and static-VORP baselines, scored with realized
-                weekly points and weekly optimal lineups.
+                pure-projection, static-VORP, ADP+need and follow-ADP
+                baselines, scored with realized weekly points and weekly
+                optimal lineups. Paired design (same seeded opponents per
+                draft slot and rep for every policy) with bootstrap CIs on
+                the mean paired difference vs follow-ADP.
 
 2025 preseason inputs come from the legacy database (PPR-scored projections);
 all policies draft from the SAME inputs, so tier C's comparison is fair even
@@ -16,7 +19,7 @@ seasons <= 2024 only (no leakage).
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -218,29 +221,79 @@ def _score_roster(players: List[EvalPlayer], league) -> float:
     return total
 
 
-def _policy_pick(policy: str, pool_avail: List[EvalPlayer], roster: List[EvalPlayer],
-                 league, current_pick: int, future: List[int],
-                 anchored: Optional[Dict[str, float]] = None) -> EvalPlayer:
-    if policy == "adp":
-        return min(pool_avail, key=lambda p: p.adp if p.adp else 999)
-    if policy == "vorp":
-        repl_rank = {"QB": 12, "RB": 24, "WR": 36, "TE": 12}
-        by_pos: Dict[str, List[EvalPlayer]] = {}
-        for p in pool_avail:
-            by_pos.setdefault(p.position, []).append(p)
-        best, best_v = pool_avail[0], -1e9
-        for pos, plist in by_pos.items():
-            counts = sum(1 for r in roster if r.position == pos)
-            cap = {"QB": 2, "TE": 2}.get(pos, 8)
-            if counts >= cap:
-                continue
-            repl = plist[min(repl_rank.get(pos, 12), len(plist) - 1)].proj if plist else 0
-            v = plist[0].proj - repl
-            if v > best_v:
-                best, best_v = plist[0], v
-        return best
-    # howie: marginal-value engine. Values come from the anchor map computed
-    # ONCE over the full pool (exactly how the product anchors in load_pool)
+# Policies replayed, in report order. "adp" is the baseline every other policy
+# is paired against.
+#   howie    — the marginal-value engine with the CONFIGURED market anchor
+#   proj     — the same engine with market_anchor=0 (pure projections)
+#   vorp     — static value-over-replacement
+#   adp_need — follow ADP, but skip positions whose starters are filled until
+#              the bench rounds
+#   adp      — follow ADP
+POLICIES = ("howie", "proj", "vorp", "adp_need", "adp")
+BASELINE_POLICY = "adp"
+EVAL_SLOTS = (2, 5, 8, 11)
+EVAL_ROSTER_SIZE = 14  # K/DST are dropped from the replay; 14 rounds of offense
+BOOTSTRAP_RESAMPLES = 2000
+_FLEX_ELIGIBLE = ("RB", "WR", "TE")
+
+# A policy is a name from POLICIES, or any callable with this signature
+# (used by tests to inject a known policy into the paired replay).
+PolicyFn = Callable[[List[EvalPlayer], List[EvalPlayer], Any, int, List[int]], EvalPlayer]
+
+
+def _pick_adp(pool_avail: List[EvalPlayer]) -> EvalPlayer:
+    return min(pool_avail, key=lambda p: p.adp if p.adp else 999)
+
+
+def _pick_adp_need(pool_avail: List[EvalPlayer], roster: List[EvalPlayer],
+                   league, current_pick: int) -> EvalPlayer:
+    """Follow ADP among positions that still have an open starting slot
+    (dedicated slot first, then flex for RB/WR/TE). Once every starter is
+    filled — or in the bench rounds — fall back to plain ADP."""
+    starters = {"QB": league.qb_slots, "RB": league.rb_slots,
+                "WR": league.wr_slots, "TE": league.te_slots}
+    n_starter_rounds = sum(starters.values()) + league.flex_slots
+    rnd = (current_pick - 1) // league.num_teams + 1
+    if rnd > n_starter_rounds:
+        return _pick_adp(pool_avail)
+    counts: Dict[str, int] = {}
+    for p in roster:
+        counts[p.position] = counts.get(p.position, 0) + 1
+    flex_used = sum(max(counts.get(pos, 0) - starters[pos], 0) for pos in _FLEX_ELIGIBLE)
+    open_positions = set()
+    for pos, n in starters.items():
+        if counts.get(pos, 0) < n:
+            open_positions.add(pos)
+        elif pos in _FLEX_ELIGIBLE and flex_used < league.flex_slots:
+            open_positions.add(pos)
+    eligible = [p for p in pool_avail if p.position in open_positions]
+    return _pick_adp(eligible or pool_avail)
+
+
+def _pick_vorp(pool_avail: List[EvalPlayer], roster: List[EvalPlayer]) -> EvalPlayer:
+    repl_rank = {"QB": 12, "RB": 24, "WR": 36, "TE": 12}
+    by_pos: Dict[str, List[EvalPlayer]] = {}
+    for p in pool_avail:
+        by_pos.setdefault(p.position, []).append(p)
+    best, best_v = pool_avail[0], -1e9
+    for pos, plist in by_pos.items():
+        counts = sum(1 for r in roster if r.position == pos)
+        cap = {"QB": 2, "TE": 2}.get(pos, 8)
+        if counts >= cap:
+            continue
+        repl = plist[min(repl_rank.get(pos, 12), len(plist) - 1)].proj if plist else 0
+        v = plist[0].proj - repl
+        if v > best_v:
+            best, best_v = plist[0], v
+    return best
+
+
+def _pick_engine(pool_avail: List[EvalPlayer], roster: List[EvalPlayer], league,
+                 current_pick: int, future: List[int],
+                 anchored: Optional[Dict[str, float]]) -> EvalPlayer:
+    """Marginal-value engine. With `anchored` (uid -> blended proj, computed
+    ONCE over the full pool exactly as load_pool does) this is the product;
+    with None it is the engine on raw projections (market_anchor=0)."""
     from .value.roster import evaluate_candidates
 
     def as_pp(p: EvalPlayer) -> PoolPlayer:
@@ -260,64 +313,152 @@ def _policy_pick(policy: str, pool_avail: List[EvalPlayer], roster: List[EvalPla
     return next(p for p in pool_avail if p.uid == uid)
 
 
-def eval_policy(settings: Settings, players: List[EvalPlayer],
-                slots_to_test: Optional[List[int]] = None, reps: int = 3) -> List[dict]:
-    from dataclasses import replace as dc_replace
+def _policy_pick(policy: Union[str, PolicyFn], pool_avail: List[EvalPlayer],
+                 roster: List[EvalPlayer], league, current_pick: int, future: List[int],
+                 anchored: Optional[Dict[str, float]] = None) -> EvalPlayer:
+    if callable(policy):
+        return policy(pool_avail, roster, league, current_pick, future)
+    if policy == "adp":
+        return _pick_adp(pool_avail)
+    if policy == "adp_need":
+        return _pick_adp_need(pool_avail, roster, league, current_pick)
+    if policy == "vorp":
+        return _pick_vorp(pool_avail, roster)
+    if policy == "howie":
+        return _pick_engine(pool_avail, roster, league, current_pick, future, anchored)
+    if policy == "proj":
+        return _pick_engine(pool_avail, roster, league, current_pick, future, None)
+    raise ValueError(f"unknown policy {policy!r}")
 
+
+def replay_seed(slot: int, rep: int) -> int:
+    """Seed for one paired replay. Every policy drafting from (slot, rep)
+    faces opponents driven by this same seed (common random numbers), so
+    policy comparisons are paired differences rather than independent draws."""
+    return slot * 1_000_000 + rep * 10_000
+
+
+def replay_draft(policy: Union[str, PolicyFn], pool: List[EvalPlayer], league,
+                 slot: int, rep: int,
+                 anchored: Optional[Dict[str, float]] = None,
+                 ) -> Tuple[List[EvalPlayer], List[Tuple[int, str]]]:
+    """Replay one snake draft from `slot` with `policy` in my seat and ADP-noise
+    bots everywhere else. `league` must already carry the replay shape (K/DST
+    off, roster_size = rounds). Returns (my roster, opponent picks as
+    (pick_no, uid)) — the opponent list is what the pairing tests inspect.
+
+    Bots are seeded per (slot, rep, pick_no): two policies from the same
+    (slot, rep) see identical opponent behavior for as long as their boards
+    coincide, and the same noise stream afterwards."""
     from .mock import bot_pick
     from .state import snake_team_for_pick
-    from .value.board import apply_market_anchor, snake_picks
+    from .value.board import snake_picks
+
+    rounds = league.roster_size
+    my_picks = set(snake_picks(league, rounds=rounds))
+    pp_by_uid = {p.uid: _to_pool_player(p) for p in pool}  # bots only read adp/stdev
+    seed = replay_seed(slot, rep)
+    taken: set = set()
+    roster: List[EvalPlayer] = []
+    opponents: List[Tuple[int, str]] = []
+    team_positions: Dict[int, Dict[str, int]] = {}
+    for pick_no in range(1, league.num_teams * rounds + 1):
+        avail = [p for p in pool if p.uid not in taken]
+        if not avail:
+            break
+        if pick_no in my_picks:
+            future = sorted(n for n in my_picks if n > pick_no)
+            choice = _policy_pick(policy, avail, roster, league, pick_no, future,
+                                  anchored=anchored)
+            roster.append(choice)
+        else:
+            team = snake_team_for_pick(league, pick_no)
+            tp = team_positions.setdefault(team, {})
+            rng = np.random.default_rng(seed + pick_no)
+            rnd = (pick_no - 1) // league.num_teams + 1
+            bot = bot_pick([pp_by_uid[p.uid] for p in avail], frozenset(), tp, rnd, league, rng)
+            choice = next(p for p in avail if p.uid == bot.uid) if bot else avail[0]
+            tp[choice.position] = tp.get(choice.position, 0) + 1
+            opponents.append((pick_no, choice.uid))
+        taken.add(choice.uid)
+    return roster, opponents
+
+
+def bootstrap_mean_ci(values: Sequence[float], n_resamples: int = BOOTSTRAP_RESAMPLES,
+                      seed: int = 0, alpha: float = 0.05) -> Tuple[float, float]:
+    """Percentile bootstrap CI for the mean of `values`. Deterministic for a
+    given seed. A single value (or constant sample) collapses to a point."""
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return (float("nan"), float("nan"))
+    if arr.size == 1 or np.ptp(arr) == 0:
+        m = float(arr.mean())
+        return (m, m)
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, arr.size, size=(n_resamples, arr.size))
+    means = arr[idx].mean(axis=1)
+    lo, hi = np.percentile(means, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return (float(lo), float(hi))
+
+
+def summarize_paired(scores: Dict[str, List[float]], baseline: str = BASELINE_POLICY,
+                     seed: int = 0) -> Dict[str, dict]:
+    """Turn aligned per-policy score lists (index i = the same (slot, rep)
+    replay for every policy) into the tier C report: for each policy, the
+    mean total, the mean PAIRED difference vs the baseline, and a 95%
+    bootstrap CI on that paired difference."""
+    base = np.asarray(scores[baseline], dtype=float)
+    out: Dict[str, dict] = {}
+    for policy, vals in scores.items():
+        arr = np.asarray(vals, dtype=float)
+        if arr.shape != base.shape:
+            raise ValueError(f"{policy}: {arr.size} replays vs baseline {base.size} — not paired")
+        diffs = arr - base
+        lo, hi = bootstrap_mean_ci(diffs, seed=seed)
+        out[policy] = {
+            "mean_total": round(float(arr.mean()), 1),
+            "std_total": round(float(arr.std()), 1),
+            "delta_vs_adp": round(float(diffs.mean()), 1),
+            "ci_low": round(lo, 1),
+            "ci_high": round(hi, 1),
+            "crosses_zero": bool(lo <= 0.0 <= hi) if policy != baseline else False,
+            "win_rate": round(float((diffs > 0).mean()), 2) if policy != baseline else None,
+            "n": int(arr.size),
+        }
+    return out
+
+
+def eval_policy(settings: Settings, players: List[EvalPlayer],
+                slots_to_test: Optional[List[int]] = None, reps: int = 10,
+                policies: Sequence[str] = POLICIES) -> Dict[str, dict]:
+    """Tier C. Paired design: for each (slot, rep) every policy drafts against
+    the same seeded opponents; n = len(slots) * reps paired replays.
+
+    Returns {policy: {mean_total, std_total, delta_vs_adp, ci_low, ci_high,
+    crosses_zero, win_rate, n}} in POLICIES order (baseline last)."""
+    from dataclasses import replace as dc_replace
+
+    from .value.board import apply_market_anchor
 
     base_league = settings.league
     pool = [p for p in _top_pool(players) if p.adp is not None]
     # anchor once over the full pool with the CONFIGURED weight, as the product does
     anchored = {p.uid: p.proj for p in apply_market_anchor(
         [_to_pool_player(p) for p in pool], base_league.market_anchor)}
-    slots_to_test = slots_to_test or [2, 5, 8, 11]
-    results: Dict[str, List[float]] = {"howie": [], "adp": [], "vorp": []}
+    slots_to_test = list(slots_to_test or EVAL_SLOTS)
+    if BASELINE_POLICY not in policies:
+        policies = tuple(policies) + (BASELINE_POLICY,)
+    scores: Dict[str, List[float]] = {policy: [] for policy in policies}
 
-    for policy in results:
-        for slot in slots_to_test:
-            for rep in range(reps):
-                league = dc_replace(base_league, draft_position=slot,
-                                    k_slots=0, dst_slots=0, roster_size=14)
-                my_picks = set(snake_picks(league, rounds=14))
-                taken: set = set()
-                roster: List[EvalPlayer] = []
-                team_positions: Dict[int, Dict[str, int]] = {}
-                total_picks = league.num_teams * 14
-                for pick_no in range(1, total_picks + 1):
-                    avail = [p for p in pool if p.uid not in taken]
-                    if not avail:
-                        break
-                    if pick_no in my_picks:
-                        future = sorted(n for n in my_picks if n > pick_no)
-                        choice = _policy_pick(policy, avail, roster, league,
-                                              pick_no, future, anchored=anchored)
-                        roster.append(choice)
-                    else:
-                        team = snake_team_for_pick(league, pick_no)
-                        tp = team_positions.setdefault(team, {})
-                        rng = np.random.default_rng(rep * 1_000_000 + pick_no)
-                        rnd = (pick_no - 1) // league.num_teams + 1
-                        bot = bot_pick([_to_pool_player(p) for p in avail], frozenset(),
-                                       tp, rnd, league, rng)
-                        choice = next(p for p in avail if p.uid == bot.uid) if bot else avail[0]
-                        tp[choice.position] = tp.get(choice.position, 0) + 1
-                    taken.add(choice.uid)
-                results[policy].append(_score_roster(roster, league))
+    for slot in slots_to_test:
+        league = dc_replace(base_league, draft_position=slot, k_slots=0, dst_slots=0,
+                            roster_size=EVAL_ROSTER_SIZE)
+        for rep in range(reps):
+            for policy in policies:
+                roster, _ = replay_draft(policy, pool, league, slot, rep, anchored=anchored)
+                scores[policy].append(_score_roster(roster, league))
 
-    out = []
-    baseline = float(np.mean(results["adp"]))
-    for policy in ("howie", "vorp", "adp"):
-        scores = np.array(results[policy])
-        out.append({
-            "policy": policy, "mean": round(float(scores.mean()), 1),
-            "std": round(float(scores.std()), 1),
-            "vs_adp": round(float(scores.mean()) - baseline, 1),
-            "n_drafts": len(scores),
-        })
-    return out
+    return summarize_paired(scores)
 
 
 # ------------------------------------------------------------ tier D: does SoS predict anything?

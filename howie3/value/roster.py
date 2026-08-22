@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..config import LeagueConfig
 from .board import POSITIONS, PoolPlayer, expected_kth_best
-from .lineup import lineup_points
+from .lineup import expected_lineup_points as lineup_points
 
 
 @dataclass
@@ -153,19 +153,9 @@ def mc_rerank(
     season: int,
     n_sims: int = 200,
 ) -> List[PickPlan]:
-    """Re-rank candidate plans by Monte Carlo expected season lineup points.
-
-    The candidate and current roster are simulated as themselves; the rest of
-    the plan is simulated as phantom players carrying the rollout's expected
-    points, with variance/availability from the empirical bucket their
-    projection would fall into.
-    """
-    import numpy as np
-
-    from .distributions import (
-        SEASON_SIGMA, STATIC_BUCKETS, SimPlayer, build_sim_players, calibrate, tier_of,
-    )
-    from .simulate import simulate_roster
+    """Re-rank candidate plans by Monte Carlo expected season lineup points,
+    building every SimPlayer from the local db (see mc_rerank_with)."""
+    from .distributions import build_sim_players, calibrate
 
     fmt = league.scoring_format
     buckets = calibrate(conn, fmt)
@@ -176,13 +166,36 @@ def mc_rerank(
             (season,),
         )
     }
-    # Projection rank within position (pool is already sorted by proj desc)
-    proj_rank: Dict[str, int] = {}
-    counts: Dict[str, int] = {}
+    proj_rank = _proj_ranks(pool)
+
+    def build(players: Sequence[PoolPlayer]):
+        return build_sim_players(conn, list(players), season, fmt, proj_rank, games_by_uid)
+
+    return mc_rerank_with(build, buckets, results, roster, pool, league, n_sims=n_sims)
+
+
+def mc_rerank_with(
+    build_sims,                 # Callable[[Sequence[PoolPlayer]], List[SimPlayer]]
+    buckets: Dict,              # (pos, tier) -> Bucket-like with .cv/.p_play
+    results: List[PickPlan],
+    roster: Sequence[PoolPlayer],
+    pool: Sequence[PoolPlayer],
+    league: LeagueConfig,
+    n_sims: int = 200,
+) -> List[PickPlan]:
+    """Source-agnostic Monte Carlo re-rank: the candidate and current roster
+    are simulated as themselves (via build_sims — db-backed or from a
+    strategy-context artifact); the rest of the plan is simulated as phantom
+    players carrying the rollout's expected points, with variance and
+    availability from the empirical bucket their projection would fall into.
+    """
+    import numpy as np
+
+    from .distributions import SEASON_SIGMA, STATIC_BUCKETS, SimPlayer, tier_of
+    from .simulate import simulate_roster
+
     pos_projs: Dict[str, List[float]] = {}
     for p in pool:
-        counts[p.position] = counts.get(p.position, 0) + 1
-        proj_rank[p.uid] = counts[p.position]
         pos_projs.setdefault(p.position, []).append(p.proj)
 
     def phantom(pos: str, pts: float) -> SimPlayer:
@@ -201,16 +214,23 @@ def mc_rerank(
         )
 
     for r in results:
-        concrete = list(roster) + [r.player]
-        sim_players = build_sim_players(
-            conn, concrete, season, fmt, proj_rank, games_by_uid
-        )
+        sim_players = list(build_sims(list(roster) + [r.player]))
         sim_players += [phantom(pos, pts) for pos, pts in r.plan if pos != "—" and pts > 0]
         r.sim = simulate_roster(sim_players, league, n_sims=n_sims,
                                 playoff_weight=league.playoff_weight)
 
     results.sort(key=lambda r: -(r.sim.mean if r.sim else r.final_value))
     return results
+
+
+def _proj_ranks(pool: Sequence[PoolPlayer]) -> Dict[str, int]:
+    """uid -> projection rank within position (pool sorted by proj desc)."""
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+    return proj_rank
 
 
 def resolve_names(conn, names: Sequence[str], pool: Sequence[PoolPlayer]) -> (List[PoolPlayer], List[str]):

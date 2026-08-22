@@ -6,7 +6,9 @@ change a background thread refines the deterministic ranking with Monte
 Carlo; the UI polls and picks it up when ready.
 """
 
+import hashlib
 import json
+import secrets
 import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,9 +18,21 @@ from urllib.parse import parse_qs, urlparse
 
 from . import service
 from .config import Settings
-from .state import DraftState
+from .state import DraftState, DraftStateError
 
-UI_PATH = Path(__file__).parent / "ui" / "index.html"
+UI_DIR = Path(__file__).parent / "ui"
+UI_PATH = UI_DIR / "index.html"
+# Static assets the server will hand out — an allowlist, not a directory walk
+STATIC = {
+    "/ui/app.js": "application/javascript; charset=utf-8",
+    "/ui/lib.js": "application/javascript; charset=utf-8",
+    "/ui/style.css": "text/css; charset=utf-8",
+}
+CSP = ("default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+       "font-src 'self' https://fonts.gstatic.com; "
+       "script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'")
+MAX_BODY = 1_000_000  # bytes; the largest legitimate body is a pasted mock draft
 
 _lock = threading.Lock()
 _mc_cache: dict = {"gen": "", "data": None, "running": ""}
@@ -26,13 +40,22 @@ _det_cache: dict = {"gen": "", "pick": None}  # deterministic payload per genera
 MC_SIMS = 150
 
 
-def _generation(state: DraftState) -> str:
-    # identity + length: a reset draft with the same event count must never
-    # reuse a cached ranking that references the previous draft's pool
-    return f"{state.created}:{state.seed}:{len(state.events)}"
+def _generation(settings: Settings, state: DraftState) -> str:
+    """Cache key for a recommendation: EVERYTHING that changes the ranking.
+
+    Draft identity (created + seed) and length, the active strategy rules
+    (targets / waits / bans re-rank the board), and the league config file
+    (slot, scoring, anchor). Notes are deliberately excluded — free text
+    never touches the engine, and invalidating the Monte Carlo on every
+    keystroke would keep it perpetually "running"."""
+    rules = [r.text.strip().upper() for r in state.rules if r.on]
+    cfg = settings.data_dir / "league_config.json"
+    cfg_sig = hashlib.sha1(cfg.read_bytes()).hexdigest()[:8] if cfg.exists() else "default"
+    rule_sig = hashlib.sha1(json.dumps(sorted(rules)).encode()).hexdigest()[:8]
+    return f"{state.created}:{state.seed}:{len(state.events)}:{rule_sig}:{cfg_sig}"
 
 
-def _kick_mc(settings: Settings, gen: int) -> None:
+def _kick_mc(settings: Settings, gen: str) -> None:
     with _lock:
         if _mc_cache["running"] == gen or _mc_cache["gen"] == gen:
             return  # already computed or in flight for this generation
@@ -41,11 +64,11 @@ def _kick_mc(settings: Settings, gen: int) -> None:
     def run() -> None:
         try:
             state = DraftState.load(settings)
-            if _generation(state) != gen:
+            if _generation(settings, state) != gen:
                 return
             data = service.pick_payload(settings, state, sims=MC_SIMS, top_n=10)
             with _lock:
-                if _generation(DraftState.load(settings)) == gen:
+                if _generation(settings, DraftState.load(settings)) == gen:
                     _mc_cache["gen"] = gen
                     _mc_cache["data"] = data
         except Exception:
@@ -60,6 +83,11 @@ def _kick_mc(settings: Settings, gen: int) -> None:
 
 class Handler(BaseHTTPRequestHandler):
     settings: Settings = None  # injected by serve()
+    # Per-process session token: every mutating request must carry it in
+    # X-Howie-Token. The page receives it in a <meta> tag, so a hostile
+    # site that can reach 127.0.0.1 cannot drive the draft or spend API
+    # budget from the user's browser (CSRF) — localhost is not an auth boundary.
+    token: str = ""
 
     # ------------------------------------------------ plumbing
 
@@ -80,12 +108,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            raise RequestTooLarge(length)
         if not length:
             return {}
         try:
-            return json.loads(self.rfile.read(length))
+            body = json.loads(self.rfile.read(length))
         except json.JSONDecodeError:
             return {}
+        return body if isinstance(body, dict) else {}
+
+    def _authorized(self) -> bool:
+        return bool(self.token) and secrets.compare_digest(
+            self.headers.get("X-Howie-Token", ""), self.token)
 
     # ------------------------------------------------ routes
 
@@ -95,9 +130,19 @@ class Handler(BaseHTTPRequestHandler):
         s = self.settings
         try:
             if url.path in ("/", "/index.html"):
-                body = UI_PATH.read_bytes()
+                body = UI_PATH.read_text().replace("__HOWIE_TOKEN__", self.token).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Security-Policy", CSP)
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(body)
+            elif url.path in STATIC:
+                body = (UI_DIR / url.path.rsplit("/", 1)[1]).read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", STATIC[url.path])
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
@@ -106,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(service.state_payload(s, DraftState.load(s)))
             elif url.path == "/api/pick":
                 state = DraftState.load(s)
-                gen = _generation(state)
+                gen = _generation(s, state)
                 top = int(q.get("top", 10))
                 with _lock:
                     cached = _det_cache["pick"] if _det_cache["gen"] == gen else None
@@ -165,6 +210,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(insights.facts_for(s, q.get("q", "")))
             else:
                 self._error("not found", 404)
+        except DraftStateError as e:
+            self._error(f"draft log problem: {e}", 409)
         except ValueError as e:
             self._error(str(e))
         except Exception as e:
@@ -173,7 +220,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         url = urlparse(self.path)
-        body = self._body()
+        if not self._authorized():
+            self._error("missing or invalid session token", 403)
+            return
+        try:
+            body = self._body()
+        except RequestTooLarge as e:
+            # drain (bounded) so the client sees the 413 instead of a broken pipe
+            remaining = min(int(str(e)), 16 * MAX_BODY)
+            while remaining > 0:
+                chunk = self.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            self.close_connection = True
+            self._error(f"request body too large ({e} bytes, limit {MAX_BODY})", 413)
+            return
         s = self.settings
         try:
             # service mutations take the cross-process file lock themselves
@@ -220,8 +282,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._error("not found", 404)
                 return
-            _kick_mc(s, _generation(DraftState.load(s)))
+            _kick_mc(s, _generation(s, DraftState.load(s)))
             self._json(result)
+        except DraftStateError as e:
+            self._error(f"draft log problem: {e}", 409)
         except ValueError as e:
             self._error(str(e))
         except Exception as e:
@@ -229,11 +293,16 @@ class Handler(BaseHTTPRequestHandler):
             self._error(f"{e.__class__.__name__}: {e}", 500)
 
 
+class RequestTooLarge(Exception):
+    pass
+
+
 def serve(settings: Optional[Settings] = None, port: int = 8787) -> ThreadingHTTPServer:
     settings = settings or Settings()
     Handler.settings = settings
+    Handler.token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    _kick_mc(settings, _generation(DraftState.load(settings)))
+    _kick_mc(settings, _generation(settings, DraftState.load(settings)))
     return server
 
 
