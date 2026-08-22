@@ -137,11 +137,14 @@
 
   #drawer { display: none; flex: 1; min-height: 0; padding: 12px 22px; border-bottom: 1px solid var(--line); overflow: hidden; }
   #drawer.open { display: block; }
-  .cardgrid { display: grid; grid-template-columns: 0.95fr 1.1fr 0.9fr 1.35fr; gap: 22px; height: 100%; }
+  .cardgrid { display: grid; grid-template-columns: 0.95fr 1.1fr 0.9fr 1.35fr; grid-template-rows: minmax(0, 1fr); gap: 22px; height: 100%; }
   .cardcol { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-  .cardcol .fill { flex: 1; min-height: 0; overflow-y: auto; }
-  .cardcol .bottom { margin-top: auto; padding-top: 10px; }
-  .glog { flex: 1; min-height: 40px; max-height: 120px; }
+  .cardcol > * { flex: none; }
+  .cardcol .fill { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+  .cardcol .shrink { flex: 0 1 auto; min-height: 0; overflow: hidden; }
+  .glog { flex: 0 1 64px; min-height: 28px; }
+  .cta { display: flex; gap: 6px; flex: none; }
+  .cta button { padding: 7px 12px; }
   @media (max-width: 1100px) { .cardgrid { grid-template-columns: 1fr 1fr; } }
   .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
   .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
@@ -603,10 +606,11 @@ async function openCard(uid) {
     : `<div class="dim" style="font-size:11px;margin-top:6px">No researched facts yet — <span class="green" style="cursor:pointer" onclick="handleTerm('/research ${(c.team || '').replace(/'/g, '')}', [])">/research ${c.team || ''}</span></div>`;
   $('drawer').innerHTML = `<div class="cardgrid">
     <div class="cardcol">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div><div style="font-size:21px;font-weight:700">${c.name}</div>
-        <div class="mono mid" style="font-size:12px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
-        <span style="flex:1"></span><button onclick="closeCard()">✕</button>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="min-width:0"><div style="font-size:20px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div class="mono mid" style="font-size:11px;margin-top:2px;white-space:nowrap"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
+        <span style="flex:1"></span>
+        <div class="cta"><button class="danger" onclick="mark('${c.uid}', false)">TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT</button></div>
       </div>
       <div class="stat4">
         <div><div class="lbl">PROJ</div><div class="val">${c.proj}</div></div>
@@ -614,12 +618,8 @@ async function openCard(uid) {
         <div><div class="lbl">AVAIL @${c.next_pick}</div><div class="val amber">${Math.round(c.avail_next * 100)}%</div></div>
         <div><div class="lbl">P10–P90</div><div class="val" style="font-size:13px">${c.band.p10}–${c.band.p90}</div>${bandBar()}</div>
       </div>
-      ${c.trend.length ? `<p class="sechead">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:14px;height:64px">` +
-        c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.2, 44)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:3px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
-      <div class="bottom" style="display:flex;gap:10px">
-        <button class="danger" style="flex:1;padding:11px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
-        <button class="primary" style="flex:1;padding:11px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
-      </div>
+      ${c.trend.length ? `<div class="shrink"><p class="sechead">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:14px;height:64px">` +
+        c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.2, 44)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:3px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div></div>' : ''}
     </div>
     <div class="cardcol">
       ${room ? `<p class="sechead">ROOM · ${room.unit.replace('unit:', '')} — LAST-SEASON SHARE</p>` +
@@ -630,18 +630,18 @@ async function openCard(uid) {
     <div class="cardcol">
       ${c.playoff_sos.length ? `<p class="sechead">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
         c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
-      ${c.milestones && c.milestones.labels.length ? `<p class="sechead" style="margin-top:12px">MILESTONE RATES · LAST TWO SEASONS</p>` +
+      ${c.milestones && c.milestones.labels.length ? `<div class="shrink" style="margin-top:12px"><p class="sechead">MILESTONE RATES · LAST TWO SEASONS</p>` +
         c.milestones.labels.map(l => { const pr = c.milestones.player[l] || 0, tr = c.milestones.tier[l]; return `<div class="roomrow"><span style="width:118px" class="mono" title="${l}">${l}</span><div class="rbar"><i style="width:${Math.round(pr * 100)}%;background:${pr >= (tr || 0) ? 'var(--acc)' : '#3a4a40'}"></i></div><span class="mono mid" style="width:74px;text-align:right">${Math.round(pr * 100)}%<span class="dim"> / ${tr != null ? Math.round(tr * 100) + '%' : '—'}</span></span></div>`; }).join('') +
-        `<div class="dim" style="font-size:10px;margin-top:4px">player / starter-tier average</div>` : ''}
+        `<div class="dim" style="font-size:10px;margin-top:4px">player / starter-tier average</div></div>` : ''}
     </div>
     <div class="cardcol">
       ${c.games && c.games.length ? `<p class="sechead">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" id="mchips"></div>
         <div class="glog" id="glog"></div>
-        <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
+        <div class="mono dim shrink" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
     </div>
   </div>`;
-  $('drawer').classList.add('open'); $('dockBody').classList.add('hascard'); dockExpand(340);
+  $('drawer').classList.add('open'); $('dockBody').classList.add('hascard'); dockExpand(260);
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
