@@ -33,13 +33,25 @@ def _model() -> str:
 
 
 def _json_block(text: str) -> Optional[dict]:
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
+    """Find the first decodable JSON object in model output: whole text, a
+    ```json fence, or a raw_decode from each '{' (tolerates trailing prose)."""
+    text = text.strip()
+    for candidate in (text, *re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)):
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"\{", text):
+        try:
+            obj, _ = decoder.raw_decode(text[m.start():])
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 _INSIGHT_PROMPTS = {
@@ -69,7 +81,7 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
         "Rules must use these exact patterns so the engine can enforce them: "
         "'WAIT <POS> UNTIL R<n>', 'TARGET <Player Name>', 'NO <POS> BEFORE R<n>'. "
         "Notes are free text (one line). Zero suggestions is fine if nothing should change. "
-        "Cite numbers from the data. No preamble."
+        "Keep each learning under 35 words and at most 3 suggestions. Cite numbers from the data. No preamble."
     )
     user = (
         f"{_INSIGHT_PROMPTS.get(kind, 'Analyze this data.')}\n\n"
@@ -77,13 +89,21 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
         f"DATA:\n{json.dumps(payload.get('data', {}), default=str)[:14000]}"
     )
     try:
-        resp = client.messages.create(model=_model(), max_tokens=1400, system=system,
+        resp = client.messages.create(model=_model(), max_tokens=2500, system=system,
                                       messages=[{"role": "user", "content": user}])
     except Exception as e:
         return {"available": False, "reason": f"{e.__class__.__name__}: {e}"}
     text = "".join(getattr(b, "text", "") for b in resp.content)
-    parsed = _json_block(text) or {"learnings": [text.strip()[:400]], "suggestions": []}
+    parsed = _json_block(text) or _salvage(text)
     return {"available": True, "model": _model(), **_normalize(parsed)}
+
+
+def _salvage(text: str) -> dict:
+    """A truncated JSON reply still holds complete learning strings — keep those."""
+    head = text.split('"suggestions"')[0]
+    strings = [m.group(1) for m in re.finditer(r'"((?:[^"\\]|\\.){20,})"', head)]
+    strings = [x.replace('\\"', '"') for x in strings if x != "learnings"]
+    return {"learnings": strings[:3], "suggestions": []} if strings else {"learnings": [text.strip()[:300]], "suggestions": []}
 
 
 def _normalize(parsed: dict) -> dict:

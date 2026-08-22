@@ -85,6 +85,10 @@
   .content { flex: 1 1 900px; padding: 16px 20px; min-width: 360px; overflow: auto; container-type: inline-size; }
   #side { flex: 0 1 430px; min-width: 320px; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #0c100d; }
   #side.collapsed { display: none; }
+  #findings { flex: none; display: none; max-height: 48%; overflow-y: auto; padding: 10px 18px 12px; border-bottom: 1px solid var(--line2); background: #0e1a13; }
+  #findings.on { display: block; }
+  #findings h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--acc); display: flex; align-items: center; gap: 8px; }
+  #findings li { margin: 4px 0 4px 16px; font-size: 12.5px; line-height: 1.45; color: #c9d6cc; }
   #drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; }
   #drawer .cardgrid { display: flex; flex-direction: column; gap: 18px; height: auto; }
   #drawer .cardcol { overflow: visible; }
@@ -222,7 +226,6 @@
 </header>
 
 <div id="banner"></div>
-<div id="howieDraft" style="padding:0 20px"></div>
 
 <main>
   <aside id="chat" class="collapsed">
@@ -292,7 +295,7 @@
           <span class="mono dim" id="simmeta" style="font-size:11px"></span>
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div><div id="howiePlayer"></div></div>
+          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div></div>
           <div style="flex:1;min-width:340px"><svg id="rsplot" class="plot" height="180"></svg><div class="mono dim" id="rsnote" style="font-size:11px;margin-top:4px"></div></div>
         </div>
       </div>
@@ -300,7 +303,6 @@
 
       <div class="dsec">
         <p class="sechead">MOCK DRAFT LAB — LEARN WHO IS USUALLY THERE AT YOUR PICKS</p>
-        <div id="howieMock"></div>
         <div class="ctl">
           <span class="dim" style="font-size:11px">run</span>
           <select id="mockN"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
@@ -348,7 +350,7 @@
 
     <div id="dataView">
       <div class="dsec">
-        <p class="sechead">GAME DISTRIBUTIONS — EVERY PLAYER-GAME, LAST THREE SEASONS <span class="dim" style="letter-spacing:0">hover a dot</span></p>
+        <p class="sechead">GAME DISTRIBUTIONS — EVERY PLAYER-GAME, LAST THREE SEASONS <span class="dim" style="letter-spacing:0">hover a dot · click to highlight the player and set the threshold to his average</span></p>
         <div class="ctl">
           <div class="poschips" id="dpos"></div>
           <select id="dstat">
@@ -366,10 +368,16 @@
       </div>
 
       <div class="dsec">
-        <p class="sechead">RESEARCH — TEAMS &amp; PLAYERS <span class="dim" style="letter-spacing:0">deep research via web search, stored as facts with sources; cards and the agent use them</span></p>
+        <p class="sechead">RESEARCH — TEAMS &amp; PLAYERS <span class="dim" style="letter-spacing:0">deep research runs in Claude Code as a subagent workflow; validated facts land here with sources</span></p>
+        <div class="factcard" style="margin:0 0 12px">
+          <div class="mono green" style="font-size:11px;letter-spacing:1.5px;margin-bottom:6px">HOW TO REFRESH</div>
+          <div style="font-size:12.5px;line-height:1.55">In Claude Code, in this repo: <span class="mono green">run the research-teams workflow for PHI DAL</span> (or <span class="mono">all</span>).
+          One subagent researches each team with web search, a second one fact-checks every claim against its source, and the kept facts are written to <span class="mono">data/research/&lt;TEAM&gt;.json</span> and imported.
+          Already have a JSON file? <span class="mono">howie graph import &lt;file&gt;</span>. Quick single-shot research is still available from the command line: <span class="mono">/research quick PHI</span>.</div>
+        </div>
         <div class="ctl">
-          <select id="rTeam"></select><button class="primary" onclick="runResearch('team')">RESEARCH TEAM</button>
-          <span class="acwrap"><input id="rPlayer" placeholder="…or a player" style="width:200px" data-ac="player"></span><button onclick="runResearch('player')">RESEARCH PLAYER</button>
+          <select id="rTeam"></select>
+          <span class="acwrap"><input id="rPlayer" placeholder="…or look up a player's facts" style="width:220px" data-ac="player"></span>
           <span class="mono dim" id="rStatus" style="font-size:11px"></span>
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
@@ -405,7 +413,8 @@
   </div>
 
   <aside id="side" class="collapsed">
-    <div class="phead"><span class="mono green" style="font-size:11px;letter-spacing:2px;font-weight:600">PLAYER</span><span class="dim" style="font-size:11px" id="sideHint">type a name below or click a row</span><span style="flex:1"></span><button class="x" onclick="closeCard()" title="Close (esc)">✕</button></div>
+    <div class="phead"><span class="mono green" style="font-size:11px;letter-spacing:2px;font-weight:600" id="sideLabel">PLAYER</span><span class="dim" style="font-size:11px" id="sideHint">type a name below or click a row</span><span style="flex:1"></span><button class="x" onclick="closeCard()" title="Close (esc)">✕</button></div>
+    <div id="findings"></div>
     <div id="drawer"></div>
   </aside>
 </main>
@@ -694,7 +703,7 @@ async function openCard(uid) {
         <div class="mono dim shrink" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
     </div>
   </div>`;
-  sideOpen(); $('drawer').scrollTop = 0; $('sideHint').textContent = c.team ? `${c.pos} · ${c.team}` : '';
+  sideOpen(); $('drawer').scrollTop = 0; $('sideLabel').textContent = 'PLAYER'; $('sideHint').textContent = c.team ? `${c.pos} · ${c.team}` : '';
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -726,7 +735,7 @@ function showTip(ev, i, active) {
   t.style.top = (ev.clientY - 10) + 'px';
 }
 function hideTip() { $('tip').style.display = 'none'; }
-function closeCard() { $('side').classList.add('collapsed'); syncToggles(); }
+function closeCard() { $('drawer').innerHTML = ''; $('findings').innerHTML = ''; $('findings').classList.remove('on'); $('side').classList.add('collapsed'); }
 
 // ---------------- DATA tab ----------------
 
@@ -783,12 +792,20 @@ function renderDist() {
     const t = $('tip'); t.style.display = 'block'; t.style.left = Math.min(e.clientX + 14, window.innerWidth - 260) + 'px'; t.style.top = (e.clientY - 10) + 'px';
   });
   $('dplot').addEventListener('mouseout', hideTip);
+  $('dplot').addEventListener('click', e => {
+    const i = e.target.dataset && e.target.dataset.i; if (i === undefined) return;
+    const r = DIST.rows[i];
+    const his = DIST.rows.filter(x => x[0] === r[0]);
+    const avg = his.reduce((a, x) => a + x[6], 0) / his.length;
+    $('dhl').value = r[1]; $('dthr').value = avg.toFixed(1); hideTip(); renderDist();
+  });
   $('dmeta').textContent = `${rows.length} games · ${DIST.tier === 'starter' ? 'starter tier' : 'all players'}`;
   if (!isNaN(thr)) {
+    const hlRows = hl ? rows.filter(r => r[1].toLowerCase().includes(hl)) : [];
     $('dthrline').innerHTML = DIST.seasons.map(season => {
       const g = rows.filter(r => r[2] === season), a = g.filter(r => r[6] >= thr).length;
       return `${season}: <b>${Math.round(100 * a / Math.max(g.length, 1))}%</b> of games ≥ ${thr}`;
-    }).join(' · ');
+    }).join(' · ') + (hlRows.length ? ` · <span class="green">${hlRows[0][1]}</span>: <b>${Math.round(100 * hlRows.filter(r => r[6] >= thr).length / hlRows.length)}%</b> of his ${hlRows.length} games` : '');
   } else $('dthrline').textContent = 'Set a threshold to see % of games above it, per season.';
 }
 
@@ -973,14 +990,22 @@ function attachAutocomplete(input, onPick, opts = {}) {
 attachAutocomplete($('simq'), () => loadSim());
 attachAutocomplete($('dhl'), () => renderDist());
 attachAutocomplete($('qq'), () => runQuery());
-attachAutocomplete($('rPlayer'), null);
+attachAutocomplete($('rPlayer'), (r) => showFacts(r.name));
 
 // ---------------- Howie insights ----------------
 
-function renderHowie(target, title, r, onApply) {
-  if (!r.available) { $(target).innerHTML = `<div class="howie"><h4>${title}</h4><span class="dim" style="font-size:12px">${r.reason}</span></div>`; return; }
-  const sugg = (r.suggestions || []).map((sg, i) => `<div class="sugg"><span class="kindtag">${sg.type}</span><span><b>${sg.text}</b> <span class="dim">— ${sg.why || ''}</span></span><span style="flex:1"></span><button class="primary" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button></div>`).join('');
-  $(target).innerHTML = `<div class="howie"><h4>${title} <span class="dim" style="letter-spacing:0;font-weight:400">· ${r.model}</span></h4><ol style="margin:0;padding:0">${(r.learnings || []).map(l => `<li>${l}</li>`).join('')}</ol>${sugg ? '<div style="margin-top:8px">' + sugg + '</div>' : '<div class="dim" style="font-size:11px;margin-top:6px">No strategy changes suggested.</div>'}</div>`;
+function renderHowie(target, title, r) {
+  const box = $('findings');
+  if (!r.available) { box.innerHTML = `<h4>${title}</h4><span class="dim" style="font-size:12px">${r.reason}</span>`; }
+  else {
+    const sugg = (r.suggestions || []).map(sg => `<div class="sugg"><span class="kindtag">${sg.type}</span><span><b>${sg.text}</b>${sg.why ? ' <span class="dim">— ' + sg.why + '</span>' : ''}</span><span style="flex:1"></span><button class="primary" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button></div>`).join('');
+    box.innerHTML = `<h4 title="${r.model}">${title}</h4>` +
+      `<ol style="margin:0;padding:0">${(r.learnings || []).map(l => `<li>${l}</li>`).join('')}</ol>` +
+      (sugg ? '<div style="margin-top:8px">' + sugg + '</div>' : '<div class="dim" style="font-size:11px;margin-top:6px">No strategy changes suggested.</div>');
+  }
+  box.classList.add('on'); sideOpen(); box.scrollTop = 0;
+  if (!$('drawer').innerHTML) { $('sideLabel').textContent = 'HOWIE'; $('sideHint').textContent = 'findings'; }
+  termPrint('dim', `${title.toLowerCase()}: ${(r.learnings || []).length} findings, ${(r.suggestions || []).length} suggestions → side panel`);
 }
 async function applySuggestion(sg, btn) {
   strategy = await api('/api/strategy');
@@ -998,22 +1023,22 @@ async function askHowie(kind) {
     const data = {drafts: MOCK.drafts, pick: +k, my_picks: MOCK.my_picks,
       gaps: pk.rows.filter(r => Math.abs(r.avail_sim - r.avail_model) >= 0.08).slice(0, 14),
       usually_there: [...pk.rows].sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 14)};
-    $('howieMock').innerHTML = '<div class="howie"><h4>HOWIE IS READING THE RESULTS…</h4></div>';
-    renderHowie('howieMock', `HOWIE ON YOUR MOCKS · PICK ${k}`, await api('/api/lab/insights', {kind: 'mock', data, strategy: strat}));
+    termPrint('dim', 'Howie is reading the mock results…');
+    renderHowie(null, `HOWIE ON YOUR MOCKS · PICK ${k}`, await api('/api/lab/insights', {kind: 'mock', data, strategy: strat}));
   } else if (kind === 'player') {
     const q = $('simq').value.trim(); if (!q) return;
     const hits = await api('/api/search?q=' + encodeURIComponent(q)); const p = hits.find(h => h.uid); if (!p) return;
     const [sim, card] = await Promise.all([api('/api/data/sim?uid=' + p.uid), api('/api/card?uid=' + p.uid)]);
     const data = {player: sim.name, position: sim.position, proj: sim.proj, engine_value: sim.value, p10: sim.p10, p50: sim.p50, p90: sim.p90,
       actual_seasons: sim.actual, model: sim.model, milestone_rates: card.milestones, room: card.room, facts: card.facts, team_facts: card.team_facts, avail_next: card.avail_next, mv_vs_wait: card.mv_vs_wait};
-    $('howiePlayer').innerHTML = '<div class="howie"><h4>HOWIE IS THINKING…</h4></div>';
-    renderHowie('howiePlayer', `HOWIE ON ${sim.name.toUpperCase()}`, await api('/api/lab/insights', {kind: 'player', data, strategy: strat}));
+    termPrint('dim', `Howie is thinking about ${sim.name}…`);
+    renderHowie(null, `HOWIE ON ${sim.name.toUpperCase()}`, await api('/api/lab/insights', {kind: 'player', data, strategy: strat}));
   } else {
     const [pick, pos] = await Promise.all([api('/api/pick?top=10'), api('/api/positions')]);
     const data = {state: {round: ST.round, pick: ST.next_pick_no, roster: ST.roster.filter(r => r.name), recent_log: ST.log.slice(0, 10)},
       candidates: (pick.mc ? pick.mc.rows : pick.rows).slice(0, 10), positional: pos.rows};
-    $('howieDraft').innerHTML = '<div class="howie"><h4>HOWIE IS READING THE BOARD…</h4></div>';
-    renderHowie('howieDraft', `HOWIE ON PICK ${ST.next_pick_no}`, await api('/api/lab/insights', {kind: 'draft', data, strategy: strat}));
+    termPrint('dim', 'Howie is reading the board…');
+    renderHowie(null, `HOWIE ON PICK ${ST.next_pick_no}`, await api('/api/lab/insights', {kind: 'draft', data, strategy: strat}));
   }
 }
 
@@ -1035,16 +1060,6 @@ async function showFacts(q) {
   if (!r.facts.length) { $('rFacts').innerHTML = `<span class="dim" style="font-size:12px">No researched facts for ${r.entity ? r.entity.name : q} yet.</span>`; return; }
   $('rFacts').innerHTML = `<div class="mid" style="font-size:12px;margin-bottom:6px"><b>${r.entity.name}</b> · ${r.facts.length} facts</div>` +
     r.facts.map(f => `<div class="factcard"><span class="kindtag">${f.kind}</span> <span class="mono dim" style="font-size:10px">${f.entity_id.replace(/^(player|team|unit):/, '')}</span><br>${f.text}${f.value != null ? ` <span class="mono green">(${f.value})</span>` : ''}<div class="fmeta">${f.source} · conf ${f.confidence} · ${(f.created || '').slice(0, 10)}${f.expires ? ' · expires ' + f.expires : ''}</div></div>`).join('');
-}
-async function runResearch(kind) {
-  const body = kind === 'team' ? {team: $('rTeam').value} : {player: $('rPlayer').value.trim()};
-  if (kind === 'player' && !body.player) return;
-  $('rStatus').textContent = 'researching… (30–90s, web search)';
-  const r = await api('/api/research/run', body);
-  if (!r.available) { $('rStatus').textContent = r.reason; return; }
-  $('rStatus').textContent = r.error ? 'no facts returned: ' + r.error : `imported ${r.imported} facts` + (r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped (unresolved names)` : '');
-  await loadResearch();
-  if (kind === 'player') showFacts(body.player);
 }
 const _origLoadDataTab = loadDataTab;
 loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
@@ -1108,41 +1123,20 @@ async function handleTerm(line, acItems) {
     else if (cmd === 'mine' || cmd === 'taken') { const p = await findPlayer(arg); p ? await mark(p.uid, cmd === 'mine') : termPrint('dim', 'no player found'); }
     else if (cmd === 'undo') { const r = await api('/api/undo', {}); termPrint('out', r.undone ? `undid ${r.undone.name} (pick ${r.undone.pick_no})` : 'nothing to undo'); await refresh(true); }
     else if (cmd === 'board') { const pk = await api('/api/pick?top=5'); const rows = (pk.mc ? pk.mc.rows : pk.rows).slice(0, 5); termPrint('out', rows.map((r, i) => `${i + 1}. ${r.name} (${r.pos}) ${r.value} ${r.delta ? (r.delta > 0 ? '+' : '') + r.delta : ''} · avail@${pk.next_pick} ${Math.round(r.avail_next * 100)}%`).join('\n')); }
-    else if (cmd === 'read') { termPrint('dim', 'Howie is reading the board…'); const strat = await api('/api/strategy'); const [pick, pos] = await Promise.all([api('/api/pick?top=10'), api('/api/positions')]); const r = await api('/api/lab/insights', {kind: 'draft', strategy: strat, data: {state: {round: ST.round, pick: ST.next_pick_no, roster: ST.roster.filter(x => x.name)}, candidates: (pick.mc ? pick.mc.rows : pick.rows).slice(0, 10), positional: pos.rows}}); printInsights(r); }
+    else if (cmd === 'read') { termPrint('dim', 'Howie is reading the board…'); const strat = await api('/api/strategy'); const [pick, pos] = await Promise.all([api('/api/pick?top=10'), api('/api/positions')]); const r = await api('/api/lab/insights', {kind: 'draft', strategy: strat, data: {state: {round: ST.round, pick: ST.next_pick_no, roster: ST.roster.filter(x => x.name)}, candidates: (pick.mc ? pick.mc.rows : pick.rows).slice(0, 10), positional: pos.rows}}); printInsights(r, `HOWIE ON PICK ${ST.next_pick_no}`); }
     else if (cmd === 'sim') { const p = await findPlayer(arg); if (!p) { termPrint('dim', 'no player found'); return; } const sr = await api('/api/data/sim?uid=' + p.uid); termPrint('out', `${sr.name}: proj ${sr.proj} · simulated p10 ${sr.p10} / p50 ${sr.p50} / p90 ${sr.p90}` + (sr.actual.length ? ' · actual ' + sr.actual.map(a => `${a.season}: ${a.total}`).join(', ') : '')); $('simq').value = sr.name; }
-    else if (cmd === 'mock') { const n = parseInt(rest[0]) || 25, pol = rest[1] || 'adp'; const r = await api('/api/sim/mock/run', {n, policy: pol}); termPrint('out', r.started ? `running ${n} mock drafts (${pol})… results land in LAB` : 'a run is already in progress'); MOCK_loadedAfter = false; const wait = async () => { const st = await api('/api/sim/mock/status'); if (st.running) { setTimeout(wait, 1500); return; } await loadMockResults(); termPrint('out', `done · ${MOCK.drafts} drafts stored`); termPrint('dim', 'Howie is reading the results…'); const k = MOCK.my_picks[Math.min(ST.round - 1, MOCK.my_picks.length - 1)]; const pk = MOCK.per_pick[String(k)] || {rows: []}; const strat = await api('/api/strategy'); printInsights(await api('/api/lab/insights', {kind: 'mock', strategy: strat, data: {drafts: MOCK.drafts, pick: k, gaps: pk.rows.filter(x => Math.abs(x.avail_sim - x.avail_model) >= 0.08).slice(0, 12), usually_there: [...pk.rows].sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 12)}})); }; wait(); }
-    else if (cmd === 'research') { termPrint('dim', `researching ${arg}… (30–90s, web search)`); const isTeam = /^[A-Z]{2,3}$/i.test(arg); const r = await api('/api/research/run', isTeam ? {team: arg.toUpperCase()} : {player: arg}); if (!r.available) { termPrint('dim', r.reason); return; } termPrint('out', `imported ${r.imported} facts` + (r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped` : '')); (r.facts || []).slice(0, 4).forEach(f => termPrint('out', `• [${f.kind}] ${f.text}`)); }
+    else if (cmd === 'mock') { const n = parseInt(rest[0]) || 25, pol = rest[1] || 'adp'; const r = await api('/api/sim/mock/run', {n, policy: pol}); termPrint('out', r.started ? `running ${n} mock drafts (${pol})… results land in LAB` : 'a run is already in progress'); MOCK_loadedAfter = false; const wait = async () => { const st = await api('/api/sim/mock/status'); if (st.running) { setTimeout(wait, 1500); return; } await loadMockResults(); termPrint('out', `done · ${MOCK.drafts} drafts stored`); termPrint('dim', 'Howie is reading the results…'); const k = MOCK.my_picks[Math.min(ST.round - 1, MOCK.my_picks.length - 1)]; const pk = MOCK.per_pick[String(k)] || {rows: []}; const strat = await api('/api/strategy'); printInsights(await api('/api/lab/insights', {kind: 'mock', strategy: strat, data: {drafts: MOCK.drafts, pick: k, gaps: pk.rows.filter(x => Math.abs(x.avail_sim - x.avail_model) >= 0.08).slice(0, 12), usually_there: [...pk.rows].sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 12)}}), `HOWIE ON YOUR MOCKS · PICK ${k}`); }; wait(); }
+    else if (cmd === 'research') {
+      const quick = /^quick\b/i.test(arg); const target = arg.replace(/^quick\s*/i, '').trim();
+      if (!quick) { termPrint('out', `Deep research runs in Claude Code as a subagent workflow (research → fact-check → import):\n  run the research-teams workflow for ${target || 'PHI DAL'}\nValidated facts appear on cards and in DATA › RESEARCH. For a quick single-shot instead: /research quick ${target || 'PHI'}`); return; }
+      termPrint('dim', `quick research on ${target}… (30–90s, web search)`); const isTeam = /^[A-Z]{2,3}$/i.test(target); const r = await api('/api/research/run', isTeam ? {team: target.toUpperCase()} : {player: target}); if (!r.available) { termPrint('dim', r.reason); return; } termPrint('out', `imported ${r.imported} facts` + (r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped` : '')); (r.facts || []).slice(0, 4).forEach(f => termPrint('out', `• [${f.kind}] ${f.text}`)); }
     else if (cmd === 'sql') { const r = await api('/api/data/query?q=' + encodeURIComponent('sql: ' + arg)); if (r.error) { termPrint('dim', r.error); return; } termPrint('out', r.rows.slice(0, 12).map(row => r.columns.map(c => `${c}=${row[c]}`).join('  ')).join('\n') || 'no rows'); }
     else if (cmd === 'data') { const r = await api('/api/data/query?q=' + encodeURIComponent(arg)); if (!r.entity) { termPrint('dim', 'nothing found'); return; } const d = r.detail; termPrint('out', `${r.entity.kind}: ${r.entity.name}` + (d.projection ? ` · 2026 proj ${d.projection.proj} · ADP ${d.projection.adp ?? '—'}` : '') + (d.seasons ? '\n' + d.seasons.map(x => `${x.season}: ${x.pts} pts in ${x.g} g (${x.ppg}/g)`).join('\n') : '') + (d.rooms ? '\n' + d.rooms.filter(m => m.proj).slice(0, 10).map(m => `${m.position} ${m.name} ${m.proj}`).join('\n') : '')); }
     else if (cmd === 'strategy') { const st = await api('/api/strategy'); termPrint('out', (st.rules.map(r => `${r.on ? '●' : '○'} ${r.text}${r.inert ? ' (inert)' : ''}`).join('\n') || 'no rules') + (st.notes ? '\n' + st.notes : '')); }
     else termPrint('dim', 'unknown command — /help');
   } catch (err) { termPrint('dim', 'error: ' + err.message); }
 }
-function printInsights(r) {
-  if (!r.available) { termPrint('dim', r.reason); return; }
-  (r.learnings || []).forEach((l, i) => termPrint('howie', `${i + 1}. ${l}`));
-  (r.suggestions || []).forEach(sg => termPrint('howie', `<span class="kindtag">${sg.type}</span> ${sg.text} <button class="primary" style="margin-left:8px" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button>`));
-  if (!(r.learnings || []).length) termPrint('dim', 'no learnings returned');
-}
-
-// ---------------- header popovers: reset / config ----------------
-function closePops() { document.querySelectorAll('.pop').forEach(p => p.classList.remove('open')); }
-async function togglePop(id) {
-  const was = $(id).classList.contains('open'); closePops();
-  if (!was) { if (id === 'popConfig') await loadConfig(); $(id).classList.add('open'); }
-}
-document.addEventListener('mousedown', e => { if (!e.target.closest('.pop') && !e.target.closest('.icon')) closePops(); });
-async function loadConfig() {
-  const c = await api('/api/config');
-  for (const k of Object.keys(c)) { const el = $('cfg_' + k); if (el) el.value = c[k]; }
-  $('cfgNote').textContent = '';
-}
-async function saveConfig() {
-  const body = {};
-  document.querySelectorAll('#popConfig [id^="cfg_"]').forEach(el => { body[el.id.slice(4)] = el.value; });
-  try { await api('/api/config', body); $('cfgNote').textContent = 'saved'; await refresh(true); setTimeout(closePops, 500); }
-  catch (e) { $('cfgNote').textContent = e.message; }
-}
+function printInsights(r, title) { renderHowie(null, title || 'HOWIE', r); }
 
 // ---------------- wordmark: typed on load ----------------
 (function typeWordmark() {
