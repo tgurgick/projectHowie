@@ -59,7 +59,7 @@ Findings that shaped the engine (Aug 2026):
 | Late-round picks tie at zero marginal value → QB hoarding | Positional caps + bench-insurance tie-break in `evaluate_candidates` |
 | p10–p90 covered only 35% of outcomes (weekly noise averages out) | Season-level projection-error shock (`SEASON_SIGMA`, measured per position from 2025) → 78% coverage |
 | Pure-projection drafting lost to follow-ADP by ~200 pts (winner's curse on proj-vs-market outliers) | **Market anchor**: shrink projections toward ADP-implied value; anchor 0.75 beats ADP by +48 (league config `market_anchor`) |
-| Does preseason SoS predict anything? (tier D) | Season-level corr between projected schedule ease and beating projection: **−0.09** (≈0.1 within positions); weekly within-player corr: **0.02**. Neither is actionable → SoS stays normalized (reshapes weeks, never season totals) and `playoff_weight` defaults to neutral 1.0. The knob exists for an in-season mode where matchup data is real. |
+| Does preseason SoS predict anything? (tier D) | Season-level corr between projected schedule ease and beating projection: **−0.09** (≈0.1 within positions); weekly within-player corr: **0.02**. Decomposed: even hindsight defense-vs-position moves a player only 0.98×→1.05× of his own mean (r=0.03), and the preseason grade forecasts realized defense at r=0.14. Small effect × weak forecast. Neither is actionable → SoS stays normalized (reshapes weeks, never season totals) and `playoff_weight` defaults to neutral 1.0. The knob exists for an in-season mode where matchup data is real. |
 
 Caveat: the anchor weight is tuned on one season of replays; re-run the sweep
 when 2026 actuals exist, and add seasons as they accumulate.

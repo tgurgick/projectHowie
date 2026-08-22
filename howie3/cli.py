@@ -250,7 +250,11 @@ def eval_run(reps: int, skip_policy: bool) -> None:
             f"{sos['season_corr']:+.3f} (n={sos['season_n']}; by pos "
             + ", ".join(f"{k} {v:+.2f}" for k, v in sos["season_by_pos"].items())
             + f") · weekly within-player corr {sos['weekly_corr']:+.3f} "
-            f"(n={sos['weekly_n']}). ~0 on both = keep SoS normalized, playoff_weight neutral.\n"
+            f"(n={sos['weekly_n']}).\n    Decomposition — hindsight matchup quality → weekly scoring: "
+            f"{sos['hindsight_corr']:+.3f} (hardest vs softest quartile: "
+            f"{sos['hindsight_hard_vs_soft'][0]}x vs {sos['hindsight_hard_vs_soft'][1]}x own mean); "
+            f"preseason grade → realized defense: {sos['forecast_corr']:+.3f}.\n"
+            "    Small effect × weak forecast → keep SoS normalized, playoff_weight neutral.\n"
         )
 
     if not skip_policy:

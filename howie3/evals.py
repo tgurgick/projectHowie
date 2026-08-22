@@ -374,8 +374,59 @@ def eval_sos(settings: Settings, players: List[EvalPlayer]) -> dict:
         a, b = np.array(a), np.array(b)
         return float(np.corrcoef(a, b)[0, 1]) if len(a) > 3 and a.std() > 0 and b.std() > 0 else 0.0
 
+    # Decomposition on realized 2025 box scores (the ceiling of matchup value):
+    #   hindsight: leave-one-out realized defense-vs-position -> player weekly scoring
+    #   forecast : preseason SoS grade -> realized defense-vs-position
+    conn = connect(settings.db_path)
+    from collections import defaultdict
+    rows = conn.execute(
+        f"SELECT player_uid, opponent, position, week, pts_{fmt} AS pts FROM weekly_stats "
+        "WHERE season = ? AND week <= 17 AND position IN ('QB','RB','WR','TE') "
+        "AND opponent IS NOT NULL", (EVAL_SEASON,)).fetchall()
+    sched = {}
+    for r in conn.execute("SELECT week, home_team, away_team FROM games WHERE season = ? AND week <= 17",
+                          (EVAL_SEASON,)):
+        sched[(r["home_team"], r["week"])] = r["away_team"]
+        sched[(r["away_team"], r["week"])] = r["home_team"]
+    conn.close()
+    allowed = defaultdict(float)
+    for r in rows:
+        allowed[(r["opponent"], r["position"], r["week"])] += r["pts"] or 0.0
+    weeks_by_def = defaultdict(set)
+    for (d, pos, w) in allowed:
+        weeks_by_def[(d, pos)].add(w)
+    by_player = defaultdict(list)
+    for r in rows:
+        by_player[r["player_uid"]].append(r)
+    hx, hy = [], []
+    for uid, rs in by_player.items():
+        if len(rs) < 8:
+            continue
+        mean = np.mean([r["pts"] or 0.0 for r in rs])
+        if mean < 6:
+            continue
+        pos = rs[0]["position"]
+        for r in rs:
+            ws = [w for w in weeks_by_def[(r["opponent"], pos)] if w != r["week"]]
+            if len(ws) >= 4:
+                hx.append(np.mean([allowed[(r["opponent"], pos, w)] for w in ws]))
+                hy.append((r["pts"] or 0.0) / mean)
+    season_dvp = {k: np.mean([allowed[(k[0], k[1], w)] for w in ws])
+                  for k, ws in weeks_by_def.items() if len(ws) >= 8}
+    fx, fy, seen = [], [], set()
+    for (team, pos, w), val in sos.items():
+        opp = sched.get((team, w))
+        if opp and (opp, pos) in season_dvp and (opp, pos) not in seen:
+            seen.add((opp, pos)); fx.append(val); fy.append(season_dvp[(opp, pos)])
+    hx_a, hy_a = np.array(hx), np.array(hy)
+    q1, q3 = (np.percentile(hx_a, 25), np.percentile(hx_a, 75)) if len(hx_a) else (0, 0)
+
     return {
         "available": True,
+        "hindsight_corr": round(corr(hx, hy), 3),
+        "hindsight_hard_vs_soft": (round(float(hy_a[hx_a <= q1].mean()), 2),
+                                   round(float(hy_a[hx_a >= q3].mean()), 2)) if len(hx_a) else None,
+        "forecast_corr": round(corr(fx, fy), 3),
         "season_n": len(season_x),
         "season_corr": round(corr(season_x, season_y), 3),
         "season_by_pos": {pos: round(corr(x, y), 3) for pos, (x, y) in by_pos.items() if len(x) > 8},
