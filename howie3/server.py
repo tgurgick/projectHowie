@@ -152,6 +152,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/sim/mock/results":
                 from . import mocksim
                 self._json(mocksim.aggregates(s))
+            elif url.path == "/api/risk":
+                self._json(service.roster_risk(s, DraftState.load(s)))
             elif url.path == "/api/research/status":
                 from . import insights
                 self._json(insights.research_status(s))
@@ -189,6 +191,9 @@ class Handler(BaseHTTPRequestHandler):
                 started = mocksim.run_in_background(
                     s, int(body.get("n", 25)), str(body.get("policy", "adp")))
                 self._json({"started": started, "status": dict(mocksim.STATUS)})
+                return
+            elif url.path == "/api/ask":
+                self._json(service.ask_howie(s, str(body.get("question", ""))))
                 return
             elif url.path == "/api/lab/insights":
                 from . import insights

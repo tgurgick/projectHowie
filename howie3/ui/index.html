@@ -14,7 +14,28 @@
     --sans: 'Space Grotesk', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--hi); font-family: var(--sans); font-size: 14px; }
+  body { margin: 0; background: var(--bg); color: var(--hi); font-family: var(--sans); font-size: 14px; padding-bottom: 64px; }
+  .wordmark { cursor: pointer; min-width: 92px; display: inline-block; }
+  .wordmark .cur { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .rail { transition: width .15s ease; position: relative; }
+  .rail.collapsed { width: 38px; padding: 12px 4px; overflow: hidden; }
+  .rail.collapsed > *:not(.railtab) { display: none; }
+  .railtab { display: none; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--dim); cursor: pointer; margin: 0 auto; }
+  .rail.collapsed .railtab { display: block; }
+  .slotrow.warn { border-color: var(--amber); border-style: solid; }
+  .slotrow.danger { border-color: var(--red); border-style: solid; }
+  .riskchip { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border: 1px solid; margin: 2px 4px 2px 0; display: inline-block; }
+  .riskchip.warn { color: var(--amber); border-color: #3a3115; } .riskchip.danger { color: var(--red); border-color: #4a2622; }
+  #term { position: fixed; left: 0; right: 0; bottom: 0; background: #0c100d; border-top: 1px solid var(--line2); z-index: 45; }
+  #termOut { max-height: 32vh; overflow-y: auto; padding: 10px 20px; display: none; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; }
+  #termOut .tl { margin: 3px 0; white-space: pre-wrap; } #termOut .tl.cmd { color: var(--acc); font-family: var(--mono); }
+  #termOut .tl.out { color: #c9d6cc; font-family: var(--mono); font-size: 12px; } #termOut .tl.howie { color: var(--hi); border-left: 2px solid var(--acc); padding-left: 10px; }
+  #termOut .tl.dim { color: var(--dim); font-family: var(--mono); font-size: 11px; }
+  #termLine { display: flex; align-items: center; gap: 12px; padding: 9px 20px; height: 48px; }
+  #termLine .prompt { font-family: var(--mono); color: var(--acc); font-weight: 600; }
+  #termLine input { flex: 1; background: transparent; border: none; color: var(--hi); font-family: var(--mono); font-size: 14px; outline: none; }
+  .acdrop.up { top: auto; bottom: 100%; }
   .mono { font-family: var(--mono); }
   .dim { color: var(--dim); } .mid { color: var(--mid); }
   .green { color: var(--acc); } .amber { color: var(--amber); } .red { color: var(--red); }
@@ -107,9 +128,11 @@
   .rulerow.off .dot { background: #3a4a40; }
   #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
 
-  #drawer { position: fixed; top: 0; right: -500px; width: 480px; height: 100vh; background: #0c100d; border-left: 1px solid var(--line2); z-index: 50; transition: right .18s ease; overflow-y: auto; padding: 20px 22px; }
-  #drawer.open { right: 0; }
-  .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 14px 0; }
+  #drawer { position: fixed; left: 0; right: 0; bottom: 48px; height: 46vh; background: #0c100d; border-top: 1px solid var(--acc); z-index: 44; transform: translateY(120%); transition: transform .18s ease; overflow-y: auto; padding: 16px 22px; }
+  #drawer.open { transform: none; }
+  .cardgrid { display: grid; grid-template-columns: 1.05fr 1fr 0.9fr 1.4fr; gap: 22px; align-items: start; }
+  @media (max-width: 1100px) { .cardgrid { grid-template-columns: 1fr 1fr; } }
+  .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
   .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
   .stat4 .lbl { font-size: 9px; letter-spacing: 1.5px; color: var(--dim); }
   .stat4 .val { font-family: var(--mono); font-size: 16px; font-weight: 600; margin-top: 3px; }
@@ -131,7 +154,6 @@
   .footnote { display: flex; gap: 8px; align-items: center; padding: 12px 8px 0; font-size: 12px; color: var(--dim); }
   @media (max-width: 900px) {
     .rail { display: none; }
-    #drawer { width: 100vw; right: -100vw; }
     header { flex-wrap: wrap; height: auto; padding: 10px; gap: 10px; }
     #draftpos { justify-content: flex-start; }
     td, th { padding: 6px 4px; }
@@ -142,7 +164,7 @@
 <body>
 
 <header>
-  <span class="wordmark">HOWIE_</span>
+  <span class="wordmark" id="wordmark" onclick="openTerminal()" title="Open the Howie terminal"></span>
   <nav class="tabs">
     <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
     <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
@@ -151,27 +173,21 @@
   </nav>
   <div id="draftpos" class="mono mid"></div>
   <span class="modechip" id="modechip">—</span>
-  <button onclick="askHowie('draft')" title="Howie's read on this pick">HOWIE</button>
   <button id="mockBtn" onclick="startMock()">START MOCK</button>
   <button class="danger" onclick="resetDraft()">RESET</button>
+  <button onclick="toggleRail()" title="Collapse / expand roster">ROSTER</button>
 </header>
 
 <div id="banner"></div>
 <div id="howieDraft" style="padding:0 20px"></div>
 
-<div class="cmdbar">
-  <div class="searchbox">
-    <input id="q" placeholder="Search player, team, room…" autocomplete="off">
-    <span class="hint">⏎ taken · ⌘⏎ mine · ⇥ card</span>
-    <div id="results"></div>
-  </div>
-  <div class="poschips" id="poschips"></div>
-  <span class="mono dim" id="mcstatus" style="font-size:11px"></span>
-</div>
-
 <main>
   <div class="content">
     <div id="boardView">
+      <div class="ctl" style="justify-content:space-between">
+        <div class="poschips" id="poschips"></div>
+        <span class="mono dim" id="mcstatus" style="font-size:11px"></span>
+      </div>
       <table>
         <thead><tr>
           <th>#</th><th>PLAYER</th><th class="r">PROJ</th><th class="r">ADP</th>
@@ -314,8 +330,10 @@
     </div>
   </div>
 
-  <aside class="rail">
+  <aside class="rail" id="rail">
+    <span class="railtab" onclick="toggleRail()">ROSTER <span id="railBadge"></span></span>
     <p class="sechead">MY ROSTER <span class="mono" id="rosterCount"></span></p>
+    <div id="riskChips" style="margin-bottom:6px"></div>
     <div id="roster"></div>
     <p class="sechead" style="margin-top:18px">PICK LOG <button style="float:right; padding:2px 8px" onclick="undoPick()">UNDO</button></p>
     <div id="log"></div>
@@ -324,8 +342,16 @@
   </aside>
 </main>
 
-<div class="overlay" id="overlay" onclick="closeCard()"></div>
 <div id="drawer"></div>
+<div id="term">
+  <div id="termOut"></div>
+  <div id="termLine">
+    <span class="prompt">›</span>
+    <span class="acwrap" style="flex:1;display:flex"><input id="termIn" placeholder="player name → card · /mine · /taken · /sim · /mock · /research · /sql · /help · or just ask Howie" data-ac="any" autocomplete="off"></span>
+    <span class="dim mono" style="font-size:11px" id="termHint">↑↓ pick · ⏎ run · esc close</span>
+    <button onclick="toggleTermOut()" id="termToggle">▲</button>
+  </div>
+</div>
 <div id="tip"></div>
 
 <script>
@@ -342,8 +368,9 @@ async function api(path, body) {
 
 // ---------------- state + board ----------------
 
+let RISK = null;
 async function refresh(fast) {
-  ST = await api('/api/state');
+  [ST, RISK] = await Promise.all([api('/api/state'), api('/api/risk')]);
   renderHeader(); renderRail();
   PICK = await api('/api/pick?top=25');
   renderBoard();
@@ -365,8 +392,13 @@ function renderHeader() {
 
 function renderRail() {
   $('rosterCount').textContent = `${ST.roster.filter(s => s.name).length} / ${ST.roster.length}`;
+  const lvl = (slot) => { const pos = slot === 'FLX' ? null : slot; const r = pos && RISK && RISK.positions[pos]; return r && r.level !== 'ok' ? r.level : ''; };
+  const why = (slot) => { const r = RISK && RISK.positions[slot]; return r && r.reasons.length ? r.reasons.join(' · ') : ''; };
+  const risks = RISK ? Object.entries(RISK.positions).filter(([p, r]) => r.level !== 'ok') : [];
+  $('riskChips').innerHTML = risks.map(([p, r]) => `<span class="riskchip ${r.level}" title="${r.reasons.join(' · ')}">${p} ${r.level === 'danger' ? 'THIN' : 'DUE'}</span>`).join('');
+  $('railBadge').textContent = risks.length ? ` ${risks.length}!` : '';
   $('roster').innerHTML = ST.roster.map(s =>
-    `<div class="slotrow ${s.name ? 'filled' : ''}">
+    `<div class="slotrow ${s.name ? 'filled' : lvl(s.slot)}" title="${s.name ? '' : why(s.slot)}">
       <span class="slot">${s.slot}</span>
       <span style="color:${s.name ? 'var(--hi)' : 'var(--dim)'}; overflow:hidden; text-overflow:ellipsis;">${s.name || '—'}</span>
       <span style="flex:1"></span><span class="mono dim" style="font-size:11px">${s.proj ?? ''}</span>
@@ -430,55 +462,11 @@ function renderBoard() {
   $('poschips').appendChild(el);
 });
 
-// ---------------- search ----------------
-
-let searchTimer = null;
-$('q').addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(doSearch, 130);
-});
-$('q').addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowDown') { selIdx = Math.min(selIdx + 1, results.length - 1); renderResults(); e.preventDefault(); }
-  else if (e.key === 'ArrowUp') { selIdx = Math.max(selIdx - 1, 0); renderResults(); e.preventDefault(); }
-  else if (e.key === 'Enter') { const r = results[selIdx]; if (r && r.uid && !r.taken) mark(r.uid, e.metaKey || e.ctrlKey); e.preventDefault(); }
-  else if (e.key === 'Tab') { const r = results[selIdx]; if (r && r.uid) openCard(r.uid); e.preventDefault(); }
-  else if (e.key === 'Escape') { hideResults(); }
-});
-async function doSearch() {
-  const q = $('q').value.trim();
-  if (!q) { hideResults(); return; }
-  results = await api('/api/search?q=' + encodeURIComponent(q));
-  selIdx = 0; renderResults();
-}
-function renderResults() {
-  if (!results.length) { hideResults(); return; }
-  $('results').style.display = 'block';
-  $('results').innerHTML = results.map((r, i) => {
-    const tag = r.kind === 'player' ? 'P' : (r.kind === 'unit' ? 'U' : 'T');
-    const meta = r.kind === 'player'
-      ? `${r.position || ''} · ${r.team || ''} · ${r.proj} proj${r.adp ? ' · ADP ' + r.adp.toFixed(1) : ''}${r.taken ? ' · <span class="red">DRAFTED</span>' : ''}`
-      : r.kind;
-    const actions = (r.kind === 'player' && !r.taken)
-      ? `<button class="danger" onclick="event.stopPropagation(); mark('${r.uid}', false)">TAKEN</button>
-         <button class="primary" onclick="event.stopPropagation(); mark('${r.uid}', true)">MINE</button>
-         <button onclick="event.stopPropagation(); openCard('${r.uid}')">CARD</button>` : '';
-    return `<div class="result ${i === selIdx ? 'sel' : ''}" onmouseenter="hoverSel(${i})">
-      <span class="kindtag ${tag}">${tag}</span><b style="font-weight:500">${r.name}</b>
-      <span class="mono dim" style="font-size:11px">${meta}</span>
-      <span style="flex:1"></span>${actions}</div>`;
-  }).join('');
-}
-function hideResults() { $('results').style.display = 'none'; results = []; }
-function hoverSel(i) {
-  selIdx = i;
-  document.querySelectorAll('.result').forEach((el, j) => el.classList.toggle('sel', j === i));
-}
-
 // ---------------- actions ----------------
 
 async function mark(uid, mine) {
-  hideResults(); $('q').value = '';
-  await api('/api/mark', {uid, mine});
+  const r = await api('/api/mark', {uid, mine});
+  termPrint('out', `${mine ? 'drafted' : 'marked taken'}: ${r.name} (pick ${r.pick_no})` + (r.bots ? ` · bots made ${r.bots.length} picks` : ''));
   closeCard(); await refresh(true);
 }
 async function undoPick() { await api('/api/undo', {}); await refresh(true); }
@@ -596,7 +584,7 @@ async function openCard(uid) {
     const L = (v) => ((v - lo) / w * 100).toFixed(1) + '%', W2 = (a, b) => ((b - a) / w * 100).toFixed(1) + '%';
     return `<div class="dist" style="width:72px;margin:4px auto 0"><div class="band" style="left:${L(c.band.p10)};width:${W2(c.band.p10, c.band.p90)}"></div><div class="tick" style="left:${L(c.band.p50)}"></div></div>`;
   };
-  $('drawer').innerHTML = `
+  $('drawer').innerHTML = `<div class="cardgrid"><div>
     <div style="display:flex;align-items:center;gap:12px">
       <div><div style="font-size:21px;font-weight:700">${c.name}</div>
       <div class="mono mid" style="font-size:12px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
@@ -608,24 +596,26 @@ async function openCard(uid) {
       <div><div class="lbl">AVAIL @${c.next_pick}</div><div class="val amber">${Math.round(c.avail_next * 100)}%</div></div>
       <div><div class="lbl">P10–P90</div><div class="val" style="font-size:13px">${c.band.p10}–${c.band.p90}</div>${bandBar()}</div>
     </div>
+    </div><div>
     ${room ? `<p class="sechead">ROOM · ${room.unit.replace('unit:', '')} — LAST-SEASON SHARE</p>` +
       room.members.slice(0, 5).map(m => `<div class="roomrow"><span style="width:130px;overflow:hidden;text-overflow:ellipsis">${m.name}</span><div class="rbar"><i style="width:${Math.round((m.share || 0) * 300)}px;max-width:100%;${m.name === c.name ? 'background:var(--acc)' : ''}"></i></div><span class="mono mid" style="width:38px;text-align:right">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</span></div>`).join('') : ''}
     ${derived.length ? derived.map(f => `<div class="factcard">${f.text}<div class="fmeta">derived from 2025 data</div></div>`).join('') : ''}
     ${facts.length ? '<p class="sechead" style="margin-top:14px">RESEARCH</p>' + facts.map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source} · conf ${f.confidence}</div></div>`).join('') : '<p class="sechead" style="margin-top:14px">RESEARCH</p><div class="factcard dim">No researched facts yet — run the research skill, then `howie graph import`.</div>'}
-    ${c.playoff_sos.length ? `<p class="sechead" style="margin-top:14px">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
+    </div><div>
+    ${c.playoff_sos.length ? `<p class="sechead">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
       c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
     ${c.trend.length ? `<p class="sechead" style="margin-top:14px">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:16px;height:70px">` +
       c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.6, 52)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:4px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
-    ${c.games && c.games.length ? `<p class="sechead" style="margin-top:14px">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
+    </div><div>
+    ${c.games && c.games.length ? `<p class="sechead">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
       <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" id="mchips"></div>
       <div class="glog" id="glog"></div>
       <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : ''}
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="danger" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
       <button class="primary" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
-    </div>`;
+    </div></div></div>`;
   $('drawer').classList.add('open');
-  $('overlay').style.display = 'block';
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -657,7 +647,7 @@ function showTip(ev, i, active) {
   t.style.top = (ev.clientY - 10) + 'px';
 }
 function hideTip() { $('tip').style.display = 'none'; }
-function closeCard() { $('drawer').classList.remove('open'); $('overlay').style.display = 'none'; }
+function closeCard() { $('drawer').classList.remove('open'); }
 
 // ---------------- DATA tab ----------------
 
@@ -872,9 +862,10 @@ async function importMock() {
 
 // ---------------- shared autocomplete (every search box) ----------------
 
-function attachAutocomplete(input, onPick) {
-  const wrap = input.parentElement; const drop = document.createElement('div'); drop.className = 'acdrop'; wrap.appendChild(drop);
-  let items = [], sel = 0, timer = null;
+function attachAutocomplete(input, onPick, opts = {}) {
+  const wrap = input.parentElement; const drop = document.createElement('div'); drop.className = 'acdrop' + (opts.up ? ' up' : ''); wrap.appendChild(drop);
+  let items = [], sel = 0, timer = null, navigated = false;
+  input._acItems = () => items; input._acSel = () => (navigated ? sel : -1);
   const render = () => {
     if (!items.length) { drop.style.display = 'none'; return; }
     drop.style.display = 'block';
@@ -887,14 +878,14 @@ function attachAutocomplete(input, onPick) {
     if (!q || q.toLowerCase().startsWith('sql:')) { items = []; render(); return; }
     timer = setTimeout(async () => {
       const hits = await api('/api/search?q=' + encodeURIComponent(q));
-      items = (input.dataset.ac === 'player' ? hits.filter(h => h.kind === 'player') : hits).slice(0, 6); sel = 0; render();
+      items = (input.dataset.ac === 'player' ? hits.filter(h => h.kind === 'player') : hits).slice(0, 6); sel = 0; navigated = false; render();
     }, 120);
   });
   input.addEventListener('keydown', e => {
     if (!items.length) return;
-    if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
-    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
-    else if (e.key === 'Enter') { pick(sel); e.preventDefault(); }
+    if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, items.length - 1); navigated = true; render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); navigated = true; render(); e.preventDefault(); }
+    else if (e.key === 'Enter') { if (opts.enterRequiresNav && !navigated) { items = []; render(); return; } pick(sel); e.preventDefault(); }
     else if (e.key === 'Escape') { items = []; render(); }
   });
   input.addEventListener('blur', () => setTimeout(() => { items = []; render(); }, 150));
@@ -977,6 +968,75 @@ async function runResearch(kind) {
 }
 const _origLoadDataTab = loadDataTab;
 loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
+
+// ---------------- terminal (the Howie command line) ----------------
+
+function termPrint(kind, html) {
+  const out = $('termOut'); out.style.display = 'block'; $('termToggle').textContent = '▼';
+  const el = document.createElement('div'); el.className = 'tl ' + kind; el.innerHTML = html; out.appendChild(el); out.scrollTop = out.scrollHeight;
+}
+function toggleTermOut() { const o = $('termOut'); const show = o.style.display === 'none' || !o.style.display; o.style.display = show ? 'block' : 'none'; $('termToggle').textContent = show ? '▼' : '▲'; }
+function openTerminal() { $('termOut').style.display = 'block'; $('termToggle').textContent = '▼'; $('termIn').focus(); if (!$('termOut').children.length) termPrint('dim', 'Howie terminal. Type a player for a card, /help for commands, or ask anything.'); }
+function toggleRail() { $('rail').classList.toggle('collapsed'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCard(); } if (e.key === '`' && (e.ctrlKey || e.metaKey)) { openTerminal(); e.preventDefault(); } });
+
+attachAutocomplete($('termIn'), (r) => { if (r.uid) { openCard(r.uid); termPrint('cmd', '› ' + r.name); $('termIn').value = ''; } }, {up: true, enterRequiresNav: true});
+$('termIn').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' || e.defaultPrevented) return;
+  const items = $('termIn')._acItems(), line = $('termIn').value.trim();
+  if (!line) return;
+  $('termIn').value = '';
+  await handleTerm(line, items);
+});
+
+async function findPlayer(q) { const hits = await api('/api/search?q=' + encodeURIComponent(q)); return hits.find(h => h.uid); }
+async function handleTerm(line, acItems) {
+  termPrint('cmd', '› ' + line);
+  if (!line.startsWith('/')) {
+    // exact-ish player name -> card; otherwise Howie
+    const p = acItems && acItems.find(h => h.uid && h.name.toLowerCase() === line.toLowerCase());
+    if (p) { openCard(p.uid); return; }
+    termPrint('dim', 'Howie is thinking…');
+    try {
+      const r = await api('/api/ask', {question: line});
+      (r.tools || []).forEach(t => termPrint('dim', '→ ' + t));
+      termPrint('howie', (r.answer || '').replace(/\n/g, '<br>') || (r.notes || []).join(' ') || 'no answer');
+    } catch (err) { termPrint('dim', 'Howie unavailable: ' + err.message); }
+    return;
+  }
+  const [cmd, ...rest] = line.slice(1).split(/\s+/); const arg = rest.join(' ').trim();
+  try {
+    if (cmd === 'help') {
+      termPrint('out', ['/card NAME · open a player card', '/mine NAME · draft to me', '/taken NAME · mark taken', '/undo', '/board · top picks now',
+        '/read · Howie reads the board', '/sim NAME · simulate a season', '/mock N [howie|adp] · run mock drafts', '/research TEAM|NAME · deep research',
+        '/sql SELECT … · read-only query', '/data Q · look up a player/team/room', '/strategy · show rules & notes', 'anything else · ask Howie'].join('\n'));
+    } else if (cmd === 'card') { const p = await findPlayer(arg); p ? openCard(p.uid) : termPrint('dim', 'no player found'); }
+    else if (cmd === 'mine' || cmd === 'taken') { const p = await findPlayer(arg); p ? await mark(p.uid, cmd === 'mine') : termPrint('dim', 'no player found'); }
+    else if (cmd === 'undo') { const r = await api('/api/undo', {}); termPrint('out', r.undone ? `undid ${r.undone.name} (pick ${r.undone.pick_no})` : 'nothing to undo'); await refresh(true); }
+    else if (cmd === 'board') { const pk = await api('/api/pick?top=5'); const rows = (pk.mc ? pk.mc.rows : pk.rows).slice(0, 5); termPrint('out', rows.map((r, i) => `${i + 1}. ${r.name} (${r.pos}) ${r.value} ${r.delta ? (r.delta > 0 ? '+' : '') + r.delta : ''} · avail@${pk.next_pick} ${Math.round(r.avail_next * 100)}%`).join('\n')); }
+    else if (cmd === 'read') { termPrint('dim', 'Howie is reading the board…'); const strat = await api('/api/strategy'); const [pick, pos] = await Promise.all([api('/api/pick?top=10'), api('/api/positions')]); const r = await api('/api/lab/insights', {kind: 'draft', strategy: strat, data: {state: {round: ST.round, pick: ST.next_pick_no, roster: ST.roster.filter(x => x.name)}, candidates: (pick.mc ? pick.mc.rows : pick.rows).slice(0, 10), positional: pos.rows}}); printInsights(r); }
+    else if (cmd === 'sim') { const p = await findPlayer(arg); if (!p) { termPrint('dim', 'no player found'); return; } const sr = await api('/api/data/sim?uid=' + p.uid); termPrint('out', `${sr.name}: proj ${sr.proj} · simulated p10 ${sr.p10} / p50 ${sr.p50} / p90 ${sr.p90}` + (sr.actual.length ? ' · actual ' + sr.actual.map(a => `${a.season}: ${a.total}`).join(', ') : '')); $('simq').value = sr.name; }
+    else if (cmd === 'mock') { const n = parseInt(rest[0]) || 25, pol = rest[1] || 'adp'; const r = await api('/api/sim/mock/run', {n, policy: pol}); termPrint('out', r.started ? `running ${n} mock drafts (${pol})… results land in LAB` : 'a run is already in progress'); MOCK_loadedAfter = false; const wait = async () => { const st = await api('/api/sim/mock/status'); if (st.running) { setTimeout(wait, 1500); return; } await loadMockResults(); termPrint('out', `done · ${MOCK.drafts} drafts stored`); termPrint('dim', 'Howie is reading the results…'); const k = MOCK.my_picks[Math.min(ST.round - 1, MOCK.my_picks.length - 1)]; const pk = MOCK.per_pick[String(k)] || {rows: []}; const strat = await api('/api/strategy'); printInsights(await api('/api/lab/insights', {kind: 'mock', strategy: strat, data: {drafts: MOCK.drafts, pick: k, gaps: pk.rows.filter(x => Math.abs(x.avail_sim - x.avail_model) >= 0.08).slice(0, 12), usually_there: [...pk.rows].sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 12)}})); }; wait(); }
+    else if (cmd === 'research') { termPrint('dim', `researching ${arg}… (30–90s, web search)`); const isTeam = /^[A-Z]{2,3}$/i.test(arg); const r = await api('/api/research/run', isTeam ? {team: arg.toUpperCase()} : {player: arg}); if (!r.available) { termPrint('dim', r.reason); return; } termPrint('out', `imported ${r.imported} facts` + (r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped` : '')); (r.facts || []).slice(0, 4).forEach(f => termPrint('out', `• [${f.kind}] ${f.text}`)); }
+    else if (cmd === 'sql') { const r = await api('/api/data/query?q=' + encodeURIComponent('sql: ' + arg)); if (r.error) { termPrint('dim', r.error); return; } termPrint('out', r.rows.slice(0, 12).map(row => r.columns.map(c => `${c}=${row[c]}`).join('  ')).join('\n') || 'no rows'); }
+    else if (cmd === 'data') { const r = await api('/api/data/query?q=' + encodeURIComponent(arg)); if (!r.entity) { termPrint('dim', 'nothing found'); return; } const d = r.detail; termPrint('out', `${r.entity.kind}: ${r.entity.name}` + (d.projection ? ` · 2026 proj ${d.projection.proj} · ADP ${d.projection.adp ?? '—'}` : '') + (d.seasons ? '\n' + d.seasons.map(x => `${x.season}: ${x.pts} pts in ${x.g} g (${x.ppg}/g)`).join('\n') : '') + (d.rooms ? '\n' + d.rooms.filter(m => m.proj).slice(0, 10).map(m => `${m.position} ${m.name} ${m.proj}`).join('\n') : '')); }
+    else if (cmd === 'strategy') { const st = await api('/api/strategy'); termPrint('out', (st.rules.map(r => `${r.on ? '●' : '○'} ${r.text}${r.inert ? ' (inert)' : ''}`).join('\n') || 'no rules') + (st.notes ? '\n' + st.notes : '')); }
+    else termPrint('dim', 'unknown command — /help');
+  } catch (err) { termPrint('dim', 'error: ' + err.message); }
+}
+function printInsights(r) {
+  if (!r.available) { termPrint('dim', r.reason); return; }
+  (r.learnings || []).forEach((l, i) => termPrint('howie', `${i + 1}. ${l}`));
+  (r.suggestions || []).forEach(sg => termPrint('howie', `<span class="kindtag">${sg.type}</span> ${sg.text} <button class="primary" style="margin-left:8px" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button>`));
+  if (!(r.learnings || []).length) termPrint('dim', 'no learnings returned');
+}
+
+// ---------------- wordmark: typed on load ----------------
+(function typeWordmark() {
+  const el = $('wordmark'), text = 'HOWIE'; let i = 0;
+  const step = () => { el.innerHTML = text.slice(0, i) + '<span class="cur">_</span>'; if (i < text.length) { i++; setTimeout(step, 110); } };
+  setTimeout(step, 200);
+})();
 
 // ---------------- boot + poll ----------------
 

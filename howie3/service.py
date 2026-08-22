@@ -712,3 +712,65 @@ def build_query(settings: Settings, entity: str = "player", pos: str = "ALL",
         return {"sql": sql, "error": raw}
     rows = _json.loads(raw)
     return {"sql": sql, "label": label, "columns": list(rows[0].keys()) if rows else [], "rows": rows}
+
+
+# ------------------------------------------------------------ roster risk (collapsible rail)
+
+def roster_risk(settings: Settings, state: DraftState) -> dict:
+    """Per position: are we at risk? 'warn' = a strategy rule says we should
+    already have this (or we're past the wait window with nothing), 'danger' =
+    the board is thin for an empty starting slot (few players likely at the
+    next pick within 80% of the best available now)."""
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    pool_by_uid = {p.uid: p for p in pool}
+    taken = state.taken_uids()
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    rnd, current_pick, next_pick, future = _pick_context(settings, state, league)
+    counts: Dict[str, int] = {}
+    for p in roster:
+        counts[p.position] = counts.get(p.position, 0) + 1
+    starters = {"QB": league.qb_slots, "RB": league.rb_slots, "WR": league.wr_slots,
+                "TE": league.te_slots, "K": league.k_slots, "DST": league.dst_slots}
+    effects = state.active_rule_effects()
+    out: Dict[str, dict] = {}
+    for pos, need_slots in starters.items():
+        have = counts.get(pos, 0)
+        level, reasons = "ok", []
+        for rpos, n, by_round in effects["need"]:
+            if rpos == pos and rnd >= by_round and have < n:
+                level = "warn"; reasons.append(f"rule: {n} {pos} by R{by_round} — have {have}")
+        for wpos, until in effects["wait"]:
+            if wpos == pos and rnd > until + 2 and have == 0:
+                level = "warn"; reasons.append(f"waited on {pos} past R{until} — still none")
+        empty = max(need_slots - have, 0)
+        if empty and pos in ("QB", "RB", "WR", "TE"):
+            avail_now = [p for p in pool if p.position == pos and p.uid not in taken
+                         and p.p_available(current_pick) >= 0.1]
+            top = avail_now[0].proj if avail_now else 0
+            good_next = [p for p in avail_now if p.p_available(next_pick) >= 0.5 and p.proj >= 0.8 * top]
+            if len(good_next) <= empty:
+                level = "danger"; reasons.append(f"board thin: {len(good_next)} {pos} likely at pick {next_pick} near the top tier")
+            elif len(good_next) <= 3 * empty and level == "ok" and rnd >= 3:
+                level = "warn"; reasons.append(f"{pos} getting thin: {len(good_next)} near-tier options likely at {next_pick}")
+        out[pos] = {"level": level, "have": have, "need": need_slots, "reasons": reasons}
+    summary = [f"{pos} {'⚠' if v['level'] == 'warn' else '✖'} {v['reasons'][0]}"
+               for pos, v in out.items() if v["level"] != "ok"]
+    return {"round": rnd, "positions": out, "summary": summary}
+
+
+def ask_howie(settings: Settings, question: str) -> dict:
+    """Run the in-repo agent synchronously; returns answer + tool trace."""
+    from .agent import AgentEventType, run_agent_events
+
+    answer, tools, errors = [], [], []
+    for ev in run_agent_events(question, settings):
+        if ev.kind == AgentEventType.TEXT:
+            answer.append(ev.text)
+        elif ev.kind == AgentEventType.TOOL_CALL:
+            tools.append(ev.text)
+        elif ev.kind in (AgentEventType.ERROR, AgentEventType.STOP):
+            errors.append(ev.text)
+    return {"answer": "\n".join(answer).strip(), "tools": tools, "notes": errors}

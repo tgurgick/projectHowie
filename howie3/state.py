@@ -142,7 +142,7 @@ class DraftState:
     def active_rule_effects(self) -> Dict[str, list]:
         """Parse ON rules into effects the ranking layer applies:
         targets: [player name], wait: [(POS, round)], ban: [(POS, round)]."""
-        effects: Dict[str, list] = {"targets": [], "wait": [], "ban": []}
+        effects: Dict[str, list] = {"targets": [], "wait": [], "ban": [], "need": []}
         for rule in self.rules:
             if not rule.on:
                 continue
@@ -154,6 +154,10 @@ class DraftState:
             m = re.match(r"(?i)wait\s+(QB|RB|WR|TE|K|DST)\s+until\s+r(?:ound)?\s*(\d+)", text)
             if m:
                 effects["wait"].append((m.group(1).upper(), int(m.group(2))))
+                continue
+            m = re.match(r"(?i)(\d+)\s+(QB|RB|WR|TE)s?\s+by\s+r(?:ound)?\s*(\d+)", text)
+            if m:
+                effects["need"].append((m.group(2).upper(), int(m.group(1)), int(m.group(3))))
                 continue
             m = re.match(r"(?i)no\s+([A-Z/\s]+?)\s+before\s+r(?:ound)?\s*(\d+)", text)
             if m:

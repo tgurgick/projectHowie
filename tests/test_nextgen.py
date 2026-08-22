@@ -407,3 +407,18 @@ def test_query_detail_includes_projections(settings):
     t = service.query_payload(settings, "eagles")
     rbs = [m for m in t["detail"]["rooms"] if m["position"] == "RB" and m["proj"]]
     assert rbs and rbs[0]["proj"] >= rbs[-1]["proj"]  # sorted by projection within the room
+
+
+# ---------------- roster risk ----------------
+
+def test_need_rule_and_roster_risk(settings, tmp_path, monkeypatch):
+    from howie3 import service
+    _isolate_state(tmp_path, monkeypatch)
+    st = DraftState(rules=[Rule("2 RB BY ROUND 2"), Rule("WAIT QB UNTIL R3")])
+    assert ("RB", 2, 2) in st.active_rule_effects()["need"]
+    st.reset("live"); st.rules = [Rule("2 RB BY ROUND 1")]; st.save(settings)
+    r = service.roster_risk(settings, st)
+    assert set(r["positions"]) >= {"QB", "RB", "WR", "TE"}
+    rb = r["positions"]["RB"]
+    assert rb["level"] in ("warn", "danger") and any("rule" in x for x in rb["reasons"])
+    assert any(s.startswith("RB") for s in r["summary"])
