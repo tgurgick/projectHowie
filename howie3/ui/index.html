@@ -607,7 +607,7 @@ async function openCard(uid) {
   $('drawer').innerHTML = `<div class="cardgrid">
     <div class="cardcol">
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="min-width:0"><div style="font-size:20px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div style="min-width:0"><div style="font-size:18px;font-weight:700;line-height:1.15">${c.name}</div>
         <div class="mono mid" style="font-size:11px;margin-top:2px;white-space:nowrap"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
         <span style="flex:1"></span>
         <div class="cta"><button class="danger" onclick="mark('${c.uid}', false)">TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT</button></div>
