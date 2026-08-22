@@ -138,9 +138,9 @@ def rebuild_derived(conn: sqlite3.Connection, season: int) -> int:
         n += 1
         last_team, tg, ca = vol.get(uid, (None, 0.0, 0.0))
         share = None
-        if last_team and last_team in team_vol:
+        if last_team and last_team in team_vol and pos != "QB":
             ttg, tca = team_vol[last_team]
-            share = ca / tca if pos == "RB" else tg / ttg
+            share = ca / tca if pos == "RB" else tg / ttg  # QB share is not a target share
         if team and pos in ROOM_POSITIONS:
             conn.execute(
                 "INSERT OR REPLACE INTO edges (src, dst, kind, season, value, attrs, provenance) "
