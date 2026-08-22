@@ -651,11 +651,16 @@ def query_payload(settings: Settings, q: str) -> dict:
         team = top["team"]
         by_name = {p.name: p for p in pool_by_uid.values() if p.team == team}
         detail["rooms"] = []
+        import json as _json
         for r in conn.execute(
-            "SELECT e.name, e.position, ed.value AS share FROM edges ed JOIN entities e ON e.id = ed.src "
+            "SELECT e.name, e.position, ed.value AS share, ed.attrs FROM edges ed JOIN entities e ON e.id = ed.src "
             "WHERE ed.kind = 'in_room' AND ed.dst LIKE ? ORDER BY e.position, ed.value DESC", (f"unit:{team}-%",)):
             pp = by_name.get(r["name"])
-            detail["rooms"].append({**dict(r), "proj": round(pp.raw or pp.proj) if pp else None,
+            attrs = _json.loads(r["attrs"]) if r["attrs"] else {}
+            lt = attrs.get("last_team")
+            detail["rooms"].append({"name": r["name"], "position": r["position"], "share": r["share"],
+                                    "other_team": lt if (lt and lt != team) else None,
+                                    "proj": round(pp.raw or pp.proj) if pp else None,
                                     "adp": pp.adp if pp else None})
         detail["rooms"].sort(key=lambda m: (m["position"], -(m["proj"] or 0)))
     conn.close()

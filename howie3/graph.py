@@ -252,15 +252,18 @@ def entity_context(conn: sqlite3.Connection, entity_id: str) -> dict:
             unit_facts = [dict(r) for r in conn.execute(
                 "SELECT kind, text, value, confidence, source FROM facts "
                 "WHERE entity_id = ? ORDER BY id DESC LIMIT 6", (unit,))]
-            out["room"] = {
-                "unit": unit,
-                "members": [
-                    {"name": m["name"],
-                     "share": round(m["value"], 3) if m["value"] is not None else None}
-                    for m in members
-                ],
-                "facts": unit_facts,
-            }
+            team = unit.split(":", 1)[1].rsplit("-", 1)[0]
+            mem = []
+            for m in members:
+                attrs = json.loads(m["attrs"]) if m["attrs"] else {}
+                last_team = attrs.get("last_team")
+                mem.append({
+                    "name": m["name"],
+                    "share": round(m["value"], 3) if m["value"] is not None else None,
+                    # share was earned in a different offense last season
+                    "other_team": last_team if (last_team and last_team != team) else None,
+                })
+            out["room"] = {"unit": unit, "members": mem, "facts": unit_facts}
         if ent["team"]:
             out["team_facts"] = [dict(r) for r in conn.execute(
                 "SELECT kind, text, value, confidence, source FROM facts "

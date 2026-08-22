@@ -32,7 +32,9 @@
   #dock.collapsed { height: 48px !important; }
   #dockGrip { height: 7px; cursor: ns-resize; background: linear-gradient(var(--line2), var(--line2)) center / 48px 2px no-repeat; flex: none; }
   #dock.collapsed #dockGrip, #dock.collapsed #dockBody { display: none; }
-  #dockBody { flex: 1; min-height: 0; overflow-y: auto; }
+  #dockBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #dockBody > #termOut { flex: 0 1 auto; overflow-y: auto; }
+  #dockBody.hascard > #termOut { max-height: 28%; }
   #termOut { padding: 8px 20px 10px; font-size: 12.5px; line-height: 1.5; }
   #termOut .tl { margin: 3px 0; white-space: pre-wrap; } #termOut .tl.cmd { color: var(--acc); font-family: var(--mono); }
   #termOut .tl.out { color: #c9d6cc; font-family: var(--mono); font-size: 12px; } #termOut .tl.howie { color: var(--hi); border-left: 2px solid var(--acc); padding-left: 10px; }
@@ -133,9 +135,13 @@
   .rulerow.off .dot { background: #3a4a40; }
   #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
 
-  #drawer { display: none; padding: 14px 22px 10px; border-bottom: 1px solid var(--line); }
+  #drawer { display: none; flex: 1; min-height: 0; padding: 12px 22px; border-bottom: 1px solid var(--line); overflow: hidden; }
   #drawer.open { display: block; }
-  .cardgrid { display: grid; grid-template-columns: 1.05fr 1fr 0.9fr 1.4fr; gap: 22px; align-items: start; }
+  .cardgrid { display: grid; grid-template-columns: 0.95fr 1.1fr 0.9fr 1.35fr; gap: 22px; height: 100%; }
+  .cardcol { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .cardcol .fill { flex: 1; min-height: 0; overflow-y: auto; }
+  .cardcol .bottom { margin-top: auto; padding-top: 10px; }
+  .glog { flex: 1; min-height: 40px; max-height: 120px; }
   @media (max-width: 1100px) { .cardgrid { grid-template-columns: 1fr 1fr; } }
   .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
   .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
@@ -592,38 +598,50 @@ async function openCard(uid) {
     const L = (v) => ((v - lo) / w * 100).toFixed(1) + '%', W2 = (a, b) => ((b - a) / w * 100).toFixed(1) + '%';
     return `<div class="dist" style="width:72px;margin:4px auto 0"><div class="band" style="left:${L(c.band.p10)};width:${W2(c.band.p10, c.band.p90)}"></div><div class="tick" style="left:${L(c.band.p50)}"></div></div>`;
   };
-  $('drawer').innerHTML = `<div class="cardgrid"><div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <div><div style="font-size:21px;font-weight:700">${c.name}</div>
-      <div class="mono mid" style="font-size:12px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
-      <span style="flex:1"></span><button onclick="closeCard()">✕</button>
+  const derivedHtml = derived.map(f => `<div class="factcard">${f.text}<div class="fmeta">derived from 2025 data</div></div>`).join('');
+  const researchHtml = facts.length ? facts.map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source} · conf ${f.confidence}</div></div>`).join('')
+    : `<div class="dim" style="font-size:11px;margin-top:6px">No researched facts yet — <span class="green" style="cursor:pointer" onclick="handleTerm('/research ${(c.team || '').replace(/'/g, '')}', [])">/research ${c.team || ''}</span></div>`;
+  $('drawer').innerHTML = `<div class="cardgrid">
+    <div class="cardcol">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div><div style="font-size:21px;font-weight:700">${c.name}</div>
+        <div class="mono mid" style="font-size:12px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
+        <span style="flex:1"></span><button onclick="closeCard()">✕</button>
+      </div>
+      <div class="stat4">
+        <div><div class="lbl">PROJ</div><div class="val">${c.proj}</div></div>
+        <div><div class="lbl">VS WAIT (${c.pos})</div><div class="val green">${c.mv_vs_wait > 0 ? '+' : ''}${c.mv_vs_wait}</div></div>
+        <div><div class="lbl">AVAIL @${c.next_pick}</div><div class="val amber">${Math.round(c.avail_next * 100)}%</div></div>
+        <div><div class="lbl">P10–P90</div><div class="val" style="font-size:13px">${c.band.p10}–${c.band.p90}</div>${bandBar()}</div>
+      </div>
+      ${c.trend.length ? `<p class="sechead">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:14px;height:64px">` +
+        c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.2, 44)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:3px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
+      <div class="bottom" style="display:flex;gap:10px">
+        <button class="danger" style="flex:1;padding:11px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
+        <button class="primary" style="flex:1;padding:11px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
+      </div>
     </div>
-    <div class="stat4">
-      <div><div class="lbl">PROJ</div><div class="val">${c.proj}</div></div>
-      <div><div class="lbl">VS WAIT (${c.pos})</div><div class="val green">${c.mv_vs_wait > 0 ? '+' : ''}${c.mv_vs_wait}</div></div>
-      <div><div class="lbl">AVAIL @${c.next_pick}</div><div class="val amber">${Math.round(c.avail_next * 100)}%</div></div>
-      <div><div class="lbl">P10–P90</div><div class="val" style="font-size:13px">${c.band.p10}–${c.band.p90}</div>${bandBar()}</div>
+    <div class="cardcol">
+      ${room ? `<p class="sechead">ROOM · ${room.unit.replace('unit:', '')} — LAST-SEASON SHARE</p>` +
+        room.members.slice(0, 5).map(m => `<div class="roomrow" title="${m.other_team ? 'share earned with ' + m.other_team + ' last season' : ''}"><span style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}${m.other_team ? '<span class="amber">*</span>' : ''}</span><div class="rbar"><i style="width:${Math.round((m.share || 0) * 300)}px;max-width:100%;${m.name === c.name ? 'background:var(--acc)' : (m.other_team ? 'background:#5a4a1a' : '')}"></i></div><span class="mono mid" style="width:38px;text-align:right">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</span></div>`).join('') +
+        (room.members.slice(0, 5).some(m => m.other_team) ? `<div class="dim" style="font-size:10px;margin-top:2px"><span class="amber">*</span> share earned in a different offense (${room.members.filter(m => m.other_team).slice(0, 5).map(m => m.name.split(' ').slice(-1)[0] + ' ' + m.other_team).join(', ')})</div>` : '') : ''}
+      <div class="fill">${derivedHtml}<p class="sechead" style="margin-top:10px">RESEARCH</p>${researchHtml}</div>
     </div>
-    </div><div>
-    ${room ? `<p class="sechead">ROOM · ${room.unit.replace('unit:', '')} — LAST-SEASON SHARE</p>` +
-      room.members.slice(0, 5).map(m => `<div class="roomrow"><span style="width:130px;overflow:hidden;text-overflow:ellipsis">${m.name}</span><div class="rbar"><i style="width:${Math.round((m.share || 0) * 300)}px;max-width:100%;${m.name === c.name ? 'background:var(--acc)' : ''}"></i></div><span class="mono mid" style="width:38px;text-align:right">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</span></div>`).join('') : ''}
-    ${derived.length ? derived.map(f => `<div class="factcard">${f.text}<div class="fmeta">derived from 2025 data</div></div>`).join('') : ''}
-    ${facts.length ? '<p class="sechead" style="margin-top:14px">RESEARCH</p>' + facts.map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source} · conf ${f.confidence}</div></div>`).join('') : '<p class="sechead" style="margin-top:14px">RESEARCH</p><div class="factcard dim">No researched facts yet — run the research skill, then `howie graph import`.</div>'}
-    </div><div>
-    ${c.playoff_sos.length ? `<p class="sechead">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
-      c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
-    ${c.trend.length ? `<p class="sechead" style="margin-top:14px">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:16px;height:70px">` +
-      c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.6, 52)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:4px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
-    </div><div>
-    ${c.games && c.games.length ? `<p class="sechead">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" id="mchips"></div>
-      <div class="glog" id="glog"></div>
-      <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : ''}
-    <div style="display:flex;gap:10px;margin-top:20px">
-      <button class="danger" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
-      <button class="primary" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
-    </div></div></div>`;
-  $('drawer').classList.add('open'); dockExpand(); $('dockBody').scrollTop = 0;
+    <div class="cardcol">
+      ${c.playoff_sos.length ? `<p class="sechead">PLAYOFF SOS · W15–17</p><div style="display:flex;gap:6px">` +
+        c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
+      ${c.milestones && c.milestones.labels.length ? `<p class="sechead" style="margin-top:12px">MILESTONE RATES · LAST TWO SEASONS</p>` +
+        c.milestones.labels.map(l => { const pr = c.milestones.player[l] || 0, tr = c.milestones.tier[l]; return `<div class="roomrow"><span style="width:118px" class="mono" title="${l}">${l}</span><div class="rbar"><i style="width:${Math.round(pr * 100)}%;background:${pr >= (tr || 0) ? 'var(--acc)' : '#3a4a40'}"></i></div><span class="mono mid" style="width:74px;text-align:right">${Math.round(pr * 100)}%<span class="dim"> / ${tr != null ? Math.round(tr * 100) + '%' : '—'}</span></span></div>`; }).join('') +
+        `<div class="dim" style="font-size:10px;margin-top:4px">player / starter-tier average</div>` : ''}
+    </div>
+    <div class="cardcol">
+      ${c.games && c.games.length ? `<p class="sechead">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" id="mchips"></div>
+        <div class="glog" id="glog"></div>
+        <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : '<span class="dim" style="font-size:12px">No game history.</span>'}
+    </div>
+  </div>`;
+  $('drawer').classList.add('open'); $('dockBody').classList.add('hascard'); dockExpand();
   CARD = c;
   if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
@@ -655,7 +673,7 @@ function showTip(ev, i, active) {
   t.style.top = (ev.clientY - 10) + 'px';
 }
 function hideTip() { $('tip').style.display = 'none'; }
-function closeCard() { $('drawer').classList.remove('open'); }
+function closeCard() { $('drawer').classList.remove('open'); $('dockBody').classList.remove('hascard'); }
 
 // ---------------- DATA tab ----------------
 
@@ -779,7 +797,8 @@ async function runQuery() {
   if (d.seasons) html += `<table class="qtable"><thead><tr><th>season</th><th>g</th><th>pts</th><th>ppg</th><th>rush yds</th><th>rec yds</th><th>tgt</th><th>td</th></tr></thead><tbody>` +
     d.seasons.map(s => `<tr><td>${s.season}</td><td>${s.g}</td><td>${s.pts}</td><td>${s.ppg}</td><td>${s.rush_yds || 0}</td><td>${s.rec_yds || 0}</td><td>${s.tgt || 0}</td><td>${s.tds || 0}</td></tr>`).join('') + '</tbody></table>';
   if (d.rooms) html += `<table class="qtable"><thead><tr><th>pos</th><th>player</th><th class="r">2026 proj</th><th class="r">ADP</th><th class="r">last-season share</th></tr></thead><tbody>` +
-    d.rooms.map(m => `<tr><td>${m.position}</td><td>${m.name}</td><td class="r">${m.proj ?? '—'}</td><td class="r">${m.adp ?? '—'}</td><td class="r">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</td></tr>`).join('') + '</tbody></table>';
+    d.rooms.map(m => `<tr><td>${m.position}</td><td>${m.name}${m.other_team ? ' <span class="amber" title="share earned with ' + m.other_team + '">*' + m.other_team + '</span>' : ''}</td><td class="r">${m.proj ?? '—'}</td><td class="r">${m.adp ?? '—'}</td><td class="r">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</td></tr>`).join('') + '</tbody></table>' +
+    (d.rooms.some(m => m.other_team) ? '<div class="dim" style="font-size:10px;margin-top:4px"><span class="amber">*</span> last-season share earned with the team shown, not this offense</div>' : '');
   if (ctx.room) html += `<div class="factcard">Room ${ctx.room.unit.replace('unit:', '')}: ` + ctx.room.members.map(m => `${m.name} ${m.share != null ? Math.round(m.share * 100) + '%' : '—'}`).join(' · ') + '</div>';
   const facts = [...(ctx.facts || []), ...(ctx.team_facts || []), ...((ctx.room && ctx.room.facts) || [])];
   if (facts.length) html += facts.slice(0, 6).map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source}${f.confidence != null ? ' · conf ' + f.confidence : ''}</div></div>`).join('');
