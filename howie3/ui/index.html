@@ -804,7 +804,9 @@ function renderMock() {
   if (!MOCK) return;
   const k = $('mockPick').value || MOCK.my_picks[0];
   const pk = MOCK.per_pick[String(k)] || {rows: [], n_drafts: 0};
-  const rows = pk.rows.filter(r => MOCKPOS === 'ALL' || r.pos === MOCKPOS).slice(0, 18);
+  // read like the board: highest-drafted players first, availability beside them
+  const rows = pk.rows.filter(r => MOCKPOS === 'ALL' || r.pos === MOCKPOS)
+    .sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 18);
   if (!rows.length) { $('mockRows').innerHTML = `<tr><td colspan="8" class="dim">No drafts yet — run some, or import an external mock.</td></tr>`; return; }
   $('mockRows').innerHTML = rows.map(r => {
     const d = r.avail_sim - r.avail_model, dc = Math.abs(d) < 0.1 ? 'dim' : (d > 0 ? 'green' : 'amber');
