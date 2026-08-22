@@ -19,8 +19,18 @@
   .wordmark { cursor: pointer; min-width: 92px; display: inline-block; }
   .wordmark .cur { animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  .ptoggle { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; }
-  .ptoggle.on { background: #12241a; color: var(--acc); border-color: var(--acc); }
+  .icon { border: none; padding: 6px; color: var(--mid); display: inline-flex; align-items: center; }
+  .icon:hover { color: var(--acc); }
+  .icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .pop { position: absolute; top: 50px; right: 16px; z-index: 60; background: var(--panel2); border: 1px solid var(--line2); box-shadow: 0 16px 40px rgba(0,0,0,.6); padding: 12px 14px; display: none; min-width: 260px; }
+  .pop.open { display: block; }
+  .pop .row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+  .pop .row label { width: 120px; color: var(--mid); }
+  .pop input, .pop select { background: var(--panel); border: 1px solid var(--line2); color: var(--hi); font-family: var(--mono); font-size: 12px; padding: 4px 6px; width: 96px; outline: none; }
+  .pop .act { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; font-family: var(--sans); font-size: 13px; color: var(--hi); }
+  .pop .act:hover { background: #121a14; color: var(--acc); }
+  .cardhead .ctarow { display: flex; gap: 8px; margin-top: 10px; }
+  .cardhead .ctarow button { flex: 1; padding: 9px 0; }
   .phead { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   .phead .x { padding: 1px 7px; font-size: 12px; }
   .slotrow.warn { border-color: var(--amber); border-style: solid; }
@@ -43,7 +53,7 @@
   button.primary { background: var(--acc); color: #0a0d0b; border-color: var(--acc); font-weight: 600; }
   button.danger { color: var(--red); border-color: #4a2622; }
 
-  header { height: 54px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  header { position: relative; height: 54px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); }
   .wordmark { font-family: var(--mono); font-weight: 600; font-size: 17px; letter-spacing: 2px; color: var(--acc); }
   .tabs { display: flex; gap: 16px; align-self: stretch; }
   .tab { display: flex; align-items: center; font-size: 12px; letter-spacing: 1.5px; color: var(--dim); border-bottom: 2px solid transparent; cursor: pointer; }
@@ -148,8 +158,6 @@
   .cardcol .fill { flex: 1 1 0; min-height: 0; overflow-y: auto; }
   .cardcol .shrink { flex: 0 1 auto; min-height: 0; overflow: hidden; }
   .glog { height: 64px; }
-  .cta { display: flex; gap: 6px; flex: none; }
-  .cta button { padding: 7px 12px; }
   .stat4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin: 12px 0; }
   .stat4 > div { background: #0c100d; padding: 10px 0; text-align: center; }
   .stat4 .lbl { font-size: 9px; letter-spacing: 1.5px; color: var(--dim); }
@@ -192,10 +200,25 @@
   </nav>
   <div id="draftpos" class="mono mid"></div>
   <span class="modechip" id="modechip">—</span>
-  <button id="mockBtn" onclick="startMock()">START MOCK</button>
-  <button class="danger" onclick="resetDraft()">RESET</button>
-  <button class="ptoggle" id="tglChat" onclick="toggleChat()" title="Howie panel (⌘`)">◧ HOWIE</button>
-  <button class="ptoggle" id="tglSide" onclick="toggleSide()" title="Player card panel">CARD ◨</button>
+  <button class="icon" onclick="togglePop('popReset')" title="Reset / new mock"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
+  <button class="icon" onclick="togglePop('popConfig')" title="League settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <div class="pop" id="popReset">
+    <button class="act" onclick="closePops(); startMock()">New mock draft <span class="dim">— bots pick for the other 11 teams</span></button>
+    <button class="act" onclick="closePops(); resetDraft()">Clear draft <span class="dim">— empty log, live mode</span></button>
+  </div>
+  <div class="pop" id="popConfig">
+    <div class="mono green" style="font-size:11px;letter-spacing:2px;margin-bottom:8px">LEAGUE</div>
+    <div class="row"><label>teams</label><input id="cfg_num_teams" type="number"></div>
+    <div class="row"><label>my draft slot</label><input id="cfg_draft_position" type="number"></div>
+    <div class="row"><label>scoring</label><select id="cfg_scoring_type" style="width:96px"><option value="standard">standard</option><option value="half_ppr">half PPR</option><option value="ppr">PPR</option></select></div>
+    <div class="row"><label>QB / RB / WR / TE</label><input id="cfg_qb_slots" type="number" style="width:40px"><input id="cfg_rb_slots" type="number" style="width:40px"><input id="cfg_wr_slots" type="number" style="width:40px"><input id="cfg_te_slots" type="number" style="width:40px"></div>
+    <div class="row"><label>FLEX / K / DST / bench</label><input id="cfg_flex_slots" type="number" style="width:40px"><input id="cfg_k_slots" type="number" style="width:40px"><input id="cfg_dst_slots" type="number" style="width:40px"><input id="cfg_bench_slots" type="number" style="width:40px"></div>
+    <div class="row"><label>roster size</label><input id="cfg_roster_size" type="number"></div>
+    <div class="mono green" style="font-size:11px;letter-spacing:2px;margin:10px 0 6px">ENGINE</div>
+    <div class="row"><label>market anchor</label><input id="cfg_market_anchor" type="number" step="0.05" min="0" max="1"><span class="dim" style="font-size:10px">0 = projections · 1 = market</span></div>
+    <div class="row"><label>playoff weight</label><input id="cfg_playoff_weight" type="number" step="0.1" min="1" max="3"></div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" onclick="saveConfig()">SAVE</button><button onclick="closePops()">CANCEL</button><span class="mono dim" id="cfgNote" style="font-size:11px;align-self:center"></span></div>
+  </div>
 </header>
 
 <div id="banner"></div>
@@ -404,7 +427,7 @@ async function api(path, body) {
   const opts = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {};
   const r = await fetch(path, opts);
   const j = await r.json();
-  if (j.error) { alert(j.error); throw new Error(j.error); }
+  if (j.error) { if (!path.startsWith('/api/config')) alert(j.error); throw new Error(j.error); }
   return j;
 }
 
@@ -427,7 +450,6 @@ function renderHeader() {
       (ST.you_are_on_clock ? ' <span class="clockchip">ON THE CLOCK</span>'
         : ` <span class="dim">team ${ST.on_clock_team} up</span>`);
   $('modechip').textContent = `${ST.mode} · ${ST.league.teams}t slot ${ST.league.slot} · ${ST.league.scoring}`;
-  $('mockBtn').style.display = (ST.mode === 'mock' && !ST.complete) ? 'none' : '';
   $('banner').style.display = ST.complete ? 'block' : 'none';
   if (ST.complete) $('banner').textContent = 'DRAFT COMPLETE — final roster on the right. RESET to run another mock.';
 }
@@ -638,11 +660,10 @@ async function openCard(uid) {
     : `<div class="dim" style="font-size:11px;margin-top:6px">No researched facts yet — <span class="green" style="cursor:pointer" onclick="handleTerm('/research ${(c.team || '').replace(/'/g, '')}', [])">/research ${c.team || ''}</span></div>`;
   $('drawer').innerHTML = `<div class="cardgrid">
     <div class="cardcol">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="min-width:0"><div style="font-size:18px;font-weight:700;line-height:1.15">${c.name}</div>
-        <div class="mono mid" style="font-size:11px;margin-top:2px;white-space:nowrap"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div></div>
-        <span style="flex:1"></span>
-        <div class="cta"><button class="danger" onclick="mark('${c.uid}', false)">TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT</button></div>
+      <div class="cardhead">
+        <div style="font-size:19px;font-weight:700;line-height:1.15">${c.name}</div>
+        <div class="mono mid" style="font-size:11px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div>
+        <div class="ctarow"><button class="danger" onclick="mark('${c.uid}', false)">MARK TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT TO ME</button></div>
       </div>
       <div class="stat4">
         <div><div class="lbl">PROJ</div><div class="val">${c.proj}</div></div>
@@ -1031,11 +1052,10 @@ loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
 // ---------------- terminal (the Howie command line) ----------------
 
 // Panels: Howie (left) and the player card (right). The dock is the command line.
-function syncToggles() { $('tglChat').classList.toggle('on', !$('chat').classList.contains('collapsed')); $('tglSide').classList.toggle('on', !$('side').classList.contains('collapsed')); }
+function syncToggles() {}
 function chatOpen() { $('chat').classList.remove('collapsed'); localStorage.setItem('chatOpen', '1'); syncToggles(); }
 function toggleChat() { const c = $('chat'); c.classList.toggle('collapsed'); localStorage.setItem('chatOpen', c.classList.contains('collapsed') ? '0' : '1'); syncToggles(); }
 function sideOpen() { $('side').classList.remove('collapsed'); syncToggles(); }
-function toggleSide() { const sd = $('side'); if (sd.classList.contains('collapsed')) { sideOpen(); if (!$('drawer').innerHTML) $('termIn').focus(); } else { sd.classList.add('collapsed'); syncToggles(); } }
 function clearChat() { $('termOut').innerHTML = ''; localStorage.removeItem('howieChat'); }
 function termPrint(kind, html) {
   chatOpen();
@@ -1103,6 +1123,25 @@ function printInsights(r) {
   (r.learnings || []).forEach((l, i) => termPrint('howie', `${i + 1}. ${l}`));
   (r.suggestions || []).forEach(sg => termPrint('howie', `<span class="kindtag">${sg.type}</span> ${sg.text} <button class="primary" style="margin-left:8px" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button>`));
   if (!(r.learnings || []).length) termPrint('dim', 'no learnings returned');
+}
+
+// ---------------- header popovers: reset / config ----------------
+function closePops() { document.querySelectorAll('.pop').forEach(p => p.classList.remove('open')); }
+async function togglePop(id) {
+  const was = $(id).classList.contains('open'); closePops();
+  if (!was) { if (id === 'popConfig') await loadConfig(); $(id).classList.add('open'); }
+}
+document.addEventListener('mousedown', e => { if (!e.target.closest('.pop') && !e.target.closest('.icon')) closePops(); });
+async function loadConfig() {
+  const c = await api('/api/config');
+  for (const k of Object.keys(c)) { const el = $('cfg_' + k); if (el) el.value = c[k]; }
+  $('cfgNote').textContent = '';
+}
+async function saveConfig() {
+  const body = {};
+  document.querySelectorAll('#popConfig [id^="cfg_"]').forEach(el => { body[el.id.slice(4)] = el.value; });
+  try { await api('/api/config', body); $('cfgNote').textContent = 'saved'; await refresh(true); setTimeout(closePops, 500); }
+  catch (e) { $('cfgNote').textContent = e.message; }
 }
 
 // ---------------- wordmark: typed on load ----------------

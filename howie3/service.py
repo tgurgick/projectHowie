@@ -779,3 +779,38 @@ def ask_howie(settings: Settings, question: str) -> dict:
         elif ev.kind in (AgentEventType.ERROR, AgentEventType.STOP):
             errors.append(ev.text)
     return {"answer": "\n".join(answer).strip(), "tools": tools, "notes": errors}
+
+
+# ------------------------------------------------------------ league config (header ⚙)
+
+CONFIG_FIELDS = ("num_teams", "draft_position", "scoring_type", "qb_slots", "rb_slots", "wr_slots",
+                 "te_slots", "flex_slots", "k_slots", "dst_slots", "bench_slots", "roster_size",
+                 "market_anchor", "playoff_weight")
+
+
+def config_payload(settings: Settings) -> dict:
+    lc = settings.league
+    return {f: getattr(lc, f) for f in CONFIG_FIELDS}
+
+
+def update_config(settings: Settings, values: dict) -> dict:
+    """Validate through LeagueConfig and write data/league_config.json."""
+    import json as _json
+    from dataclasses import replace as dc_replace
+
+    current = settings.league
+    clean = {}
+    for f in CONFIG_FIELDS:
+        if f in values and values[f] is not None and values[f] != "":
+            v = values[f]
+            if f == "scoring_type":
+                clean[f] = str(v)
+            elif f in ("market_anchor", "playoff_weight"):
+                clean[f] = float(v)
+            else:
+                clean[f] = int(v)
+    new = dc_replace(current, **clean)
+    new.validate()  # raises ValueError with a clear message
+    path = settings.data_dir / "league_config.json"
+    path.write_text(_json.dumps({f: getattr(new, f) for f in CONFIG_FIELDS}, indent=2))
+    return config_payload(settings)

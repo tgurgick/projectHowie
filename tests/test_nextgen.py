@@ -422,3 +422,19 @@ def test_need_rule_and_roster_risk(settings, tmp_path, monkeypatch):
     rb = r["positions"]["RB"]
     assert rb["level"] in ("warn", "danger") and any("rule" in x for x in rb["reasons"])
     assert any(s.startswith("RB") for s in r["summary"])
+
+
+# ---------------- league config endpoint ----------------
+
+def test_config_roundtrip_and_validation(settings, tmp_path, monkeypatch):
+    from howie3 import service
+    monkeypatch.setenv("HOWIE_DATA_DIR", str(tmp_path))
+    s2 = Settings()
+    (tmp_path / "league_config.json").write_text((settings.repo_root / "data" / "league_config.json").read_text())
+    c = service.config_payload(s2)
+    assert c["num_teams"] == 12 and c["scoring_type"] == "half_ppr"
+    out = service.update_config(s2, {"draft_position": "3", "market_anchor": "0.5"})
+    assert out["draft_position"] == 3 and out["market_anchor"] == 0.5
+    with pytest.raises(ValueError, match="draft_position"):
+        service.update_config(s2, {"draft_position": 40})
+    assert service.config_payload(s2)["draft_position"] == 3  # invalid write left the file alone
