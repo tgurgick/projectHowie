@@ -650,3 +650,55 @@ def query_payload(settings: Settings, q: str) -> dict:
             "WHERE ed.kind = 'in_room' AND ed.dst LIKE ? ORDER BY e.position, ed.value DESC", (f"unit:{team}-%",))]
     conn.close()
     return {"mode": "search", "hits": hits, "entity": top, "detail": detail}
+
+
+# ------------------------------------------------------------ structured query builder
+
+_BUILD_STATS = {
+    "pts": "pts_{fmt}", "rush_yds": "rush_yards", "rec_yds": "rec_yards", "targets": "targets",
+    "receptions": "receptions", "carries": "rush_attempts", "tds": "(rush_tds + rec_tds)",
+    "pass_yds": "pass_yards", "pass_tds": "pass_tds", "interceptions": "interceptions",
+}
+_BUILD_MEASURES = {
+    "total": "SUM({e})", "per_game": "AVG({e})", "max": "MAX({e})",
+    "games_over": "SUM(CASE WHEN {e} >= {thr} THEN 1 ELSE 0 END)",
+}
+
+
+def build_query(settings: Settings, entity: str = "player", pos: str = "ALL",
+                season: str = "2025", measure: str = "total", stat: str = "pts",
+                thr: float = 100.0, min_games: int = 1, order: str = "desc",
+                limit: int = 20) -> dict:
+    """Compile dropdown choices into SQL (whitelisted pieces only) and run it."""
+    fmt = settings.league.scoring_format
+    if entity not in ("player", "team") or stat not in _BUILD_STATS \
+            or measure not in _BUILD_MEASURES or order not in ("desc", "asc"):
+        raise ValueError("invalid builder choice")
+    if pos not in ("ALL", "QB", "RB", "WR", "TE"):
+        raise ValueError("invalid position")
+    expr = _BUILD_STATS[stat].format(fmt=fmt)
+    agg = _BUILD_MEASURES[measure].format(e=expr, thr=float(thr))
+    limit = max(1, min(int(limit), 200))
+    min_games = max(1, min(int(min_games), 18))
+    where = ["w.week <= 18"]
+    if season != "all":
+        where.append(f"w.season = {int(season)}")
+    if pos != "ALL":
+        where.append(f"w.position = '{pos}'")
+    label = {"total": f"total {stat}", "per_game": f"{stat} per game", "max": f"best game {stat}",
+             "games_over": f"games with {stat} >= {float(thr):g}"}[measure]
+    if entity == "player":
+        sql = (f"SELECT p.name, w.position AS pos, COUNT(*) AS games, ROUND({agg}, 1) AS value "
+               f"FROM weekly_stats w JOIN players p USING (player_uid) WHERE {' AND '.join(where)} "
+               f"GROUP BY w.player_uid HAVING games >= {min_games} ORDER BY value {order.upper()} LIMIT {limit}")
+    else:
+        sql = (f"SELECT w.team, COUNT(DISTINCT w.season || '-' || w.week) AS games, ROUND({agg}, 1) AS value "
+               f"FROM weekly_stats w WHERE {' AND '.join(where)} "
+               f"GROUP BY w.team ORDER BY value {order.upper()} LIMIT {limit}")
+    from .agent import safe_query
+    import json as _json
+    raw = safe_query(settings, sql)
+    if raw.startswith("Error"):
+        return {"sql": sql, "error": raw}
+    rows = _json.loads(raw)
+    return {"sql": sql, "label": label, "columns": list(rows[0].keys()) if rows else [], "rows": rows}

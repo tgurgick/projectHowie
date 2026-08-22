@@ -77,6 +77,9 @@
 
   #strategyView { display: none; }
   #dataView { display: none; }
+  #simView { display: none; }
+  .prog { height: 6px; background: var(--line); }
+  .prog > i { display: block; height: 6px; background: var(--acc); }
   .dsec { margin-bottom: 30px; }
   .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
   .ctl select, .ctl input { background: var(--panel2); border: 1px solid var(--line2); color: var(--hi); font-family: var(--mono); font-size: 12px; padding: 6px 8px; outline: none; }
@@ -135,6 +138,7 @@
   <nav class="tabs">
     <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
     <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
+    <span class="tab" id="tabSim" onclick="showTab('sim')">SIM</span>
     <span class="tab" id="tabData" onclick="showTab('data')">DATA</span>
   </nav>
   <div id="draftpos" class="mono mid"></div>
@@ -199,6 +203,48 @@
       </div>
     </div>
 
+
+    <div id="simView">
+      <div class="dsec">
+        <p class="sechead">SIMULATION — SEASON-TOTAL DISTRIBUTIONS <span class="dim" style="letter-spacing:0">what the engine believes, next to what actually happened</span></p>
+        <div class="ctl">
+          <input id="simq" placeholder="player name…" style="width:220px"><button onclick="loadSim()">SIMULATE</button>
+          <span class="mono dim" id="simmeta" style="font-size:11px"></span>
+        </div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div></div>
+          <div style="flex:1;min-width:340px"><svg id="rsplot" class="plot" height="180"></svg><div class="mono dim" id="rsnote" style="font-size:11px;margin-top:4px"></div></div>
+        </div>
+      </div>
+
+
+      <div class="dsec">
+        <p class="sechead">MOCK DRAFT LAB — LEARN WHO IS USUALLY THERE AT YOUR PICKS</p>
+        <div class="ctl">
+          <span class="dim" style="font-size:11px">run</span>
+          <select id="mockN"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
+          <span class="dim" style="font-size:11px">local drafts · my picks by</span>
+          <select id="mockPolicy"><option value="adp">market (ADP)</option><option value="howie">the engine</option></select>
+          <button class="primary" onclick="runMocks()">RUN</button>
+          <div class="prog" id="mockProg" style="width:160px;display:none"><i style="width:0%"></i></div>
+          <span class="mono dim" id="mockStatus" style="font-size:11px"></span>
+        </div>
+        <div class="ctl">
+          <span class="dim" style="font-size:11px">show my pick</span>
+          <select id="mockPick"></select>
+          <div class="poschips" id="mockPos"></div>
+          <span class="mono dim" id="mockMeta" style="font-size:11px"></span>
+        </div>
+        <table class="qtable"><thead><tr><th>player</th><th>pos</th><th class="r">proj</th><th class="r">market ADP</th><th class="r">sim ADP</th><th class="r">available · sims</th><th class="r">available · model</th><th class="r">Δ</th></tr></thead><tbody id="mockRows"></tbody></table>
+        <div class="dim" style="font-size:11px;margin-top:8px">Sims = share of stored drafts where the player was still on the board at this pick. Model = the engine's ADP-based estimate. Big Δ means the market behaves differently than the normal-curve assumption for that player.</div>
+        <div style="margin-top:18px">
+          <p class="sechead">IMPORT AN EXTERNAL MOCK <span class="dim" style="letter-spacing:0">ESPN, Sleeper, Yahoo… paste the pick order, one player per line (numbers/positions/teams are fine)</span></p>
+          <textarea id="mockImport" style="width:100%;min-height:90px;background:var(--panel2);border:1px solid var(--line2);color:#c9d6cc;font-family:var(--mono);font-size:12px;padding:10px;outline:none" placeholder="1. Jahmyr Gibbs RB DET&#10;2. Bijan Robinson RB ATL&#10;3. Ja'Marr Chase WR CIN&#10;…"></textarea>
+          <div class="ctl" style="margin-top:6px"><input id="mockSource" placeholder="source label, e.g. espn" style="width:160px"><button onclick="importMock()">ADD TO STORE</button><span class="mono dim" id="mockImportNote" style="font-size:11px"></span></div>
+        </div>
+      </div>
+    </div>
+
     <div id="dataView">
       <div class="dsec">
         <p class="sechead">GAME DISTRIBUTIONS — EVERY PLAYER-GAME, LAST THREE SEASONS <span class="dim" style="letter-spacing:0">hover a dot</span></p>
@@ -219,20 +265,23 @@
       </div>
 
       <div class="dsec">
-        <p class="sechead">SIMULATION — SEASON-TOTAL DISTRIBUTIONS <span class="dim" style="letter-spacing:0">what the engine believes, next to what actually happened</span></p>
-        <div class="ctl">
-          <input id="simq" placeholder="player name…" style="width:220px"><button onclick="loadSim()">SIMULATE</button>
-          <span class="mono dim" id="simmeta" style="font-size:11px"></span>
-        </div>
-        <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div></div>
-          <div style="flex:1;min-width:340px"><svg id="rsplot" class="plot" height="180"></svg><div class="mono dim" id="rsnote" style="font-size:11px;margin-top:4px"></div></div>
-        </div>
-      </div>
-
-      <div class="dsec">
         <p class="sechead">QUERY <span class="dim" style="letter-spacing:0">a player, team, or room — or `sql: SELECT …` (read-only)</span></p>
+        <div class="ctl" style="gap:6px">
+          <span class="dim" style="font-size:11px">build:</span>
+          <select id="bEntity"><option value="player">players</option><option value="team">teams</option></select>
+          <select id="bPos"><option>ALL</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option></select>
+          <select id="bSeason"><option>2025</option><option>2024</option><option>2023</option><option>2022</option><option value="all">all seasons</option></select>
+          <select id="bMeasure"><option value="total">total</option><option value="per_game">per game</option><option value="max">best game</option><option value="games_over">games with ≥</option></select>
+          <input id="bThr" type="number" value="100" style="width:64px;display:none">
+          <select id="bStat"><option value="pts">fantasy pts</option><option value="rush_yds">rush yds</option><option value="rec_yds">rec yds</option><option value="targets">targets</option><option value="receptions">receptions</option><option value="carries">carries</option><option value="tds">rush+rec TD</option><option value="pass_yds">pass yds</option><option value="pass_tds">pass TD</option><option value="interceptions">INT</option></select>
+          <span class="dim" style="font-size:11px">min games</span><input id="bMin" type="number" value="6" style="width:52px">
+          <span class="dim" style="font-size:11px">top</span><select id="bLimit"><option>10</option><option selected>20</option><option>50</option></select>
+          <select id="bOrder"><option value="desc">highest</option><option value="asc">lowest</option></select>
+          <button class="primary" onclick="runBuild()">RUN</button>
+        </div>
+        <div class="mono dim" id="bsql" style="font-size:10px;margin:-4px 0 10px;word-break:break-all"></div>
         <div class="ctl">
+          <span class="dim" style="font-size:11px">or ask:</span>
           <input id="qq" placeholder="e.g. eagles · det rb room · sql: SELECT …" style="flex:1;min-width:300px"><button onclick="runQuery()">RUN</button>
         </div>
         <div id="qpresets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
@@ -424,11 +473,14 @@ function showTab(t) {
   $('boardView').style.display = t === 'board' ? '' : 'none';
   $('strategyView').style.display = t === 'strategy' ? 'block' : 'none';
   $('dataView').style.display = t === 'data' ? 'block' : 'none';
+  $('simView').style.display = t === 'sim' ? 'block' : 'none';
   $('tabBoard').classList.toggle('active', t === 'board');
   $('tabStrategy').classList.toggle('active', t === 'strategy');
   $('tabData').classList.toggle('active', t === 'data');
+  $('tabSim').classList.toggle('active', t === 'sim');
   if (t === 'strategy') loadStrategyTab();
   if (t === 'data') loadDataTab();
+  if (t === 'sim') loadSimTab();
 }
 
 async function loadAnchors() {
@@ -598,7 +650,6 @@ $('dhl').addEventListener('input', () => renderDist());
 
 async function loadDataTab() {
   if (!dataLoaded) { dataLoaded = true; await loadDist(); loadPresets(); }
-  loadRosterSim();
 }
 
 async function loadDist() {
@@ -710,6 +761,86 @@ async function runQuery() {
   const facts = [...(ctx.facts || []), ...(ctx.team_facts || []), ...((ctx.room && ctx.room.facts) || [])];
   if (facts.length) html += facts.slice(0, 6).map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source}${f.confidence != null ? ' · conf ' + f.confidence : ''}</div></div>`).join('');
   $('qout').innerHTML = html;
+}
+
+// ---------------- query builder ----------------
+
+$('bMeasure').addEventListener('change', () => { $('bThr').style.display = $('bMeasure').value === 'games_over' ? '' : 'none'; });
+async function runBuild() {
+  const q = new URLSearchParams({entity: $('bEntity').value, pos: $('bPos').value, season: $('bSeason').value,
+    measure: $('bMeasure').value, stat: $('bStat').value, thr: $('bThr').value || 100,
+    min_games: $('bMin').value || 1, limit: $('bLimit').value, order: $('bOrder').value});
+  const r = await api('/api/data/build?' + q.toString());
+  $('bsql').textContent = r.sql;
+  if (r.error) { $('qout').innerHTML = `<span class="red mono" style="font-size:12px">${r.error}</span>`; return; }
+  if (!r.rows.length) { $('qout').innerHTML = '<span class="dim">no rows</span>'; return; }
+  $('qout').innerHTML = `<div class="dim" style="font-size:11px;margin-bottom:6px">${r.label}</div><table class="qtable"><thead><tr>${r.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>` +
+    r.rows.map(row => `<tr>${r.columns.map(c => `<td>${row[c] === null ? '—' : row[c]}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
+}
+
+// ---------------- SIM tab: mock draft lab ----------------
+
+let MOCK = null, MOCKPOS = 'ALL', mockTimer = null;
+['ALL','QB','RB','WR','TE'].forEach(p => {
+  const el = document.createElement('span');
+  el.className = 'poschip' + (p === 'ALL' ? ' active' : ''); el.textContent = p;
+  el.onclick = () => { MOCKPOS = p; document.querySelectorAll('#mockPos .poschip').forEach(c => c.classList.toggle('active', c.textContent === p)); renderMock(); };
+  $('mockPos').appendChild(el);
+});
+$('mockPick').addEventListener('change', renderMock);
+
+async function loadSimTab() { loadRosterSim(); await loadMockResults(); pollMock(); }
+
+async function loadMockResults() {
+  MOCK = await api('/api/sim/mock/results');
+  const sel = $('mockPick'), cur = sel.value;
+  sel.innerHTML = MOCK.my_picks.map((k, i) => `<option value="${k}">round ${i + 1} · pick ${k}</option>`).join('');
+  if (cur) sel.value = cur;
+  $('mockMeta').textContent = `${MOCK.drafts} drafts stored (${MOCK.local} local, ${MOCK.external} imported)`;
+  renderMock();
+}
+
+function renderMock() {
+  if (!MOCK) return;
+  const k = $('mockPick').value || MOCK.my_picks[0];
+  const pk = MOCK.per_pick[String(k)] || {rows: [], n_drafts: 0};
+  const rows = pk.rows.filter(r => MOCKPOS === 'ALL' || r.pos === MOCKPOS).slice(0, 18);
+  if (!rows.length) { $('mockRows').innerHTML = `<tr><td colspan="8" class="dim">No drafts yet — run some, or import an external mock.</td></tr>`; return; }
+  $('mockRows').innerHTML = rows.map(r => {
+    const d = r.avail_sim - r.avail_model, dc = Math.abs(d) < 0.1 ? 'dim' : (d > 0 ? 'green' : 'amber');
+    const pc = r.avail_sim >= .7 ? 'green' : r.avail_sim >= .35 ? 'amber' : 'red';
+    return `<tr style="cursor:pointer" onclick="openCard('${r.uid}')"><td style="font-family:var(--sans)">${r.name}</td><td>${r.pos}</td><td class="r">${r.proj}</td><td class="r">${r.adp}</td><td class="r">${r.sim_adp ?? '—'}</td><td class="r ${pc}" style="font-weight:600">${Math.round(r.avail_sim * 100)}%</td><td class="r mid">${Math.round(r.avail_model * 100)}%</td><td class="r ${dc}">${d > 0 ? '+' : ''}${Math.round(d * 100)}</td></tr>`;
+  }).join('');
+  $('mockMeta').textContent = `${MOCK.drafts} drafts stored (${MOCK.local} local, ${MOCK.external} imported) · ${pk.n_drafts} reach pick ${k}`;
+}
+
+async function runMocks() {
+  MOCK_loadedAfter = false;
+  const r = await api('/api/sim/mock/run', {n: parseInt($('mockN').value), policy: $('mockPolicy').value});
+  if (!r.started) { $('mockStatus').textContent = 'a run is already in progress'; }
+  $('mockProg').style.display = ''; pollMock();
+}
+async function pollMock() {
+  clearTimeout(mockTimer);
+  const st = await api('/api/sim/mock/status');
+  if (st.running) {
+    $('mockProg').style.display = ''; $('mockProg').firstElementChild.style.width = Math.round(100 * st.done / Math.max(st.total, 1)) + '%';
+    $('mockStatus').textContent = `running ${st.done} / ${st.total}…`;
+    mockTimer = setTimeout(pollMock, 1200);
+  } else {
+    if (st.total) { $('mockStatus').textContent = st.error ? 'error: ' + st.error : `done · ${st.total} drafts added`; $('mockProg').firstElementChild.style.width = '100%'; }
+    if (st.total && !MOCK_loadedAfter) { MOCK_loadedAfter = true; await loadMockResults(); }
+  }
+}
+let MOCK_loadedAfter = false;
+$('mockN').addEventListener('change', () => { MOCK_loadedAfter = false; });
+async function importMock() {
+  const text = $('mockImport').value.trim(); if (!text) return;
+  try {
+    const r = await api('/api/sim/mock/import', {text, source: $('mockSource').value.trim() || 'external'});
+    $('mockImportNote').textContent = `stored ${r.stored} picks · ${r.drafts} drafts total` + (r.unresolved.length ? ` · unresolved: ${r.unresolved.slice(0, 4).join(', ')}` : '');
+    $('mockImport').value = ''; await loadMockResults();
+  } catch (e) { $('mockImportNote').textContent = 'import failed'; }
 }
 
 // ---------------- boot + poll ----------------

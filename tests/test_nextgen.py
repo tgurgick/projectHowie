@@ -338,3 +338,43 @@ def test_data_tab_payloads(settings, tmp_path, monkeypatch):
     q = service.query_payload(settings, "puka nacua")
     assert q["entity"]["kind"] == "player" and q["detail"]["seasons"]
     assert service.query_payload(settings, "")["presets"]
+
+
+# ---------------- query builder + mock draft lab ----------------
+
+def test_query_builder_whitelists(settings):
+    from howie3 import service
+    r = service.build_query(settings, pos="RB", season="2025", measure="games_over",
+                            stat="rush_yds", thr=100, min_games=8, limit=5)
+    assert r["rows"] and r["rows"][0]["value"] >= r["rows"][-1]["value"]
+    assert "rush_yards >= 100.0" in r["sql"]
+    t = service.build_query(settings, entity="team", season="2025", measure="total", stat="pass_yds", limit=3)
+    assert t["rows"] and "team" in t["columns"]
+    for bad in [dict(stat="name; DROP"), dict(measure="x"), dict(pos="RB'--"), dict(order="desc; --")]:
+        with pytest.raises(ValueError):
+            service.build_query(settings, **bad)
+
+
+def test_mock_draft_lab(settings, tmp_path, monkeypatch):
+    from howie3 import mocksim
+    monkeypatch.setattr(mocksim, "store_path", lambda s: tmp_path / "mock_sims.json")
+    agg = mocksim.run_mock_drafts(settings, 3, policy="adp", seed=5)
+    assert agg["drafts"] == 3 and agg["local"] == 3
+    first_pick = str(agg["my_picks"][0])
+    rows = agg["per_pick"][first_pick]["rows"]
+    assert rows and all(0 <= r["avail_sim"] <= 1 and 0 <= r["avail_model"] <= 1 for r in rows)
+    # every stored draft is a full, duplicate-free pick order
+    store = mocksim.load_store(settings)
+    for d in store["drafts"]:
+        assert len(d["picks"]) == LEAGUE.num_teams * LEAGUE.roster_size
+        assert len(set(d["picks"])) == len(d["picks"])
+    # external import: numbered lines, trailing pos/team, resolves through the crosswalk
+    text = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(
+        ["Jahmyr Gibbs RB DET", "Bijan Robinson", "Ja'Marr Chase WR", "Puka Nacua", "Christian McCaffrey",
+         "Jonathan Taylor", "Justin Jefferson", "James Cook", "Josh Allen QB BUF", "Malik Nabers",
+         "Brock Bowers TE", "Trey McBride", "Derrick Henry", "Drake London"]))
+    res = mocksim.import_external(settings, text, "espn")
+    assert res["stored"] == 14 and not res["unresolved"]
+    assert mocksim.aggregates(settings)["external"] == 1
+    with pytest.raises(ValueError, match="at least 12"):
+        mocksim.import_external(settings, "1. Nobody Real\n2. Also Fake", "x")

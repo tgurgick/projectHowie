@@ -139,6 +139,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(service.roster_sim_payload(s, DraftState.load(s)))
             elif url.path == "/api/data/query":
                 self._json(service.query_payload(s, q.get("q", "")))
+            elif url.path == "/api/data/build":
+                self._json(service.build_query(
+                    s, entity=q.get("entity", "player"), pos=q.get("pos", "ALL"),
+                    season=q.get("season", "2025"), measure=q.get("measure", "total"),
+                    stat=q.get("stat", "pts"), thr=float(q.get("thr", 100) or 100),
+                    min_games=int(q.get("min_games", 1) or 1), order=q.get("order", "desc"),
+                    limit=int(q.get("limit", 20) or 20)))
+            elif url.path == "/api/sim/mock/status":
+                from . import mocksim
+                self._json(dict(mocksim.STATUS))
+            elif url.path == "/api/sim/mock/results":
+                from . import mocksim
+                self._json(mocksim.aggregates(s))
             else:
                 self._error("not found", 404)
         except ValueError as e:
@@ -165,6 +178,17 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/strategy":
                 result = service.update_strategy(s, rules=body.get("rules"),
                                                  notes=body.get("notes"))
+            elif url.path == "/api/sim/mock/run":
+                from . import mocksim
+                started = mocksim.run_in_background(
+                    s, int(body.get("n", 25)), str(body.get("policy", "adp")))
+                self._json({"started": started, "status": dict(mocksim.STATUS)})
+                return
+            elif url.path == "/api/sim/mock/import":
+                from . import mocksim
+                self._json(mocksim.import_external(s, str(body.get("text", "")),
+                                                   str(body.get("source", "external"))))
+                return
             else:
                 self._error("not found", 404)
                 return
