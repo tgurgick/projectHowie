@@ -283,3 +283,34 @@ def test_playoff_weight_scales_objective():
     assert heavy.mean - neutral.mean == pytest.approx(3 * 300 / 17, rel=0.05)
     with pytest.raises(ValueError, match="playoff_weight"):
         LeagueConfig(playoff_weight=0.5).validate()
+
+
+# ---------------- milestone anchors ----------------
+
+def test_milestones_card_and_anchors(settings, tmp_path, monkeypatch):
+    from howie3 import service
+    from howie3.db import connect
+    from howie3.value.milestones import MILESTONES, league_trend, player_games, player_rates
+
+    _isolate_state(tmp_path, monkeypatch)
+    uid = service.search_payload(settings, "gibbs")[0]["uid"]
+    conn = connect(settings.db_path)
+    games = player_games(conn, uid, "half", (2024, 2025))
+    assert len(games) >= 25 and all("flags" in g for g in games)
+    rates = player_rates(games, "RB")
+    assert set(rates) == {label for label, _ in MILESTONES["RB"]}
+    assert all(0.0 <= v <= 1.0 for v in rates.values())
+    trend = league_trend(conn, "half", (2018, 2025))
+    # the 300-yard QB game has roughly halved since 2018 — a real league drift
+    assert trend["QB"]["300+ pass yds"][2018] > trend["QB"]["300+ pass yds"][2025] + 0.1
+    conn.close()
+
+    card = service.card_payload(settings, uid)
+    assert card["games"] and card["milestones"]["player"]["100+ scrimmage"] > 0.3
+    # roster anchors: empty roster -> zero booms; with Gibbs -> his boom rate
+    state = DraftState.load(settings); state.reset("live"); state.save(settings)
+    assert service.anchors_payload(settings, state)["roster"]["expected_booms_per_week"] == 0
+    service.mark_pick(settings, uid, mine=True, source="test")
+    a = service.anchors_payload(settings, DraftState.load(settings))
+    assert a["roster"]["starters"][0]["name"] == "Jahmyr Gibbs"
+    assert a["roster"]["p_any_boom"] == pytest.approx(a["roster"]["starters"][0]["boom_rate"])

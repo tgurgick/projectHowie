@@ -21,13 +21,15 @@ from .state import DraftState
 UI_PATH = Path(__file__).parent / "ui" / "index.html"
 
 _lock = threading.Lock()
-_mc_cache: dict = {"gen": -1, "data": None, "running": -1}
-_det_cache: dict = {"gen": -1, "pick": None}  # deterministic payload per generation
+_mc_cache: dict = {"gen": "", "data": None, "running": ""}
+_det_cache: dict = {"gen": "", "pick": None}  # deterministic payload per generation
 MC_SIMS = 150
 
 
-def _generation(state: DraftState) -> int:
-    return len(state.events)
+def _generation(state: DraftState) -> str:
+    # identity + length: a reset draft with the same event count must never
+    # reuse a cached ranking that references the previous draft's pool
+    return f"{state.created}:{state.seed}:{len(state.events)}"
 
 
 def _kick_mc(settings: Settings, gen: int) -> None:
@@ -51,7 +53,7 @@ def _kick_mc(settings: Settings, gen: int) -> None:
         finally:
             with _lock:
                 if _mc_cache["running"] == gen:
-                    _mc_cache["running"] = -1
+                    _mc_cache["running"] = ""
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -126,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(service.card_payload(s, q.get("uid", "")))
             elif url.path == "/api/strategy":
                 self._json(service.strategy_payload(DraftState.load(s)))
+            elif url.path == "/api/anchors":
+                self._json(service.anchors_payload(s, DraftState.load(s)))
             else:
                 self._error("not found", 404)
         except ValueError as e:

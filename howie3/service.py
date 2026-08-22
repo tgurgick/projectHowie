@@ -386,6 +386,19 @@ def card_payload(settings: Settings, uid: str) -> dict:
         f"SELECT season, COUNT(*) g, ROUND(AVG(pts_{league.scoring_format}), 1) ppg "
         "FROM weekly_stats WHERE player_uid = ? GROUP BY season ORDER BY season DESC LIMIT 3",
         (uid,)).fetchall()
+
+    # empirical anchors: every game of the last two seasons + milestone rates
+    from .value.milestones import MILESTONES, player_games, player_rates, tier_rates
+
+    log_seasons = (settings.current_season - 2, settings.current_season - 1)
+    games = player_games(conn, uid, league.scoring_format, log_seasons)
+    milestones = {
+        "labels": [label for label, _ in MILESTONES.get(player.position, [])],
+        "player": player_rates(games, player.position),
+        "tier": tier_rates(conn, league.scoring_format, player.position,
+                           settings.current_season - 1),
+        "seasons": list(log_seasons),
+    }
     conn.close()
 
     import numpy as np
@@ -407,7 +420,32 @@ def card_payload(settings: Settings, uid: str) -> dict:
         "playoff_sos": [{"week": r["week"], "value": round(r["value"], 1)} for r in sos_rows],
         "trend": [{"season": r["season"], "games": r["g"], "ppg": r["ppg"]}
                   for r in reversed(trend)],
+        "games": games,
+        "milestones": milestones,
     }
+
+
+# ------------------------------------------------------------ anchors (strategy tab)
+
+def anchors_payload(settings: Settings, state: DraftState) -> dict:
+    """League-era base rates + this roster's typical week, from box scores."""
+    from .value.milestones import BOOM, league_trend, roster_anchors
+
+    league = settings.league
+    fmt = league.scoring_format
+    conn = _conn(settings)
+    pool_by_uid = {p.uid: p for p in _pool(settings, conn)}
+    last = settings.current_season - 1
+    starters = []
+    for uid in state.my_uids(league):
+        p = pool_by_uid.get(uid)
+        if p and p.position in BOOM:
+            starters.append({"uid": uid, "name": p.name, "position": p.position})
+    roster = roster_anchors(conn, fmt, starters, (last - 1, last), last)
+    trend = league_trend(conn, fmt, (last - 7, last - 3, last))
+    conn.close()
+    return {"roster": roster, "league": trend,
+            "seasons": [last - 7, last - 3, last], "boom": BOOM}
 
 
 # ------------------------------------------------------------ strategy sheet

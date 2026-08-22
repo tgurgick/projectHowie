@@ -97,6 +97,14 @@
   .roomrow .rbar { flex: 1; height: 6px; background: var(--line); }
   .roomrow .rbar > i { display: block; height: 6px; background: #3a4a40; }
   .overlay { position: fixed; inset: 0; z-index: 40; display: none; }
+  .glog { display: flex; align-items: flex-end; gap: 2px; height: 64px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .gbar { flex: 1; min-width: 5px; background: #2a3a30; cursor: crosshair; }
+  .gbar.hit { background: var(--acc); }
+  .gbar.sep { flex: 0 0 6px; background: transparent; cursor: default; }
+  .mchip { font-family: var(--mono); font-size: 10px; color: var(--mid); border: 1px solid var(--line2); padding: 3px 7px; cursor: pointer; }
+  .mchip.active { background: var(--acc); color: #0a0d0b; border-color: var(--acc); font-weight: 600; }
+  #tip { position: fixed; z-index: 60; display: none; background: #121a14; border: 1px solid var(--line2); padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--hi); pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.6); white-space: nowrap; }
+  .anchorrow { display: grid; grid-template-columns: 1fr 56px 56px 56px 40px; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid #131a15; font-size: 12px; }
   #banner { display: none; padding: 12px 20px; background: #12241a; border-bottom: 1px solid var(--acc); font-family: var(--mono); font-size: 13px; color: var(--acc); }
   .footnote { display: flex; gap: 8px; align-items: center; padding: 12px 8px 0; font-size: 12px; color: var(--dim); }
   @media (max-width: 900px) {
@@ -155,6 +163,16 @@
       <div class="footnote">WAIT = same roster with this position taken at your next pick instead (expected best still there); both paths complete the draft optimally.</div>
       <div style="display:flex; gap:40px; margin-top:26px; flex-wrap:wrap;">
         <div style="flex:1; min-width:300px;">
+          <p class="sechead">LEAGUE ERA — HOW OFTEN STARTERS DO IT <span class="dim" style="letter-spacing:0">(% of games, starter tier)</span></p>
+          <div id="leagueAnchors"></div>
+        </div>
+        <div style="flex:1; min-width:300px;">
+          <p class="sechead">YOUR ROSTER — A TYPICAL WEEK <span class="dim" style="letter-spacing:0">(from each player's last two seasons)</span></p>
+          <div id="rosterAnchors"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:40px; margin-top:26px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:300px;">
           <p class="sechead">PINNED RULES <span class="dim" style="letter-spacing:0">— bias the board; tag candidates when they fire</span></p>
           <div id="rules"></div>
           <div style="display:flex; gap:8px; margin-top:8px;">
@@ -182,6 +200,7 @@
 
 <div class="overlay" id="overlay" onclick="closeCard()"></div>
 <div id="drawer"></div>
+<div id="tip"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -356,7 +375,32 @@ function showTab(t) {
   if (t === 'strategy') loadStrategyTab();
 }
 
+async function loadAnchors() {
+  const a = await api('/api/anchors');
+  const [s0, s1, s2] = a.seasons;
+  const KEY = {QB: ['300+ pass yds', '3+ pass TD'], RB: ['100+ rush yds', '2+ TD'], WR: ['100+ rec yds', 'TD'], TE: ['75+ rec yds', 'TD']};
+  let html = `<div class="anchorrow dim" style="font-size:10px;letter-spacing:1px"><span></span><span class="r">${s0}</span><span class="r">${s1}</span><span class="r">${s2}</span><span></span></div>`;
+  for (const pos of Object.keys(KEY)) for (const m of KEY[pos]) {
+    const t = (a.league[pos] || {})[m] || {};
+    const v = (y) => t[y] != null ? Math.round(t[y] * 100) + '%' : '—';
+    const d = (t[s2] || 0) - (t[s0] || 0);
+    const arrow = Math.abs(d) < 0.03 ? '<span class="dim">→</span>' : (d > 0 ? '<span class="green">▲</span>' : '<span class="red">▼</span>');
+    html += `<div class="anchorrow"><span><span class="kindtag">${pos}</span> ${m}</span><span class="mono r mid">${v(s0)}</span><span class="mono r mid">${v(s1)}</span><span class="mono r" style="font-weight:600">${v(s2)}</span><span class="r">${arrow}</span></div>`;
+  }
+  $('leagueAnchors').innerHTML = html;
+  const r = a.roster;
+  if (!r.starters.length) { $('rosterAnchors').innerHTML = '<span class="dim" style="font-size:12px">Draft some starters — anchors appear as your roster fills.</span>'; return; }
+  $('rosterAnchors').innerHTML = `
+    <div style="display:flex;gap:18px;margin-bottom:10px">
+      <div><div class="dim" style="font-size:9px;letter-spacing:1.5px">BIG GAMES / WEEK</div><div class="mono" style="font-size:18px;font-weight:600">${r.expected_booms_per_week}</div></div>
+      <div><div class="dim" style="font-size:9px;letter-spacing:1.5px">TDs / WEEK</div><div class="mono" style="font-size:18px;font-weight:600">${r.expected_tds_per_week}</div></div>
+      <div><div class="dim" style="font-size:9px;letter-spacing:1.5px">P(ANY BOOM)</div><div class="mono green" style="font-size:18px;font-weight:600">${Math.round(r.p_any_boom * 100)}%</div></div>
+    </div>` + r.starters.map(st => `<div class="anchorrow" style="grid-template-columns:1fr 110px 50px 40px"><span><span class="kindtag">${st.position}</span> ${st.name}</span><span class="mono dim" style="font-size:10px">${st.boom}</span><span class="mono r" style="font-weight:600">${Math.round(st.boom_rate * 100)}%</span><span class="mono r dim" style="font-size:10px">${st.tds_per_game} td</span></div>`).join('') +
+    `<div class="dim" style="font-size:11px;margin-top:8px">Big game = the position's headline milestone; counts over each player's last two seasons, tier baseline for rookies.</div>`;
+}
+
 async function loadStrategyTab() {
+  loadAnchors();
   strategy = await api('/api/strategy');
   renderRules();
   if (!$('notes').matches(':focus')) $('notes').value = strategy.notes;
@@ -440,13 +484,47 @@ async function openCard(uid) {
       c.playoff_sos.map(s2 => `<div style="flex:1;text-align:center;background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};padding:8px 0"><div class="dim" style="font-size:9px">W${s2.week}</div><div class="mono" style="font-weight:600;color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">${s2.value}</div></div>`).join('') + '</div>' : ''}
     ${c.trend.length ? `<p class="sechead" style="margin-top:14px">TREND · PTS/GAME</p><div style="display:flex;align-items:flex-end;gap:16px;height:70px">` +
       c.trend.map((t, i) => `<div style="flex:1;text-align:center"><div class="mono" style="font-size:11px">${t.ppg}</div><div style="height:${Math.min(t.ppg * 2.6, 52)}px;background:${i === c.trend.length - 1 ? 'var(--acc)' : '#3a4a40'};margin:4px 0"></div><div class="mono dim" style="font-size:10px">${t.season}</div></div>`).join('') + '</div>' : ''}
+    ${c.games && c.games.length ? `<p class="sechead" style="margin-top:14px">GAME LOG ${c.milestones.seasons.join('–')} · ${c.games.length} GAMES <span class="dim" style="letter-spacing:0">hover a bar</span></p>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" id="mchips"></div>
+      <div class="glog" id="glog"></div>
+      <div class="mono dim" style="font-size:11px;margin-top:6px" id="mrate"></div>` : ''}
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="danger" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', false)">MARK TAKEN</button>
       <button class="primary" style="flex:1;padding:12px 0" onclick="mark('${c.uid}', true)">DRAFT TO ME</button>
     </div>`;
   $('drawer').classList.add('open');
   $('overlay').style.display = 'block';
+  CARD = c;
+  if (c.games && c.games.length) renderGlog(c.milestones.labels[0]);
 }
+
+let CARD = null;
+function renderGlog(active) {
+  const c = CARD, labels = c.milestones.labels;
+  $('mchips').innerHTML = labels.map(l => `<span class="mchip ${l === active ? 'active' : ''}" onclick="renderGlog('${l}')">${l}</span>`).join('');
+  const maxPts = Math.max(...c.games.map(g => g.pts), 1);
+  let html = '', lastSeason = null;
+  c.games.forEach((g, i) => {
+    if (lastSeason !== null && g.season !== lastSeason) html += '<div class="gbar sep"></div>';
+    lastSeason = g.season;
+    const h = Math.max(3, Math.round(g.pts / maxPts * 56));
+    html += `<div class="gbar ${g.flags[active] ? 'hit' : ''}" style="height:${h}px" onmouseenter="showTip(event, ${i}, '${active}')" onmouseleave="hideTip()"></div>`;
+  });
+  $('glog').innerHTML = html;
+  const pr = c.milestones.player[active], tr = c.milestones.tier[active];
+  $('mrate').textContent = `${active}: ${Math.round(pr * 100)}% of games` + (tr != null ? ` · starter-tier average ${Math.round(tr * 100)}%` : '') + ` · bar height = fantasy points`;
+}
+function showTip(ev, i, active) {
+  const g = CARD.games[i];
+  const stat = CARD.pos === 'QB' ? `${g.pass_yds} pass yds · ${g.pass_tds} pass TD · ${g.rush_tds} rush TD`
+    : CARD.pos === 'RB' ? `${g.rush_yds} rush · ${g.rec} rec ${g.rec_yds} yds · ${g.rush_tds + g.rec_tds} TD`
+    : `${g.targets} tgt · ${g.rec} rec · ${g.rec_yds} yds · ${g.rec_tds} TD`;
+  $('tip').innerHTML = `<b>${g.season} W${g.week}</b> vs ${g.opp || '—'} · <span class="${g.flags[active] ? 'green' : 'dim'}">${g.flags[active] ? '✓' : '✗'} ${active}</span><br>${stat}<br><b>${g.pts} pts</b>`;
+  const t = $('tip'); t.style.display = 'block';
+  t.style.left = Math.min(ev.clientX + 14, window.innerWidth - 260) + 'px';
+  t.style.top = (ev.clientY - 10) + 'px';
+}
+function hideTip() { $('tip').style.display = 'none'; }
 function closeCard() { $('drawer').classList.remove('open'); $('overlay').style.display = 'none'; }
 
 // ---------------- boot + poll ----------------
