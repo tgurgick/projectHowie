@@ -195,8 +195,14 @@ def facts_for(settings: Settings, query: str) -> dict:
     from .db import connect
     from .graph import search as g_search
 
+    from .graph import TEAM_NAMES
+
     conn = connect(settings.db_path)
-    hits = g_search(conn, query, limit=1)
+    if query.strip().upper() in TEAM_NAMES:  # abbreviation -> the team itself, never a player on it
+        abbr = query.strip().upper()
+        hits = [{"id": f"team:{abbr}", "kind": "team", "name": TEAM_NAMES[abbr], "team": abbr, "position": None}]
+    else:
+        hits = g_search(conn, query, limit=1)
     if not hits:
         conn.close()
         return {"entity": None, "facts": []}
