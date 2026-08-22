@@ -105,6 +105,16 @@ class Settings:
     hist_start: int = 2018
     current_season: int = 2026
 
+    def __post_init__(self) -> None:
+        # Load the repo's .env (API keys, HOWIE_MODEL) for every entry point —
+        # CLI, server, MCP — without overriding variables already set
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(self.repo_root / ".env", override=False)
+        except ImportError:
+            pass
+
     @property
     def data_dir(self) -> Path:
         override = os.environ.get("HOWIE_DATA_DIR")
