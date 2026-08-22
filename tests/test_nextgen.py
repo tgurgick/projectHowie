@@ -314,3 +314,27 @@ def test_milestones_card_and_anchors(settings, tmp_path, monkeypatch):
     a = service.anchors_payload(settings, DraftState.load(settings))
     assert a["roster"]["starters"][0]["name"] == "Jahmyr Gibbs"
     assert a["roster"]["p_any_boom"] == pytest.approx(a["roster"]["starters"][0]["boom_rate"])
+
+
+# ---------------- data tab ----------------
+
+def test_data_tab_payloads(settings, tmp_path, monkeypatch):
+    from howie3 import service
+
+    _isolate_state(tmp_path, monkeypatch)
+    d = service.games_distribution(settings, "RB", "rush_yds", "starter")
+    assert len(d["seasons"]) == 3 and len(d["rows"]) > 1000
+    assert d["columns"][6] == "value" and all(len(r) == 8 for r in d["rows"][:50])
+    with pytest.raises(ValueError):
+        service.games_distribution(settings, "RB", "nope")
+    uid = service.search_payload(settings, "gibbs")[0]["uid"]
+    sim = service.sim_payload(settings, uid, n_sims=100)
+    assert len(sim["samples"]) == 100 and sim["p10"] < sim["p50"] < sim["p90"]
+    assert sim["actual"] and sim["actual"][0]["season"] == 2025
+    q = service.query_payload(settings, "sql: SELECT COUNT(*) n FROM players")
+    assert q["mode"] == "sql" and q["rows"][0]["n"] > 1000
+    q = service.query_payload(settings, "sql: DELETE FROM players")
+    assert "error" in q
+    q = service.query_payload(settings, "puka nacua")
+    assert q["entity"]["kind"] == "player" and q["detail"]["seasons"]
+    assert service.query_payload(settings, "")["presets"]

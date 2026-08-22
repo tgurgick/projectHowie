@@ -11,7 +11,7 @@ model until a starter misses time in a sampled season — then he starts.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -29,6 +29,7 @@ class SimResult:
     std: float
     p10: float
     p90: float
+    samples: Optional[np.ndarray] = None  # raw season totals, for distribution views
 
 
 def simulate_roster(
@@ -89,6 +90,7 @@ def simulate_roster(
         std=float(totals.std()),
         p10=float(np.percentile(totals, 10)),
         p90=float(np.percentile(totals, 90)),
+        samples=totals,
     )
 
 

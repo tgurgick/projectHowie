@@ -478,3 +478,175 @@ def update_strategy(settings: Settings,
             state.notes = str(notes)[:8000]
         state.save(settings)
     return strategy_payload(state)
+
+
+# ------------------------------------------------------------ data tab
+
+DIST_STATS = {
+    "pts": "pts_{fmt}", "rush_yds": "rush_yards", "rec_yds": "rec_yards",
+    "targets": "targets", "receptions": "receptions",
+    "tds": "(rush_tds + rec_tds)", "pass_yds": "pass_yards", "pass_tds": "pass_tds",
+    "carries": "rush_attempts",
+}
+_STARTER_N = {"QB": 14, "RB": 36, "WR": 48, "TE": 14}
+
+
+def games_distribution(settings: Settings, position: str, stat: str = "pts",
+                       tier: str = "starter", n_seasons: int = 3) -> dict:
+    """Every player-game for a position over the last n seasons — the dots."""
+    fmt = settings.league.scoring_format
+    if position not in _STARTER_N or stat not in DIST_STATS:
+        raise ValueError("position must be QB/RB/WR/TE and stat one of " + ", ".join(DIST_STATS))
+    expr = DIST_STATS[stat].format(fmt=fmt)
+    last = settings.current_season - 1
+    seasons = list(range(last - n_seasons + 1, last + 1))
+    conn = _conn(settings)
+    rows = []
+    for season in seasons:
+        if tier == "starter":
+            sql = f"""WITH s AS (SELECT player_uid FROM weekly_stats WHERE season=? AND position=?
+                                GROUP BY player_uid ORDER BY SUM(pts_{fmt}) DESC LIMIT ?)
+                      SELECT w.player_uid, p.name, w.season, w.week, w.opponent, w.team,
+                             {expr} AS v, w.pts_{fmt} AS pts
+                      FROM weekly_stats w JOIN s USING(player_uid) JOIN players p USING(player_uid)
+                      WHERE w.season=? AND w.week<=18"""
+            params = (season, position, _STARTER_N[position], season)
+        else:
+            sql = f"""SELECT w.player_uid, p.name, w.season, w.week, w.opponent, w.team,
+                             {expr} AS v, w.pts_{fmt} AS pts
+                      FROM weekly_stats w JOIN players p USING(player_uid)
+                      WHERE w.season=? AND w.position=? AND w.week<=18
+                        AND (w.rush_attempts + w.targets + w.pass_attempts) >= 3"""
+            params = (season, position)
+        for r in conn.execute(sql, params):
+            rows.append([r["player_uid"], r["name"], r["season"], r["week"], r["opponent"],
+                         r["team"], round(r["v"] or 0, 1), round(r["pts"] or 0, 1)])
+    conn.close()
+    return {"position": position, "stat": stat, "tier": tier, "seasons": seasons,
+            "columns": ["uid", "name", "season", "week", "opp", "team", "value", "pts"],
+            "rows": rows}
+
+
+def sim_payload(settings: Settings, uid: str, n_sims: int = 400) -> dict:
+    """A player's simulated season-total distribution next to his actual past seasons."""
+    from .value.distributions import build_sim_players
+    from .value.simulate import simulate_player_totals
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    pool_by_uid = {p.uid: p for p in pool}
+    player = pool_by_uid.get(uid)
+    if player is None:
+        conn.close()
+        raise ValueError(f"Unknown player uid {uid}")
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+    games = {r["player_uid"]: r["games"] for r in conn.execute(
+        "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'",
+        (settings.current_season,))}
+    sp = build_sim_players(conn, [player], settings.current_season,
+                           league.scoring_format, proj_rank, games)[0]
+    totals = simulate_player_totals(sp, n_sims=n_sims, seed=7)
+    actual = [{"season": r["season"], "total": round(r["t"], 1), "games": r["g"]} for r in conn.execute(
+        f"SELECT season, SUM(pts_{league.scoring_format}) t, COUNT(*) g FROM weekly_stats "
+        "WHERE player_uid = ? AND week <= 17 GROUP BY season ORDER BY season DESC LIMIT 3", (uid,))]
+    conn.close()
+    import numpy as np
+    return {
+        "uid": uid, "name": player.name, "position": player.position,
+        "proj": round(player.raw or player.proj, 1), "value": round(player.proj, 1),
+        "samples": [round(float(x), 1) for x in totals],
+        "p10": round(float(np.percentile(totals, 10))), "p50": round(float(np.percentile(totals, 50))),
+        "p90": round(float(np.percentile(totals, 90))),
+        "actual": actual,
+        "model": {"weekly_mu": round(sp.weekly_mu, 2), "cv": round(sp.cv, 3),
+                  "p_play": round(sp.p_play, 3), "season_sigma": sp.season_sigma},
+    }
+
+
+def roster_sim_payload(settings: Settings, state: DraftState, n_sims: int = 300) -> dict:
+    """The current roster's simulated season-total distribution."""
+    from .value.distributions import build_sim_players
+    from .value.simulate import simulate_roster
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    pool_by_uid = {p.uid: p for p in pool}
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    if not roster:
+        conn.close()
+        return {"players": [], "samples": []}
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+    games = {r["player_uid"]: r["games"] for r in conn.execute(
+        "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'",
+        (settings.current_season,))}
+    sps = build_sim_players(conn, roster, settings.current_season, league.scoring_format,
+                            proj_rank, games)
+    conn.close()
+    res = simulate_roster(sps, league, n_sims=n_sims, playoff_weight=league.playoff_weight)
+    return {
+        "players": [p.name for p in roster],
+        "samples": [round(float(x), 1) for x in res.samples],
+        "mean": round(res.mean), "p10": round(res.p10), "p90": round(res.p90),
+    }
+
+
+QUERY_PRESETS = [
+    ("Top 20 RB by 2025 pts", "SELECT p.name, SUM(w.pts_{fmt}) pts, COUNT(*) g FROM weekly_stats w JOIN players p USING(player_uid) WHERE w.season=2025 AND w.position='RB' GROUP BY p.name ORDER BY pts DESC LIMIT 20"),
+    ("WR 100-yd games, 2025", "SELECT p.name, COUNT(*) games_100 FROM weekly_stats w JOIN players p USING(player_uid) WHERE w.season=2025 AND w.position='WR' AND w.rec_yards>=100 GROUP BY p.name ORDER BY games_100 DESC LIMIT 20"),
+    ("Team pass rate 2025", "SELECT team, ROUND(SUM(pass_attempts)*1.0/(SUM(pass_attempts)+SUM(rush_attempts)),3) pass_rate FROM weekly_stats WHERE season=2025 GROUP BY team ORDER BY pass_rate DESC"),
+    ("2026 ADP vs projection (RB)", "SELECT p.name, a.adp, pr.pts_{fmt} proj FROM projections pr JOIN players p USING(player_uid) JOIN adp a ON a.player_uid=pr.player_uid AND a.season=pr.season AND a.format='{fmt}' WHERE pr.season=2026 AND pr.position='RB' ORDER BY a.adp LIMIT 30"),
+    ("Vacated volume by room", "SELECT entity_id, text, value FROM facts WHERE kind='vacated_share' ORDER BY value DESC LIMIT 20"),
+]
+
+
+def query_payload(settings: Settings, q: str) -> dict:
+    """Quick data access: `sql: SELECT ...` runs a sandboxed read-only query;
+    anything else is a graph search whose top hit is expanded."""
+    from .agent import safe_query
+    from .graph import entity_context, search as g_search
+    import json as _json
+
+    fmt = settings.league.scoring_format
+    q = q.strip()
+    if not q:
+        return {"mode": "presets", "presets": [{"label": l, "sql": s.format(fmt=fmt)} for l, s in QUERY_PRESETS]}
+    if q.lower().startswith("sql:"):
+        raw = safe_query(settings, q[4:].strip())
+        if raw.startswith("Error"):
+            return {"mode": "sql", "error": raw}
+        rows = _json.loads(raw)
+        return {"mode": "sql", "columns": list(rows[0].keys()) if rows else [], "rows": rows}
+
+    conn = _conn(settings)
+    hits = g_search(conn, q, limit=6)
+    if not hits:
+        conn.close()
+        return {"mode": "search", "hits": [], "entity": None, "detail": None}
+    top = hits[0]
+    ctx = entity_context(conn, top["id"])
+    detail: dict = {"context": ctx}
+    if top["kind"] == "player":
+        uid = top["id"].split(":", 1)[1]
+        detail["seasons"] = [dict(r) for r in conn.execute(
+            f"SELECT season, COUNT(*) g, ROUND(SUM(pts_{fmt}),1) pts, ROUND(AVG(pts_{fmt}),1) ppg, "
+            "SUM(rush_yards) rush_yds, SUM(rec_yards) rec_yds, SUM(targets) tgt, "
+            "SUM(rush_tds + rec_tds) tds FROM weekly_stats WHERE player_uid = ? "
+            "GROUP BY season ORDER BY season DESC", (uid,))]
+        detail["uid"] = uid
+    elif top["kind"] == "team":
+        team = top["team"]
+        detail["rooms"] = [dict(r) for r in conn.execute(
+            "SELECT e.name, e.position, ed.value AS share FROM edges ed JOIN entities e ON e.id = ed.src "
+            "WHERE ed.kind = 'in_room' AND ed.dst LIKE ? ORDER BY e.position, ed.value DESC", (f"unit:{team}-%",))]
+    conn.close()
+    return {"mode": "search", "hits": hits, "entity": top, "detail": detail}

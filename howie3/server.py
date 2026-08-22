@@ -130,6 +130,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(service.strategy_payload(DraftState.load(s)))
             elif url.path == "/api/anchors":
                 self._json(service.anchors_payload(s, DraftState.load(s)))
+            elif url.path == "/api/data/games":
+                self._json(service.games_distribution(
+                    s, q.get("pos", "RB"), q.get("stat", "pts"), q.get("tier", "starter")))
+            elif url.path == "/api/data/sim":
+                self._json(service.sim_payload(s, q.get("uid", "")))
+            elif url.path == "/api/data/roster_sim":
+                self._json(service.roster_sim_payload(s, DraftState.load(s)))
+            elif url.path == "/api/data/query":
+                self._json(service.query_payload(s, q.get("q", "")))
             else:
                 self._error("not found", 404)
         except ValueError as e:
