@@ -321,6 +321,16 @@ def _resolve_entity(conn: sqlite3.Connection, ref: str) -> str:
             return f"player:{ident}"
         uid = resolve_uid(conn, ident)
         if uid is None:
+            # ambiguous or unknown name: prefer the draft-relevant one (has a
+            # current projection), then the most recently drafted
+            rows = conn.execute(
+                "SELECT p.player_uid, p.draft_year, "
+                "(SELECT COUNT(*) FROM projections pr WHERE pr.player_uid = p.player_uid) AS projs "
+                "FROM players p WHERE p.name_key = ? ORDER BY projs DESC, p.draft_year DESC LIMIT 1",
+                (name_key(ident),)).fetchone()
+            if rows and rows["projs"]:
+                uid = rows["player_uid"]
+        if uid is None:
             raise ValueError(f"Cannot resolve player {ident!r}")
         return f"player:{uid}"
     raise ValueError(f"Unknown entity kind {kind!r}")

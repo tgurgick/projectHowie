@@ -79,6 +79,14 @@
   #dataView { display: none; }
   #simView { display: none; }
   .prog { height: 6px; background: var(--line); }
+  .acwrap { position: relative; display: inline-block; }
+  .acdrop { position: absolute; top: 100%; left: 0; min-width: 260px; background: var(--panel2); border: 1px solid var(--line2); z-index: 35; display: none; box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+  .acitem { display: flex; gap: 8px; align-items: center; padding: 7px 10px; font-size: 12px; cursor: pointer; border-top: 1px solid var(--line); }
+  .acitem:first-child { border-top: none; } .acitem.sel, .acitem:hover { background: #121a14; }
+  .howie { border: 1px solid var(--acc); background: #0e1a13; padding: 14px 16px; margin: 12px 0; }
+  .howie h4 { margin: 0 0 8px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--acc); }
+  .howie li { margin: 4px 0 4px 16px; font-size: 13px; line-height: 1.45; color: #c9d6cc; }
+  .sugg { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
   .prog > i { display: block; height: 6px; background: var(--acc); }
   .dsec { margin-bottom: 30px; }
   .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
@@ -138,16 +146,18 @@
   <nav class="tabs">
     <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
     <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
-    <span class="tab" id="tabSim" onclick="showTab('sim')">SIM</span>
+    <span class="tab" id="tabSim" onclick="showTab('sim')">LAB</span>
     <span class="tab" id="tabData" onclick="showTab('data')">DATA</span>
   </nav>
   <div id="draftpos" class="mono mid"></div>
   <span class="modechip" id="modechip">—</span>
+  <button onclick="askHowie('draft')" title="Howie's read on this pick">HOWIE</button>
   <button id="mockBtn" onclick="startMock()">START MOCK</button>
   <button class="danger" onclick="resetDraft()">RESET</button>
 </header>
 
 <div id="banner"></div>
+<div id="howieDraft" style="padding:0 20px"></div>
 
 <div class="cmdbar">
   <div class="searchbox">
@@ -208,11 +218,11 @@
       <div class="dsec">
         <p class="sechead">SIMULATION — SEASON-TOTAL DISTRIBUTIONS <span class="dim" style="letter-spacing:0">what the engine believes, next to what actually happened</span></p>
         <div class="ctl">
-          <input id="simq" placeholder="player name…" style="width:220px"><button onclick="loadSim()">SIMULATE</button>
+          <span class="acwrap"><input id="simq" placeholder="Simulate a player…" style="width:240px" data-ac="player"></span><button onclick="loadSim()">SIMULATE</button><button onclick="askHowie('player')">ASK HOWIE</button>
           <span class="mono dim" id="simmeta" style="font-size:11px"></span>
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div></div>
+          <div style="flex:1;min-width:340px"><svg id="simplot" class="plot" height="180"></svg><div class="mono dim" id="simnote" style="font-size:11px;margin-top:4px"></div><div id="howiePlayer"></div></div>
           <div style="flex:1;min-width:340px"><svg id="rsplot" class="plot" height="180"></svg><div class="mono dim" id="rsnote" style="font-size:11px;margin-top:4px"></div></div>
         </div>
       </div>
@@ -220,6 +230,7 @@
 
       <div class="dsec">
         <p class="sechead">MOCK DRAFT LAB — LEARN WHO IS USUALLY THERE AT YOUR PICKS</p>
+        <div id="howieMock"></div>
         <div class="ctl">
           <span class="dim" style="font-size:11px">run</span>
           <select id="mockN"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
@@ -257,11 +268,24 @@
           </select>
           <select id="dtier"><option value="starter">starter tier</option><option value="all">all players</option></select>
           <span class="dim" style="font-size:11px">threshold</span><input id="dthr" type="number" style="width:70px" placeholder="e.g. 100">
-          <span class="dim" style="font-size:11px">highlight</span><input id="dhl" placeholder="player name" style="width:160px">
+          <span class="dim" style="font-size:11px">highlight</span><span class="acwrap"><input id="dhl" placeholder="Highlight a player…" style="width:180px" data-ac="player"></span>
           <span class="mono dim" id="dmeta" style="font-size:11px"></span>
         </div>
         <svg id="dplot" class="plot" height="300"></svg>
         <div class="mono mid" id="dthrline" style="font-size:11px;margin-top:6px"></div>
+      </div>
+
+      <div class="dsec">
+        <p class="sechead">RESEARCH — TEAMS &amp; PLAYERS <span class="dim" style="letter-spacing:0">deep research via web search, stored as facts with sources; cards and the agent use them</span></p>
+        <div class="ctl">
+          <select id="rTeam"></select><button class="primary" onclick="runResearch('team')">RESEARCH TEAM</button>
+          <span class="acwrap"><input id="rPlayer" placeholder="…or a player" style="width:200px" data-ac="player"></span><button onclick="runResearch('player')">RESEARCH PLAYER</button>
+          <span class="mono dim" id="rStatus" style="font-size:11px"></span>
+        </div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div style="flex:2;min-width:360px" id="rFacts"><span class="dim" style="font-size:12px">Pick a team to see its researched facts.</span></div>
+          <div style="flex:1;min-width:240px"><p class="sechead">COVERAGE</p><div id="rCoverage" style="font-size:11px;line-height:1.6"></div></div>
+        </div>
       </div>
 
       <div class="dsec">
@@ -282,7 +306,7 @@
         <div class="mono dim" id="bsql" style="font-size:10px;margin:-4px 0 10px;word-break:break-all"></div>
         <div class="ctl">
           <span class="dim" style="font-size:11px">or ask:</span>
-          <input id="qq" placeholder="e.g. eagles · det rb room · sql: SELECT …" style="flex:1;min-width:300px"><button onclick="runQuery()">RUN</button>
+          <span class="acwrap" style="flex:1;min-width:300px"><input id="qq" placeholder="Look up a player, team, or room — or sql: SELECT …" style="width:100%" data-ac="any"></span><button onclick="runQuery()">RUN</button>
         </div>
         <div id="qpresets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
         <div id="qout"></div>
@@ -753,10 +777,11 @@ async function runQuery() {
   let html = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><span class="kindtag">${e.kind}</span><b>${e.name}</b><span class="mono dim" style="font-size:11px">${e.position || ''} ${e.team || ''}</span>` +
     (d.uid ? `<button onclick="openCard('${d.uid}')">CARD</button><button onclick="$('simq').value='${e.name.replace(/'/g, "\\'")}'; loadSim()">SIMULATE</button>` : '') + `</div>`;
   if (r.hits.length > 1) html += `<div class="dim" style="font-size:11px;margin-bottom:8px">also: ${r.hits.slice(1).map(h => `<span class="preset" onclick="$('qq').value='${h.name.replace(/'/g, "\\'")}'; runQuery()">${h.name}</span>`).join(' ')}</div>`;
+  if (d.projection) html += `<div class="mono mid" style="font-size:12px;margin-bottom:8px">2026 · proj <b>${d.projection.proj}</b> · engine value ${d.projection.value} · ADP ${d.projection.adp ?? '—'} · bye ${d.projection.bye ?? '—'}</div>`;
   if (d.seasons) html += `<table class="qtable"><thead><tr><th>season</th><th>g</th><th>pts</th><th>ppg</th><th>rush yds</th><th>rec yds</th><th>tgt</th><th>td</th></tr></thead><tbody>` +
     d.seasons.map(s => `<tr><td>${s.season}</td><td>${s.g}</td><td>${s.pts}</td><td>${s.ppg}</td><td>${s.rush_yds || 0}</td><td>${s.rec_yds || 0}</td><td>${s.tgt || 0}</td><td>${s.tds || 0}</td></tr>`).join('') + '</tbody></table>';
-  if (d.rooms) html += `<table class="qtable"><thead><tr><th>pos</th><th>player</th><th>last-season share</th></tr></thead><tbody>` +
-    d.rooms.map(m => `<tr><td>${m.position}</td><td>${m.name}</td><td>${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</td></tr>`).join('') + '</tbody></table>';
+  if (d.rooms) html += `<table class="qtable"><thead><tr><th>pos</th><th>player</th><th class="r">2026 proj</th><th class="r">ADP</th><th class="r">last-season share</th></tr></thead><tbody>` +
+    d.rooms.map(m => `<tr><td>${m.position}</td><td>${m.name}</td><td class="r">${m.proj ?? '—'}</td><td class="r">${m.adp ?? '—'}</td><td class="r">${m.share != null ? Math.round(m.share * 100) + '%' : '—'}</td></tr>`).join('') + '</tbody></table>';
   if (ctx.room) html += `<div class="factcard">Room ${ctx.room.unit.replace('unit:', '')}: ` + ctx.room.members.map(m => `${m.name} ${m.share != null ? Math.round(m.share * 100) + '%' : '—'}`).join(' · ') + '</div>';
   const facts = [...(ctx.facts || []), ...(ctx.team_facts || []), ...((ctx.room && ctx.room.facts) || [])];
   if (facts.length) html += facts.slice(0, 6).map(f => `<div class="factcard">${f.text}<div class="fmeta">${f.source}${f.confidence != null ? ' · conf ' + f.confidence : ''}</div></div>`).join('');
@@ -831,7 +856,7 @@ async function pollMock() {
     mockTimer = setTimeout(pollMock, 1200);
   } else {
     if (st.total) { $('mockStatus').textContent = st.error ? 'error: ' + st.error : `done · ${st.total} drafts added`; $('mockProg').firstElementChild.style.width = '100%'; }
-    if (st.total && !MOCK_loadedAfter) { MOCK_loadedAfter = true; await loadMockResults(); }
+    if (st.total && !MOCK_loadedAfter) { MOCK_loadedAfter = true; await loadMockResults(); askHowie('mock'); }
   }
 }
 let MOCK_loadedAfter = false;
@@ -844,6 +869,114 @@ async function importMock() {
     $('mockImport').value = ''; await loadMockResults();
   } catch (e) { $('mockImportNote').textContent = 'import failed'; }
 }
+
+// ---------------- shared autocomplete (every search box) ----------------
+
+function attachAutocomplete(input, onPick) {
+  const wrap = input.parentElement; const drop = document.createElement('div'); drop.className = 'acdrop'; wrap.appendChild(drop);
+  let items = [], sel = 0, timer = null;
+  const render = () => {
+    if (!items.length) { drop.style.display = 'none'; return; }
+    drop.style.display = 'block';
+    drop.innerHTML = items.map((r, i) => `<div class="acitem ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kindtag ${r.kind === 'player' ? 'P' : ''}">${r.kind === 'player' ? 'P' : r.kind === 'unit' ? 'U' : 'T'}</span><span>${r.name}</span><span class="mono dim" style="font-size:10px">${r.position || ''} ${r.team || ''}${r.proj ? ' · ' + r.proj : ''}</span></div>`).join('');
+  };
+  const pick = (i) => { const r = items[i]; if (!r) return; input.value = r.name; items = []; render(); onPick && onPick(r); };
+  drop.addEventListener('mousedown', e => { const el = e.target.closest('.acitem'); if (el) { e.preventDefault(); pick(+el.dataset.i); } });
+  input.addEventListener('input', () => {
+    clearTimeout(timer); const q = input.value.trim();
+    if (!q || q.toLowerCase().startsWith('sql:')) { items = []; render(); return; }
+    timer = setTimeout(async () => {
+      const hits = await api('/api/search?q=' + encodeURIComponent(q));
+      items = (input.dataset.ac === 'player' ? hits.filter(h => h.kind === 'player') : hits).slice(0, 6); sel = 0; render();
+    }, 120);
+  });
+  input.addEventListener('keydown', e => {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === 'Enter') { pick(sel); e.preventDefault(); }
+    else if (e.key === 'Escape') { items = []; render(); }
+  });
+  input.addEventListener('blur', () => setTimeout(() => { items = []; render(); }, 150));
+}
+attachAutocomplete($('simq'), () => loadSim());
+attachAutocomplete($('dhl'), () => renderDist());
+attachAutocomplete($('qq'), () => runQuery());
+attachAutocomplete($('rPlayer'), null);
+
+// ---------------- Howie insights ----------------
+
+function renderHowie(target, title, r, onApply) {
+  if (!r.available) { $(target).innerHTML = `<div class="howie"><h4>${title}</h4><span class="dim" style="font-size:12px">${r.reason}</span></div>`; return; }
+  const sugg = (r.suggestions || []).map((sg, i) => `<div class="sugg"><span class="kindtag">${sg.type}</span><span><b>${sg.text}</b> <span class="dim">— ${sg.why || ''}</span></span><span style="flex:1"></span><button class="primary" onclick='applySuggestion(${JSON.stringify(sg).replace(/'/g, "&#39;")}, this)'>APPLY</button></div>`).join('');
+  $(target).innerHTML = `<div class="howie"><h4>${title} <span class="dim" style="letter-spacing:0;font-weight:400">· ${r.model}</span></h4><ol style="margin:0;padding:0">${(r.learnings || []).map(l => `<li>${l}</li>`).join('')}</ol>${sugg ? '<div style="margin-top:8px">' + sugg + '</div>' : '<div class="dim" style="font-size:11px;margin-top:6px">No strategy changes suggested.</div>'}</div>`;
+}
+async function applySuggestion(sg, btn) {
+  strategy = await api('/api/strategy');
+  if (sg.type === 'rule') strategy.rules.push({text: sg.text, on: true});
+  else strategy.notes = (strategy.notes ? strategy.notes + '\n' : '') + '— ' + sg.text;
+  await api('/api/strategy', {rules: strategy.rules, notes: strategy.notes});
+  btn.textContent = 'APPLIED'; btn.disabled = true;
+}
+async function askHowie(kind) {
+  const strat = await api('/api/strategy');
+  if (kind === 'mock') {
+    if (!MOCK) return;
+    const k = $('mockPick').value || MOCK.my_picks[0];
+    const pk = MOCK.per_pick[String(k)] || {rows: []};
+    const data = {drafts: MOCK.drafts, pick: +k, my_picks: MOCK.my_picks,
+      gaps: pk.rows.filter(r => Math.abs(r.avail_sim - r.avail_model) >= 0.08).slice(0, 14),
+      usually_there: [...pk.rows].sort((a, b) => (a.adp ?? 999) - (b.adp ?? 999)).slice(0, 14)};
+    $('howieMock').innerHTML = '<div class="howie"><h4>HOWIE IS READING THE RESULTS…</h4></div>';
+    renderHowie('howieMock', `HOWIE ON YOUR MOCKS · PICK ${k}`, await api('/api/lab/insights', {kind: 'mock', data, strategy: strat}));
+  } else if (kind === 'player') {
+    const q = $('simq').value.trim(); if (!q) return;
+    const hits = await api('/api/search?q=' + encodeURIComponent(q)); const p = hits.find(h => h.uid); if (!p) return;
+    const [sim, card] = await Promise.all([api('/api/data/sim?uid=' + p.uid), api('/api/card?uid=' + p.uid)]);
+    const data = {player: sim.name, position: sim.position, proj: sim.proj, engine_value: sim.value, p10: sim.p10, p50: sim.p50, p90: sim.p90,
+      actual_seasons: sim.actual, model: sim.model, milestone_rates: card.milestones, room: card.room, facts: card.facts, team_facts: card.team_facts, avail_next: card.avail_next, mv_vs_wait: card.mv_vs_wait};
+    $('howiePlayer').innerHTML = '<div class="howie"><h4>HOWIE IS THINKING…</h4></div>';
+    renderHowie('howiePlayer', `HOWIE ON ${sim.name.toUpperCase()}`, await api('/api/lab/insights', {kind: 'player', data, strategy: strat}));
+  } else {
+    const [pick, pos] = await Promise.all([api('/api/pick?top=10'), api('/api/positions')]);
+    const data = {state: {round: ST.round, pick: ST.next_pick_no, roster: ST.roster.filter(r => r.name), recent_log: ST.log.slice(0, 10)},
+      candidates: (pick.mc ? pick.mc.rows : pick.rows).slice(0, 10), positional: pos.rows};
+    $('howieDraft').innerHTML = '<div class="howie"><h4>HOWIE IS READING THE BOARD…</h4></div>';
+    renderHowie('howieDraft', `HOWIE ON PICK ${ST.next_pick_no}`, await api('/api/lab/insights', {kind: 'draft', data, strategy: strat}));
+  }
+}
+
+// ---------------- research ----------------
+
+let RSTATUS = null;
+async function loadResearch() {
+  RSTATUS = await api('/api/research/status');
+  const sel = $('rTeam'), cur = sel.value;
+  sel.innerHTML = RSTATUS.teams.map(t => `<option value="${t.team}">${t.team} — ${t.name}${t.facts ? ' (' + t.facts + ')' : ''}</option>`).join('');
+  if (cur) sel.value = cur;
+  const covered = RSTATUS.teams.filter(t => t.facts);
+  $('rCoverage').innerHTML = `${covered.length} / 32 teams researched` + (covered.length ? '<br>' + covered.map(t => `<span class="mono">${t.team}</span> ${t.facts} facts · ${(t.latest || '').slice(0, 10)}`).join('<br>') : '');
+  showFacts(sel.value);
+}
+$('rTeam').addEventListener('change', () => showFacts($('rTeam').value));
+async function showFacts(q) {
+  const r = await api('/api/research/facts?q=' + encodeURIComponent(q));
+  if (!r.facts.length) { $('rFacts').innerHTML = `<span class="dim" style="font-size:12px">No researched facts for ${r.entity ? r.entity.name : q} yet.</span>`; return; }
+  $('rFacts').innerHTML = `<div class="mid" style="font-size:12px;margin-bottom:6px"><b>${r.entity.name}</b> · ${r.facts.length} facts</div>` +
+    r.facts.map(f => `<div class="factcard"><span class="kindtag">${f.kind}</span> <span class="mono dim" style="font-size:10px">${f.entity_id.replace(/^(player|team|unit):/, '')}</span><br>${f.text}${f.value != null ? ` <span class="mono green">(${f.value})</span>` : ''}<div class="fmeta">${f.source} · conf ${f.confidence} · ${(f.created || '').slice(0, 10)}${f.expires ? ' · expires ' + f.expires : ''}</div></div>`).join('');
+}
+async function runResearch(kind) {
+  const body = kind === 'team' ? {team: $('rTeam').value} : {player: $('rPlayer').value.trim()};
+  if (kind === 'player' && !body.player) return;
+  $('rStatus').textContent = 'researching… (30–90s, web search)';
+  const r = await api('/api/research/run', body);
+  if (!r.available) { $('rStatus').textContent = r.reason; return; }
+  $('rStatus').textContent = r.error ? 'no facts returned: ' + r.error : `imported ${r.imported} facts` + (r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped (unresolved names)` : '');
+  await loadResearch();
+  if (kind === 'player') showFacts(body.player);
+}
+const _origLoadDataTab = loadDataTab;
+loadDataTab = async function () { await _origLoadDataTab(); loadResearch(); };
 
 // ---------------- boot + poll ----------------
 

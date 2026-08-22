@@ -635,8 +635,12 @@ def query_payload(settings: Settings, q: str) -> dict:
     top = hits[0]
     ctx = entity_context(conn, top["id"])
     detail: dict = {"context": ctx}
+    pool_by_uid = {p.uid: p for p in _pool(settings, conn)}
     if top["kind"] == "player":
         uid = top["id"].split(":", 1)[1]
+        pp = pool_by_uid.get(uid)
+        detail["projection"] = ({"proj": round(pp.raw or pp.proj, 1), "value": round(pp.proj, 1),
+                                 "adp": pp.adp, "bye": pp.bye} if pp else None)
         detail["seasons"] = [dict(r) for r in conn.execute(
             f"SELECT season, COUNT(*) g, ROUND(SUM(pts_{fmt}),1) pts, ROUND(AVG(pts_{fmt}),1) ppg, "
             "SUM(rush_yards) rush_yds, SUM(rec_yards) rec_yds, SUM(targets) tgt, "
@@ -645,9 +649,15 @@ def query_payload(settings: Settings, q: str) -> dict:
         detail["uid"] = uid
     elif top["kind"] == "team":
         team = top["team"]
-        detail["rooms"] = [dict(r) for r in conn.execute(
+        by_name = {p.name: p for p in pool_by_uid.values() if p.team == team}
+        detail["rooms"] = []
+        for r in conn.execute(
             "SELECT e.name, e.position, ed.value AS share FROM edges ed JOIN entities e ON e.id = ed.src "
-            "WHERE ed.kind = 'in_room' AND ed.dst LIKE ? ORDER BY e.position, ed.value DESC", (f"unit:{team}-%",))]
+            "WHERE ed.kind = 'in_room' AND ed.dst LIKE ? ORDER BY e.position, ed.value DESC", (f"unit:{team}-%",)):
+            pp = by_name.get(r["name"])
+            detail["rooms"].append({**dict(r), "proj": round(pp.raw or pp.proj) if pp else None,
+                                    "adp": pp.adp if pp else None})
+        detail["rooms"].sort(key=lambda m: (m["position"], -(m["proj"] or 0)))
     conn.close()
     return {"mode": "search", "hits": hits, "entity": top, "detail": detail}
 

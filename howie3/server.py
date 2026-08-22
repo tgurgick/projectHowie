@@ -152,6 +152,12 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/sim/mock/results":
                 from . import mocksim
                 self._json(mocksim.aggregates(s))
+            elif url.path == "/api/research/status":
+                from . import insights
+                self._json(insights.research_status(s))
+            elif url.path == "/api/research/facts":
+                from . import insights
+                self._json(insights.facts_for(s, q.get("q", "")))
             else:
                 self._error("not found", 404)
         except ValueError as e:
@@ -183,6 +189,17 @@ class Handler(BaseHTTPRequestHandler):
                 started = mocksim.run_in_background(
                     s, int(body.get("n", 25)), str(body.get("policy", "adp")))
                 self._json({"started": started, "status": dict(mocksim.STATUS)})
+                return
+            elif url.path == "/api/lab/insights":
+                from . import insights
+                self._json(insights.generate_insights(s, str(body.get("kind", "mock")), body))
+                return
+            elif url.path == "/api/research/run":
+                from . import insights
+                if body.get("team"):
+                    self._json(insights.research_team(s, str(body["team"])))
+                else:
+                    self._json(insights.research_player(s, str(body.get("player", "")), body.get("team_hint")))
                 return
             elif url.path == "/api/sim/mock/import":
                 from . import mocksim

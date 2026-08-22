@@ -378,3 +378,32 @@ def test_mock_draft_lab(settings, tmp_path, monkeypatch):
     assert mocksim.aggregates(settings)["external"] == 1
     with pytest.raises(ValueError, match="at least 12"):
         mocksim.import_external(settings, "1. Nobody Real\n2. Also Fake", "x")
+
+
+# ---------------- insights + research plumbing (no LLM calls) ----------------
+
+def test_insights_graceful_without_key(settings, monkeypatch):
+    from howie3 import insights
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    r = insights.generate_insights(settings, "mock", {"data": {}})
+    assert r["available"] is False and "ANTHROPIC_API_KEY" in r["reason"]
+    r = insights.research_team(settings, "PHI")
+    assert r["available"] is False
+
+
+def test_research_status_and_facts(settings):
+    from howie3 import insights
+    st = insights.research_status(settings)
+    assert len(st["teams"]) == 32 and st["teams"][0]["team"] == "ARI"
+    f = insights.facts_for(settings, "eagles")
+    assert f["entity"]["name"] == "Philadelphia Eagles"
+    assert all(x["source"] != "derived" for x in f["facts"])
+
+
+def test_query_detail_includes_projections(settings):
+    from howie3 import service
+    q = service.query_payload(settings, "puka nacua")
+    assert q["detail"]["projection"]["proj"] > 200
+    t = service.query_payload(settings, "eagles")
+    rbs = [m for m in t["detail"]["rooms"] if m["position"] == "RB" and m["proj"]]
+    assert rbs and rbs[0]["proj"] >= rbs[-1]["proj"]  # sorted by projection within the room
