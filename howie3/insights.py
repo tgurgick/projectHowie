@@ -64,7 +64,7 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
     system = (
         "You are Howie, a sharp, concise fantasy-football draft analyst. League: "
         f"{league.num_teams}-team, draft slot {league.draft_position}, {league.scoring_format}. "
-        "Respond with ONLY a JSON object: {\"learnings\": [3 short, specific sentences], "
+        "Respond with ONLY a JSON object: {\"learnings\": [exactly 3 separate strings, one specific sentence each], "
         "\"suggestions\": [{\"type\": \"rule\"|\"note\", \"text\": \"...\", \"why\": \"...\"}]}. "
         "Rules must use these exact patterns so the engine can enforce them: "
         "'WAIT <POS> UNTIL R<n>', 'TARGET <Player Name>', 'NO <POS> BEFORE R<n>'. "
@@ -77,15 +77,43 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
         f"DATA:\n{json.dumps(payload.get('data', {}), default=str)[:14000]}"
     )
     try:
-        resp = client.messages.create(model=_model(), max_tokens=900, system=system,
+        resp = client.messages.create(model=_model(), max_tokens=1400, system=system,
                                       messages=[{"role": "user", "content": user}])
     except Exception as e:
         return {"available": False, "reason": f"{e.__class__.__name__}: {e}"}
     text = "".join(getattr(b, "text", "") for b in resp.content)
     parsed = _json_block(text) or {"learnings": [text.strip()[:400]], "suggestions": []}
-    parsed.setdefault("learnings", [])
-    parsed.setdefault("suggestions", [])
-    return {"available": True, "model": _model(), **parsed}
+    return {"available": True, "model": _model(), **_normalize(parsed)}
+
+
+def _normalize(parsed: dict) -> dict:
+    """Models drift from the contract (one long learning string, suggestions
+    as bare strings, different keys). Coerce to the shape the UI renders."""
+    learnings = parsed.get("learnings") or parsed.get("insights") or parsed.get("takeaways") or []
+    if not learnings:  # unknown key: take the first list of strings in the object
+        for key, val in parsed.items():
+            if isinstance(val, list) and val and all(isinstance(v, str) for v in val) \
+                    and "suggest" not in key.lower() and "recommend" not in key.lower():
+                learnings = val
+                break
+    if isinstance(learnings, str):
+        learnings = [learnings]
+    flat: List[str] = []
+    for item in learnings:
+        text = item if isinstance(item, str) else json.dumps(item)
+        # split a single paragraph holding several sentences into separate points
+        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text.strip()) if len(flat) == 0 and len(learnings) == 1 else [text]
+        flat.extend(p.strip() for p in parts if p.strip())
+    suggestions = []
+    for sg in parsed.get("suggestions") or parsed.get("recommendations") or []:
+        if isinstance(sg, str):
+            kind = "rule" if re.match(r"(?i)^(WAIT|TARGET|NO)\b", sg.strip()) else "note"
+            suggestions.append({"type": kind, "text": sg.strip(), "why": ""})
+        elif isinstance(sg, dict):
+            suggestions.append({"type": "rule" if str(sg.get("type", "")).lower().startswith("rule") else "note",
+                                "text": str(sg.get("text") or sg.get("suggestion") or "").strip(),
+                                "why": str(sg.get("why") or sg.get("reason") or "")})
+    return {"learnings": flat[:5], "suggestions": [s for s in suggestions if s["text"]][:5]}
 
 
 # ------------------------------------------------------------ deep research
