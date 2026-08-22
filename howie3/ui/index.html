@@ -78,7 +78,7 @@
   #drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; }
   #drawer .cardgrid { display: flex; flex-direction: column; gap: 18px; height: auto; }
   #drawer .cardcol { overflow: visible; }
-  #drawer .cardcol .fill { overflow: visible; }
+  #drawer .cardcol .fill, #drawer .cardcol .shrink { flex: none; min-height: auto; overflow: visible; }
   #rosterView { display: none; }
   .rgrid { display: grid; grid-template-columns: 320px 1fr 260px; gap: 28px; }
   @container (max-width: 900px) { .rgrid { grid-template-columns: 1fr 1fr; } }
