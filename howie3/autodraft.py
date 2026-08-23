@@ -80,7 +80,7 @@ def parse_picks(text: str) -> List[dict]:
 
 
 ROSTER_LINE_RE = re.compile(r"^(QB|RB|WR|TE|FLEX|D/ST|K|BE|BN|IR)$")
-ROSTER_NAME_RE = re.compile(r"^(?P<name>[A-Z][\w.'-]*\.? [\w.'-]+(?: [\w.'-]+)*?)(?: \((?P<pos>QB|RB|WR|TE|K|D/ST)\))?$")
+ROSTER_NAME_RE = re.compile(r"^(?P<name>[A-Z][\w.'-]*\.? [\w.'/-]+(?: [\w.'/-]+)*?)(?: \((?P<pos>QB|RB|WR|TE|K|D/ST)\))?$")
 
 
 def parse_roster(text: str) -> List[dict]:
