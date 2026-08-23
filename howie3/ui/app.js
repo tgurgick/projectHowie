@@ -131,12 +131,24 @@ async function mark(uid, mine) {
 }
 async function undoPick() { const r = await api('/api/undo', {}); termPrint('out', r.undone ? `undid ${r.undone.name} (pick ${r.undone.pick_no})` : 'nothing to undo'); await refresh(true); }
 async function startMock() {
-  if (ST && ST.log.length && !confirm('Start a fresh mock draft? Current draft state is cleared.')) return;
-  await api('/api/mock/start', {}); await refresh(true);
+  const r = await api('/api/mock/start', {});
+  termPrint('out', 'new mock draft started' + (r.archived ? ' · previous draft archived to the LAB' : ''));
+  closeCard(); await refresh(true);
 }
 async function resetDraft() {
-  if (!confirm('Reset the draft log?')) return;
-  await api('/api/reset', {mode: 'live'}); await refresh(true);
+  const r = await api('/api/reset', {mode: 'live'});
+  termPrint('out', 'draft cleared — live mode' + (r.archived ? ' · previous draft archived to the LAB' : ''));
+  closeCard(); await refresh(true);
+}
+// Two-step confirmation inside the popover (no browser dialogs — those are
+// blocked in embedded browsers, which made reset look dead).
+let armed = null;
+function armReset(btn, mode) {
+  const hasPicks = ST && ST.log.length;
+  if (!hasPicks || armed === mode) { armed = null; closePops(); return mode === 'mock' ? startMock() : resetDraft(); }
+  armed = mode;
+  btn.innerHTML = h`<span class="amber">Click again to confirm</span> <span class="dim">— ${mode === 'mock' ? 'starts a new mock' : 'clears the log'}; this draft is archived first</span>`;
+  setTimeout(() => { if (armed === mode) { armed = null; btn.innerHTML = mode === 'mock' ? h`New mock draft <span class="dim">— bots pick for the other 11 teams</span>` : h`Clear draft <span class="dim">— empty log, live mode</span>`; } }, 4000);
 }
 
 // ---------------- season heatmap (ROSTER tab) ----------------

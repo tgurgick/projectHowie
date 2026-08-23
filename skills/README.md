@@ -81,3 +81,11 @@ provenance (shown on cards, read by the agent).
   `howie research stale --days 7` (teams to hand back to the workflow).
 - Cadence: a full pass before the draft ("run the research-teams workflow
   for all"), then `stale` weekly in-season or whenever news breaks.
+
+## Draft night: the observer skill
+
+`.claude/skills/draft-observer/SKILL.md` — Claude in Chrome reads the real
+draft room (ESPN / Sleeper / Yahoo) and keeps Howie's log in sync with
+`howie draft sync`; when you are on the clock it returns `howie draft pick`.
+Reset with `howie draft reset --mode live --slot N` first; every finished
+draft is archived into the Mock Draft Lab for availability learning.

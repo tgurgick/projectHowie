@@ -439,3 +439,29 @@ def test_implied_adp_keeps_late_availability_below_certainty():
     assert 0.3 < b.p_available(190) < 0.95                # the end of a 192-pick draft: no longer a flat 100%
     assert b.p_available(190) > c.p_available(190) - 1e-9 or c.adp_est > b.adp_est
     assert b.availability_source(190).startswith("implied")
+
+
+def test_reset_archives_the_draft_and_sync_is_idempotent(settings, tmp_path, monkeypatch):
+    from howie3 import mocksim, service
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    monkeypatch.setattr(mocksim, "store_path", lambda st: tmp_path / "mock_sims.json")
+    st = DraftState(created="x", mode="live"); st.save(settings)
+    conn = service._conn(settings); pool = service._pool(settings, conn); conn.close()
+    names = [p.name for p in pool[:20] if p.draftable]
+    r = service.sync_picks(settings, names[:8])
+    assert len(r["added"]) == 8 and r["added"][7]["mine"] is True          # slot 8 is the user's
+    assert r["on_clock"] is False and r["next_pick"] == 9
+    r2 = service.sync_picks(settings, names[:13] + ["Nobody Realname"])
+    assert len(r2["added"]) == 5 and r2["skipped"] == 8 and r2["unresolved"] == ["Nobody Realname"]
+    assert DraftState.load(settings).next_pick_no() == 14
+    # fewer than a round of picks is not archived; a full round is, once
+    short = DraftState(created="short", mode="live"); short.add_pick(1, 1, pool[20].uid, "x", pool[20].position, "t", league=settings.league)
+    assert service.archive_draft(settings, short) is None
+    out = service.reset_draft(settings, "live")
+    assert out["archived"] is True
+    store = mocksim.load_store(settings)
+    assert len(store["drafts"]) == 1 and store["drafts"][0]["source"] == "cockpit-live"
+    assert len(store["drafts"][0]["picks"]) == 13 and len(store["drafts"][0]["mine"]) == 1
+    assert DraftState.load(settings).events == []
+    assert service.reset_draft(settings, "live")["archived"] is False  # nothing to archive twice

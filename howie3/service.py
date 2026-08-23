@@ -187,26 +187,93 @@ def undo_pick(settings: Settings) -> Optional[dict]:
     return {"name": event.player_name, "pick_no": event.pick_no} if event else None
 
 
+def archive_draft(settings: Settings, state: DraftState) -> Optional[dict]:
+    """Store the draft's pick order in the Mock Draft Lab before it is wiped,
+    so every mock or live draft you ran teaches availability. Returns the
+    stored record, or None when there was nothing worth keeping."""
+    from .mocksim import load_store, save_store
+
+    if len(state.events) < settings.league.num_teams:  # less than one round: noise
+        return None
+    record = {
+        "source": "cockpit-" + state.mode, "policy": "user", "seed": state.seed,
+        "created": state.created, "archived": _now_iso(),
+        "picks": [e.player_uid for e in state.events],
+        "mine": [e.player_uid for e in state.events if e.mine],
+        "complete": len(state.events) >= settings.league.num_teams * settings.league.roster_size,
+    }
+    store = load_store(settings)
+    if any(d.get("created") == state.created and d.get("source") == record["source"] for d in store["drafts"]):
+        return None  # already archived (e.g. reset pressed twice)
+    store["drafts"].append(record)
+    save_store(settings, store)
+    return record
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def start_mock(settings: Settings) -> dict:
     conn = _conn(settings)
     pool = _pool(settings, conn)
     conn.close()
     with state_lock(settings):
         state = DraftState.load(settings)
+        archived = archive_draft(settings, state)
         state.reset("mock")
         state.save(settings)
         from .mock import advance_bots
 
         bots = advance_bots(settings, state, pool, seed=state.seed)
-    return {"started": True, "seed": state.seed, "bots": bots}
+    return {"started": True, "seed": state.seed, "bots": bots, "archived": bool(archived)}
 
 
 def reset_draft(settings: Settings, mode: str = "live") -> dict:
     with state_lock(settings):
         state = DraftState.load(settings)
+        archived = archive_draft(settings, state)
         state.reset(mode)
         state.save(settings)
-    return {"reset": True, "mode": mode}
+    return {"reset": True, "mode": mode, "archived": bool(archived)}
+
+
+def sync_picks(settings: Settings, names: List[str], source: str = "chrome") -> dict:
+    """Bring the draft log up to a pick order observed elsewhere (an ESPN /
+    Sleeper draft room read by Claude in Chrome). Idempotent: names already
+    in the log are skipped, new ones are appended in order; a pick that
+    falls on the user's snake slot is recorded as the user's. Unresolved
+    names are reported, never guessed."""
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    from .data.names import name_key
+    by_key: Dict[str, str] = {}
+    for p in pool:
+        by_key.setdefault(name_key(p.name), p.uid)
+    added, skipped, unresolved = [], [], []
+    for raw in names:
+        key = name_key(raw.strip())
+        uid = by_key.get(key)
+        if uid is None:
+            m = [u for k, u in by_key.items() if key and (k.endswith(" " + key) or k.startswith(key + " "))]
+            uid = m[0] if len(m) == 1 else None
+        if uid is None:
+            unresolved.append(raw)
+            continue
+        state = DraftState.load(settings)
+        if uid in state.taken_uids():
+            skipped.append(raw)
+            continue
+        mine = snake_team_for_pick(league, state.next_pick_no()) == league.draft_position
+        r = mark_pick(settings, uid, mine=mine, source=source)
+        added.append({"name": r["name"], "pick_no": r["pick_no"], "mine": mine})
+    state = DraftState.load(settings)
+    return {"added": added, "skipped": len(skipped), "unresolved": unresolved,
+            "next_pick": state.next_pick_no(),
+            "on_clock": snake_team_for_pick(league, state.next_pick_no()) == league.draft_position}
 
 
 # ------------------------------------------------------------ search

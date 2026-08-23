@@ -87,6 +87,78 @@ def pick(round_num: Optional[int], have: str, taken: str, top_n: int, sims: int,
     _show(views.pick_view(Settings(), round_num, have, taken, top_n, sims, context=context))
 
 
+@draft.command("reset")
+@click.option("--mode", type=click.Choice(["live", "mock"]), default="live")
+@click.option("--slot", type=int, default=None, help="Also set your draft slot in league_config.json")
+def draft_reset(mode: str, slot: Optional[int]) -> None:
+    """Wipe the board (the finished draft is archived into the Mock Draft Lab)."""
+    from . import service
+
+    settings = Settings()
+    if slot is not None:
+        service.update_config(settings, {"draft_position": slot})
+    r = service.start_mock(settings) if mode == "mock" else service.reset_draft(settings, "live")
+    console.print(f"[green]{mode} draft ready[/green]" + (" · previous draft archived to the lab" if r.get("archived") else ""))
+
+
+@draft.command("mark")
+@click.argument("name", nargs=-1, required=True)
+@click.option("--mine", is_flag=True, help="Draft the player to your team (default: taken by another team)")
+def draft_mark(name, mine: bool) -> None:
+    """Record one pick in the shared draft log."""
+    from . import service
+
+    settings = Settings()
+    hits = [h for h in service.search_payload(settings, " ".join(name)) if h.get("uid")]
+    if not hits:
+        raise click.ClickException(f"No player found for {' '.join(name)!r}")
+    r = service.mark_pick(settings, hits[0]["uid"], mine=mine, source="cli")
+    console.print(f"{'drafted' if mine else 'taken'}: {r['name']} (pick {r['pick_no']})")
+
+
+@draft.command("sync")
+@click.argument("names", nargs=-1)
+@click.option("--file", "path", default=None, help="File with one player per line (numbers/positions ok); '-' for stdin")
+def draft_sync(names, path: Optional[str]) -> None:
+    """Bring the log up to an observed pick order (idempotent; your slot's
+    picks are recorded as yours). Used by the draft-observer skill."""
+    import re
+    import sys
+
+    from . import service
+
+    lines = list(names)
+    if path:
+        text = sys.stdin.read() if path == "-" else open(path).read()
+        lines += [ln for ln in text.splitlines() if ln.strip()]
+    cleaned = []
+    for ln in lines:
+        ln = re.sub(r"^\s*[\d]+[\.\)\-:\s]*", "", ln).strip()
+        ln = re.split(r"\s{2,}|\t|,\s*(?:QB|RB|WR|TE|K|DST|D/ST)\b", ln)[0].strip()
+        ln = re.sub(r"\s+(QB|RB|WR|TE|K|DST|D/ST)(\s+[A-Z]{2,3})?$", "", ln).strip()
+        if ln:
+            cleaned.append(ln)
+    r = service.sync_picks(Settings(), cleaned)
+    for a in r["added"]:
+        console.print(f"  pick {a['pick_no']}: {a['name']}" + (" [green](you)[/green]" if a["mine"] else ""))
+    console.print(f"added {len(r['added'])} · already logged {r['skipped']} · next pick {r['next_pick']}"
+                  + (" · [green]YOU ARE ON THE CLOCK[/green]" if r["on_clock"] else ""))
+    if r["unresolved"]:
+        console.print(f"[yellow]unresolved: {', '.join(r['unresolved'])}[/yellow]")
+
+
+@draft.command("log")
+def draft_log() -> None:
+    """The draft log as it stands."""
+    from .state import DraftState
+
+    settings = Settings()
+    st = DraftState.load(settings)
+    console.print(f"{st.mode} · {len(st.events)} picks · next pick {st.next_pick_no()}")
+    for e in st.events[-15:]:
+        console.print(f"  {e.pick_no:>3} {e.player_name} ({e.position}) " + ("[green]YOU[/green]" if e.mine else f"T{e.team}"))
+
+
 @main.group()
 def context() -> None:
     """Portable strategy-context artifacts (derived data only, safe to share)."""
