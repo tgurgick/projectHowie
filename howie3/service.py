@@ -328,10 +328,20 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
 
     rows: List[JsonDict] = []
     span = _outcome_span(results, sims)
+    picks = snake_picks(league)
     for r in results:
         fired = _fired_rules(r.player, rnd, effects)
         value = r.sim.mean if (sims and r.sim) else r.final_value
+        # market round, and the first of the user's remaining rounds where he is
+        # more likely gone than there
+        adp_round = int((r.player.adp - 1) // league.num_teams + 1) if r.player.adp else None
+        gone_by = None
+        for i, k in enumerate(picks):
+            if k > current_pick and r.player.p_available(k) < 0.5:
+                gone_by = i + 1
+                break
         rows.append({
+            "adp_round": adp_round, "gone_by_round": gone_by,
             "uid": r.player.uid, "name": r.player.name, "pos": r.player.position,
             "team": r.player.team, "proj": round(r.player.raw or r.player.proj),
             "adp": r.player.adp,
