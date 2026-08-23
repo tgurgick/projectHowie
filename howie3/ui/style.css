@@ -221,19 +221,26 @@
   .rolechip.disagree { color: var(--amber); }
   .boardtag { font-family: var(--mono); font-size: 9px; color: var(--acc); letter-spacing: 1px; margin-left: 6px; }
 
-  /* ---- season heatmap (ROSTER tab) ---- */
-  .sgrid { overflow-x: auto; margin-bottom: 6px; }
-  .sgrid table { border-collapse: separate; border-spacing: 2px; width: auto; }
-  .sgrid th { padding: 2px 4px; border: none; text-align: center; }
-  .sgrid th.slot { text-align: left; padding-right: 10px; }
+  /* ---- season heatmap (ROSTER tab): muted, numbers on hover ---- */
+  .sgrid { display: flex; gap: 28px; align-items: flex-start; margin-bottom: 6px; }
+  .sgrid .gridwrap { overflow-x: auto; }
+  .sgrid table { border-collapse: separate; border-spacing: 3px; width: auto; }
+  .sgrid th { padding: 2px 4px; border: none; text-align: center; font-size: 9px; }
+  .sgrid th.slot { text-align: left; padding-right: 10px; font-size: 10px; }
   .sgrid td { padding: 0; border: none; }
-  .sgrid .cell { width: 34px; height: 22px; font-family: var(--mono); font-size: 9px; display: flex; align-items: center; justify-content: center; cursor: default; color: #0a0d0b; font-weight: 600; }
-  .sgrid .cell.green { background: #3ddb84; } .sgrid .cell.yellow { background: #c9a53b; } .sgrid .cell.red { background: #c94f43; }
-  .sgrid .cell.grey { background: #1a221c; color: var(--dim); font-weight: 400; }
-  .sgrid .cell.sub { box-shadow: inset 0 0 0 2px #0a0d0b, inset 0 0 0 3px #7dd3fc; }
-  .sgrid .tot { height: 20px; font-size: 9px; }
-  .sgrid .tot.green { background: #1f6b42; color: var(--hi); } .sgrid .tot.yellow { background: #5a4a1a; color: var(--hi); } .sgrid .tot.red { background: #5a2a24; color: var(--hi); }
+  .sgrid .cell { width: 34px; height: 20px; font-family: var(--mono); font-size: 9px; display: flex; align-items: center; justify-content: center; cursor: default; color: var(--hi); }
+  .sgrid .cell span { opacity: 0; transition: opacity .12s; }
+  .sgrid .cell:hover span, .sgrid tr:hover .cell span { opacity: 1; }
+  .sgrid .cell.green { background: rgba(61, 219, 132, .42); }
+  .sgrid .cell.yellow { background: #222c25; color: var(--mid); }
+  .sgrid .cell.red { background: rgba(224, 100, 86, .38); }
+  .sgrid .cell.grey { background: #10150f; border: 1px dashed #1f2a23; color: var(--dim); }
+  .sgrid .cell.grey span { opacity: .8; }
+  .sgrid .cell.sub { box-shadow: inset 0 0 0 1px #7dd3fc; }
+  .sgrid .tot { height: 18px; }
+  .sgrid .tot.green { background: rgba(61, 219, 132, .22); } .sgrid .tot.yellow { background: #1a221c; } .sgrid .tot.red { background: rgba(224, 100, 86, .22); }
   .sgrid .depth { font-family: var(--mono); font-size: 9px; color: var(--dim); text-align: center; }
   .sgrid .depth.thin { color: var(--amber); } .sgrid .depth.none { color: var(--red); }
-  .sgrid .legend { display: flex; gap: 14px; margin-top: 6px; font-size: 10px; color: var(--dim); font-family: var(--mono); align-items: center; }
-  .sgrid .legend i { display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: middle; }
+  .sgrid .legend { display: flex; flex-direction: column; gap: 7px; font-size: 10px; color: var(--dim); font-family: var(--mono); min-width: 200px; padding-top: 22px; }
+  .sgrid .legend i { display: inline-block; width: 14px; height: 10px; margin-right: 6px; vertical-align: middle; }
+  .sgrid .legend .base { margin-top: 6px; line-height: 1.6; }

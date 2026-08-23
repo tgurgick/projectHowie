@@ -149,20 +149,50 @@ async function loadSeasonGrid() {
 function renderSeasonGrid() {
   const g = GRID; if (!g) return;
   if (!g.players) { $('seasonGrid').innerHTML = '<span class="dim" style="font-size:12px">Draft players — the week-by-week view fills in as your roster does.</span>'; return; }
+  // collapse multi-slot positions (RB1+RB2, WR1-3) into one row: summed points vs n x the baseline
+  const groups = [];
+  for (const row of g.rows) {
+    const key = row.pos;
+    let grp = groups.find(x => x.pos === key);
+    if (!grp) { grp = {pos: key, slot: key, n: 0, rows: []}; groups.push(grp); }
+    grp.n += 1; grp.rows.push(row);
+  }
+  const level = r => r >= 1.10 ? 'green' : r >= 0.85 ? 'yellow' : r > 0 ? 'red' : 'grey';
+  const cells = grp => g.weeks.map((w, i) => {
+    const parts = grp.rows.map(r => r.cells[i]);
+    const live = parts.filter(c => c.name);
+    const pts = live.reduce((a, c) => a + c.pts, 0);
+    const base = grp.pos === 'FLEX' ? (g.baseline.RB + g.baseline.WR) / 2 : g.baseline[grp.pos];
+    const ratio = base ? pts / (base * grp.n) : 0;
+    const missing = parts.filter(c => !c.name);
+    return {week: w, pts, ratio, level: live.length ? (missing.length ? 'red' : level(ratio)) : 'grey',
+      names: live.map(c => c.name + ' ' + Math.round(c.pts)), sub: live.some(c => c.sub),
+      reason: missing.length ? [...new Set(missing.map(c => c.reason))].join('/') : null, missing: missing.length};
+  });
+  const grid = groups.map(grp => ({...grp, cells: cells(grp)}));
   const depthCls = n => n === 0 ? 'none' : n <= 1 ? 'thin' : '';
-  $('seasonGrid').innerHTML = h`<table>
-    <thead><tr><th class="slot"></th>${g.weeks.map(w => h`<th>W${w}</th>`)}</tr></thead>
+  $('seasonGrid').innerHTML = h`<div class="gridwrap"><table>
+    <thead><tr><th class="slot"></th>${g.weeks.map(w => h`<th>${w}</th>`)}</tr></thead>
     <tbody>
-      ${g.rows.map(row => h`<tr><th class="slot">${row.slot}</th>${row.cells.map((c, i) => h`<td><div class="cell ${c.level} ${c.sub ? 'sub' : ''}" data-r="${row.slot}" data-w="${i}">${c.name ? Math.round(c.pts) : (c.reason === 'bye' ? 'BYE' : c.reason === 'out' ? 'OUT' : '')}</div></td>`)}</tr>`)}
-      <tr><th class="slot">TOTAL</th>${g.week_totals.map(t => h`<td><div class="cell tot ${t.level}" title="${t.pts} expected · ${Math.round(t.ratio * 100)}% of a league-average lineup${t.bye.length ? ' · bye: ' + t.bye.join(', ') : ''}${t.out.length ? ' · out: ' + t.out.join(', ') : ''}">${Math.round(t.pts)}</div></td>`)}</tr>
+      ${grid.map(grp => h`<tr><th class="slot">${grp.slot}${grp.n > 1 ? h`<span class="dim"> ×${grp.n}</span>` : ''}</th>${grp.cells.map((c, i) => h`<td><div class="cell ${c.level} ${c.sub ? 'sub' : ''}" data-g="${grp.pos}" data-w="${i}"><span>${c.names.length ? Math.round(c.pts) : (c.reason === 'bye' ? 'BYE' : c.reason === 'out' ? 'OUT' : '')}</span></div></td>`)}</tr>`)}
+      <tr><th class="slot">TOTAL</th>${g.week_totals.map(t => h`<td><div class="cell tot ${t.level}" title="${t.pts} expected · ${Math.round(t.ratio * 100)}% of a league-average lineup${t.bye.length ? ' · bye: ' + t.bye.join(', ') : ''}${t.out.length ? ' · out: ' + t.out.join(', ') : ''}"><span>${Math.round(t.pts)}</span></div></td>`)}</tr>
       <tr><th class="slot dim">BENCH</th>${g.week_totals.map(t => h`<td><div class="depth ${depthCls(t.bench)}" title="healthy bench players this week · RB ${t.bench_by_pos.RB} WR ${t.bench_by_pos.WR} TE ${t.bench_by_pos.TE} QB ${t.bench_by_pos.QB}">${t.bench}</div></td>`)}</tr>
       <tr><th class="slot dim">BYES</th>${g.week_totals.map(t => h`<td><div class="depth ${t.bye.length >= 3 ? 'none' : t.bye.length === 2 ? 'thin' : ''}" title="${t.bye.join(', ')}">${t.bye.length || ''}</div></td>`)}</tr>
-    </tbody></table>
-    <div class="legend"><span><i style="background:#3ddb84"></i>${g.legend.green}</span><span><i style="background:#c9a53b"></i>${g.legend.yellow}</span><span><i style="background:#c94f43"></i>${g.legend.red}</span><span><i style="background:#1a221c;border:1px solid #2a3a30"></i>${g.legend.grey}</span><span><i style="box-shadow:inset 0 0 0 2px #7dd3fc"></i>bench player covering the slot</span><span class="dim">cell = expected points (matchup-adjusted); league-average starter: ${Object.entries(g.baseline).map(([p, v]) => p + ' ' + v).join(' · ')}</span></div>`;
+    </tbody></table></div>
+    <div class="legend">
+      <span><i style="background:rgba(61,219,132,.42)"></i>above a league-average starter (≥ 110%)</span>
+      <span><i style="background:#222c25"></i>average (85–110%)</span>
+      <span><i style="background:rgba(224,100,86,.38)"></i>below (&lt; 85%) or a slot unfilled that week</span>
+      <span><i style="background:#10150f;border:1px dashed #1f2a23"></i>nobody to start — bye / out / not drafted</span>
+      <span><i style="box-shadow:inset 0 0 0 1px #7dd3fc"></i>bench player covering a slot</span>
+      <span class="base">RB and WR rows sum their slots · hover for points and who starts<br>league-average starter / week: ${Object.entries(g.baseline).map(([p, v]) => p + ' ' + v).join(' · ')}</span>
+    </div>`;
   $('seasonGrid').onmouseover = e => {
-    const el = e.target.closest('.cell[data-r]'); if (!el) return;
-    const row = g.rows.find(r => r.slot === el.dataset.r), c = row.cells[+el.dataset.w];
-    placeTip(e, c.name ? h`<b>${c.name}</b> · W${c.week} · <b>${c.pts}</b> pts · ${Math.round(c.ratio * 100)}% of a league-average ${row.pos === 'FLEX' ? 'flex' : row.pos}${c.sub ? ' · covering from the bench' : ''}` : h`<b>${row.slot}</b> · W${c.week} · nobody to start (${c.reason})`);
+    const el = e.target.closest('.cell[data-g]'); if (!el) return;
+    const grp = grid.find(x => x.pos === el.dataset.g), c = grp.cells[+el.dataset.w];
+    placeTip(e, c.names.length
+      ? h`<b>${grp.slot}</b> · W${c.week} · <b>${Math.round(c.pts)}</b> pts · ${Math.round(c.ratio * 100)}% of league-average${c.missing ? h` · <span class="red">${c.missing} slot${c.missing > 1 ? 's' : ''} empty (${c.reason})</span>` : ''}<br>${c.names.join(' · ')}${c.sub ? '<br><span class="dim">includes a bench player covering</span>' : ''}`
+      : h`<b>${grp.slot}</b> · W${c.week} · nobody to start (${c.reason})`);
   };
   $('seasonGrid').onmouseout = hideTip;
 }
