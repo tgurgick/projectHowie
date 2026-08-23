@@ -301,6 +301,13 @@ def player_view(settings: Settings, name: str) -> List:
     from .data.names import name_key
 
     conn = connect(settings.db_path)
+    try:
+        return _player_view(conn, settings, name, name_key)
+    finally:
+        conn.close()
+
+
+def _player_view(conn, settings: Settings, name: str, name_key) -> List:
     fmt = settings.league.scoring_format
     row = conn.execute(
         "SELECT p.player_uid, p.name, p.position, p.team FROM players p "
@@ -350,5 +357,4 @@ def player_view(settings: Settings, name: str) -> List:
         for r in hist:
             t.add_row(str(r["season"]), str(r["g"]), str(r["pts"]), str(r["avg"]))
         out.append(t)
-    conn.close()
     return out

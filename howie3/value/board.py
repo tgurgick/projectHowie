@@ -20,6 +20,9 @@ from .availability import p_available
 
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
 EMPIRICAL_PRIOR_N = 30  # drafts at which the lab's rate and the ADP model weigh equally
+IMPLIED_ADP_GAP = 6.0    # picks past the last market ADP where undrafted players start
+IMPLIED_ADP_STEP = 1.5   # picks between successive undrafted players (by projection)
+IMPLIED_ADP_STDEV = 25.0
 
 
 @dataclass
@@ -39,13 +42,18 @@ class PoolPlayer:
     emp_avail: Optional[Dict[int, Tuple[float, int]]] = None
     # Current status row (howie3.status) — None when nothing is known.
     status: Optional[dict] = None
+    # Availability prior for players with NO market ADP: an implied pick past
+    # the drafted range, ordered by projection, with a wide spread. Never
+    # shown as an ADP; only used so late-round availability is not a flat 100%.
+    adp_est: Optional[float] = None
 
     @property
     def draftable(self) -> bool:
         return not (self.status and self.status["status"] in ("out_season", "released", "retired"))
 
     def p_available(self, pick: float) -> float:
-        model = p_available(self.adp, self.stdev, pick)
+        model = (p_available(self.adp, self.stdev, pick) if self.adp is not None
+                 else p_available(self.adp_est, IMPLIED_ADP_STDEV, pick))
         if self.emp_avail:
             emp = self.emp_avail.get(int(pick))
             if emp is not None and emp[1] > 0:
@@ -56,7 +64,9 @@ class PoolPlayer:
 
     def availability_source(self, pick: float) -> str:
         emp = (self.emp_avail or {}).get(int(pick))
-        return f"blend n={emp[1]}" if emp else "model"
+        if emp:
+            return f"blend n={emp[1]}"
+        return "model" if self.adp is not None else "implied (no ADP)"
 
 
 def apply_market_anchor(pool: List[PoolPlayer], weight: float) -> List[PoolPlayer]:
@@ -120,9 +130,21 @@ def load_pool(
         if r["position"] in POSITIONS
     ]
     pool = apply_market_anchor(pool, market_anchor)
+    apply_implied_adp(pool)
     # Status is applied AFTER the anchor: a stale ADP must not pull an
     # injured or released player's value back up.
     return apply_status(pool, current_status(conn, season))
+
+
+def apply_implied_adp(pool: List[PoolPlayer]) -> None:
+    """Players the market never drafts get an implied pick past the drafted
+    range (ordered by projection, wide spread) instead of a flat 100%
+    availability at every pick."""
+    with_adp = [p.adp for p in pool if p.adp is not None]
+    last = max(with_adp) if with_adp else 0.0
+    missing = sorted((p for p in pool if p.adp is None), key=lambda p: -(p.raw or p.proj))
+    for i, p in enumerate(missing):
+        p.adp_est = last + IMPLIED_ADP_GAP + i * IMPLIED_ADP_STEP
 
 
 def apply_status(pool: List[PoolPlayer], statuses: Dict[str, dict]) -> List[PoolPlayer]:

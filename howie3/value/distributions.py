@@ -68,14 +68,25 @@ def calibrate(conn: sqlite3.Connection, fmt: str,
     per["p_play"] = (per["games"] / per["possible"]).clip(upper=1.0)
     per["cv"] = per["std"] / per["mean"]
 
+    # Tier a historical player-season by what was knowable BEFORE it: his
+    # previous season's rank at the position (rookies / no prior -> bottom
+    # tier). Tiering by realized rank selects the healthy, lucky seasons into
+    # the top buckets and understates their variance.
+    prior = per[["season", "position", "player_uid", "total"]].copy()
+    prior["season"] = prior["season"] + 1
+    prior = prior.rename(columns={"total": "prior_total"})
+    per = per.merge(prior, on=["season", "position", "player_uid"], how="left")
+
     buckets: Dict[Tuple[str, int], Bucket] = {}
     frames = []
     for (season, pos), grp in per.groupby(["season", "position"]):
         pool_n = POOL_SIZE[pos]
-        grp = grp.sort_values("total", ascending=False).head(pool_n).copy()
-        grp["rank_frac"] = (np.arange(len(grp)) + 1) / pool_n
-        grp["tier"] = np.searchsorted(TIER_FRACS, grp["rank_frac"], side="left")
-        frames.append(grp)
+        known = grp[grp["prior_total"].notna()].sort_values("prior_total", ascending=False).head(pool_n).copy()
+        known["rank_frac"] = (np.arange(len(known)) + 1) / pool_n
+        known["tier"] = np.searchsorted(TIER_FRACS, known["rank_frac"], side="left")
+        fresh = grp[grp["prior_total"].isna() & (grp["games"] >= 1)].copy()
+        fresh["tier"] = len(TIER_FRACS) - 1
+        frames.append(pd.concat([known, fresh]))
     allp = pd.concat(frames)
     for (pos, tier), grp in allp.groupby(["position", "tier"]):
         valid = grp[(grp["games"] >= 6) & (grp["mean"] >= 4)]

@@ -171,9 +171,16 @@ def test_every_model_facing_tool_is_free_of_raw_records(monkeypatch):
         }
         for name, args in probe.items():
             out = egress.for_model(agent._run_tool(name, args, s))
-            assert "rush_yards" not in out and '"games"' not in out, name
             if out.lstrip().startswith(("{", "[")):
-                assert not egress.contains_raw(json.loads(out)), name
+                parsed = json.loads(out)
+                assert not egress.contains_raw(parsed), name          # structural: no raw keys / stat lines
+                assert "games" not in parsed, name                     # the game log itself is gone
+            else:
+                # plain text (error strings only — every data tool is structured now)
+                assert "rush_yards" not in out and "pass_yards" not in out, name
+        # every model-facing data tool returns JSON, never rendered tables
+        for name in ("draft_board", "draft_pick", "player_info", "entity_context"):
+            assert agent._run_tool(name, probe[name], s).lstrip().startswith(("{", "[")), name
         mcp_probe = {
             "get_draft_state": {}, "search": {"query": "Bijan"}, "best_picks": {"sims": 0},
             "positional_impact": {}, "player_card": {"name": "Bijan Robinson"},
@@ -398,3 +405,36 @@ def test_kicker_and_dst_are_closing_round_candidates_only(settings):
     # last 4 picks with K and DST still open: both positions are on the table
     res = evaluate_candidates(pool, [], picks[12], picks[13:], settings.league, frozenset(), top_n=60)
     assert {r.player.position for r in res} >= {"K", "DST"}
+
+
+def test_generation_key_tracks_lab_store_and_db(settings, tmp_path, monkeypatch):
+    """Mock-lab results and the database itself are recommendation inputs."""
+    from howie3 import server as srv
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    monkeypatch.setenv("HOWIE_DATA_DIR", str(tmp_path))
+    s = Settings()
+    st = DraftState(created="x"); st.save(s)
+    g1 = srv._generation(s, st)
+    (tmp_path / "mock_sims.json").write_text('{"drafts": [], "runs": []}')
+    g2 = srv._generation(s, st)
+    assert g1 != g2, "a new mock-lab store must invalidate cached recommendations"
+    import os, time
+    (tmp_path / "howie.db").write_bytes(b"x")
+    g3 = srv._generation(s, st)
+    assert g3 != g2, "a refreshed database must invalidate cached recommendations"
+    assert srv._generation(s, st) == g3, "unchanged inputs keep the key stable"
+
+
+def test_implied_adp_keeps_late_availability_below_certainty():
+    from howie3.value.board import PoolPlayer, apply_implied_adp
+
+    pool = [PoolPlayer("a", "Drafted", "QB", None, 300, adp=150.0, stdev=5.0, bye=None),
+            PoolPlayer("b", "Undrafted Better", "QB", None, 232, adp=None, stdev=None, bye=None),
+            PoolPlayer("c", "Undrafted Worse", "QB", None, 120, adp=None, stdev=None, bye=None)]
+    apply_implied_adp(pool)
+    b, c = pool[1], pool[2]
+    assert b.adp is None and b.adp_est and c.adp_est and b.adp_est < c.adp_est
+    assert b.p_available(100) > 0.95                      # early: effectively certain
+    assert 0.3 < b.p_available(190) < 0.9                 # the end of a 192-pick draft: no longer a flat 100%
+    assert b.availability_source(190).startswith("implied")

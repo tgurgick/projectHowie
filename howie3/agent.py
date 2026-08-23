@@ -170,39 +170,24 @@ TOOLS: List[Dict[str, Any]] = [
         "name": "draft_board",
         "strict": True,
         "description": (
-            "Return the current draft board for a specified round using the "
-            "application's strategy context and simulation summaries. Use this "
-            "for roster construction, positional runs, tiers, and value-based "
-            "draft questions. The round is one-indexed."
+            "The live draft board: per-position draft-now-vs-wait impact at the "
+            "user's current pick and the ranked candidates (value, availability, "
+            "fired strategy rules). Reads the shared draft log — no arguments."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {"round": {"type": "integer", "minimum": 1, "maximum": 20}},
-            "required": ["round"],
-            "additionalProperties": False,
-        },
-        "input_examples": [{"round": 1}, {"round": 4}],
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "input_examples": [{}],
     },
     {
         "name": "draft_pick",
         "strict": True,
         "description": (
-            "Evaluate a draft decision at a specified round. Include the user's "
-            "roster and known selections when available. Use this to compare "
-            "candidates, positional scarcity, replacement value, and the best "
-            "next alternatives; do not treat the result as a certainty."
+            "Best picks right now from the live draft log, Monte Carlo refined: "
+            "expected final-lineup value, p10/p90, availability at the next pick, "
+            "the plan after each candidate, and the user's roster. Use this to "
+            "compare candidates and replacement value; not a certainty."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "round": {"type": "integer", "minimum": 1, "maximum": 20},
-                "have": {"type": "string", "description": "Players already on the user's roster (omit to use the live draft log)."},
-                "taken": {"type": "string", "description": "Players known to be unavailable (omit to use the live draft log)."},
-            },
-            "required": [],
-            "additionalProperties": False,
-        },
-        "input_examples": [{"round": 2, "have": "WR, TE", "taken": "Bijan Robinson"}],
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "input_examples": [{}],
     },
     {
         "name": "entity_context",
@@ -308,24 +293,43 @@ def _query_tool(args: Dict[str, Any], settings: Settings) -> str:
 
 
 def _draft_board_tool(args: Dict[str, Any], settings: Settings) -> str:
-    return _render(views.board_view(settings, int(args["round"])))
+    """Positional now-vs-wait impact plus the ranked candidates, from the live
+    draft log. Structured and redacted at the boundary — never rendered text."""
+    from . import service
+    from .state import DraftState
+
+    state = DraftState.load(settings)
+    return json.dumps({
+        "positional": service.positions_payload(settings, state),
+        "candidates": service.pick_payload(settings, state, sims=0, top_n=8)["rows"],
+    }, default=str)
 
 
 def _draft_pick_tool(args: Dict[str, Any], settings: Settings) -> str:
-    round_arg = args.get("round")
-    return _render(
-        views.pick_view(
-            settings,
-            int(round_arg) if round_arg is not None else None,
-            str(args.get("have", "")),
-            str(args.get("taken", "")),
-            sims=150,
-        )
-    )
+    """Ranked best picks now (Monte Carlo refined) from the live draft log."""
+    from . import service
+    from .state import DraftState
+
+    state = DraftState.load(settings)
+    payload = service.pick_payload(settings, state, sims=150, top_n=8)
+    payload["roster"] = [s_["name"] for s_ in service.state_payload(settings, state)["roster"] if s_["name"]]
+    return json.dumps(payload, default=str)
 
 
 def _player_info_tool(args: Dict[str, Any], settings: Settings) -> str:
-    return _render(views.player_view(settings, str(args["name"])))
+    """One player's derived card: projection, value, availability, outcome
+    band, room shares, milestone rates, status, facts. Per-game stat lines
+    are stripped by the egress policy."""
+    from . import service
+
+    name = str(args.get("name", ""))
+    hits = [h for h in service.search_payload(settings, name) if h.get("uid")]
+    if not hits:
+        return json.dumps({"error": f"No player found for {name!r}"})
+    card = service.card_payload(settings, hits[0]["uid"])
+    if len(hits) > 1:
+        card["other_matches"] = [h["name"] for h in hits[1:4]]
+    return json.dumps(card, default=str)
 
 
 def _entity_context_tool(args: Dict[str, Any], settings: Settings) -> str:

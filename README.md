@@ -60,6 +60,26 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
 
 Architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
 
+### Honest limits of the numbers
+
+- **p10–p90 bands are only partly calibrated.** On 2025 actuals they cover
+  74% of outcomes (82% for players with 8+ games) against an 80% target,
+  and by position QB/WR run narrow while TE runs wide. The season-level
+  shock (`SEASON_SIGMA`) was measured on the same 2025 season the backtest
+  scores, because 2025 is the only season with preseason projections in
+  the db — so tier B is in-sample for that parameter. Variance buckets are
+  now tiered by a preseason-knowable proxy (prior-season rank) rather than
+  realized rank. Treat the bands as ranges, not probabilities, until a
+  second season of projections exists.
+- **Availability is independent per week** (no multi-week injury clustering,
+  no QB/receiver or team-environment correlation), so roster-level tails are
+  somewhat too optimistic. Known injuries enter through the status layer.
+- **Players the market never drafts** (328 of 547 in the 2026 pool) get an
+  implied availability prior past the drafted range instead of a flat 100%.
+- **The agent needs the local database.** Context-only mode (`--context`)
+  covers the draft board and Monte Carlo; the agent's player and
+  knowledge-graph tools are not available from an artifact alone.
+
 ## Data: build it locally
 
 **No scraped or provider data ships with this repository.** You build your own

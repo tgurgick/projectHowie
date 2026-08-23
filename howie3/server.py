@@ -35,7 +35,7 @@ CSP = ("default-src 'self'; connect-src 'self'; img-src 'self' data:; "
 MAX_BODY = 1_000_000  # bytes; the largest legitimate body is a pasted mock draft
 
 _lock = threading.Lock()
-_mc_cache: dict = {"gen": "", "data": None, "running": ""}
+_mc_cache: dict = {"gen": "", "data": None, "running": "", "error": None}
 _det_cache: dict = {"gen": "", "pick": None}  # deterministic payload per generation
 MC_SIMS = 150
 
@@ -52,7 +52,17 @@ def _generation(settings: Settings, state: DraftState) -> str:
     cfg = settings.data_dir / "league_config.json"
     cfg_sig = hashlib.sha1(cfg.read_bytes()).hexdigest()[:8] if cfg.exists() else "default"
     rule_sig = hashlib.sha1(json.dumps(sorted(rules)).encode()).hexdigest()[:8]
-    return f"{state.created}:{state.seed}:{len(state.events)}:{rule_sig}:{cfg_sig}"
+    # data identity: the db file (refresh, research import, roster status) and
+    # the mock-lab store (its availability rates feed p_available)
+    def sig(path: Path) -> str:
+        try:
+            st = path.stat()
+            return f"{st.st_mtime_ns}-{st.st_size}"
+        except FileNotFoundError:
+            return "none"
+    data_sig = hashlib.sha1(
+        (sig(settings.db_path) + sig(settings.data_dir / "mock_sims.json")).encode()).hexdigest()[:8]
+    return f"{state.created}:{state.seed}:{len(state.events)}:{rule_sig}:{cfg_sig}:{data_sig}"
 
 
 def _kick_mc(settings: Settings, gen: str) -> None:
@@ -68,11 +78,14 @@ def _kick_mc(settings: Settings, gen: str) -> None:
                 return
             data = service.pick_payload(settings, state, sims=MC_SIMS, top_n=10)
             with _lock:
+                _mc_cache["error"] = None
                 if _generation(settings, DraftState.load(settings)) == gen:
                     _mc_cache["gen"] = gen
                     _mc_cache["data"] = data
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
+            with _lock:
+                _mc_cache["error"] = f"{e.__class__.__name__}: {e}"
         finally:
             with _lock:
                 if _mc_cache["running"] == gen:
@@ -165,6 +178,12 @@ class Handler(BaseHTTPRequestHandler):
                 with _lock:
                     if _mc_cache["gen"] == gen:
                         payload["mc"] = _mc_cache["data"]
+                    payload["mc_status"] = ("ready" if _mc_cache["gen"] == gen
+                                            else "error" if _mc_cache["error"] else
+                                            "running" if _mc_cache["running"] == gen else "pending")
+                    payload["mc_error"] = _mc_cache["error"]
+                if payload["mc_status"] in ("pending", "error"):
+                    _kick_mc(s, gen)  # a failed or never-started worker is retried on demand
                 self._json(payload)
             elif url.path == "/api/positions":
                 self._json(service.positions_payload(s, DraftState.load(s)))
@@ -301,8 +320,18 @@ class RequestTooLarge(Exception):
     pass
 
 
+def _warm_imports() -> None:
+    """Import the simulation stack on the main thread BEFORE any worker runs:
+    a background thread importing lazily while the first request imports the
+    same circular pair (roster <-> distributions) can observe a partially
+    initialized module."""
+    from . import service as _service  # noqa: F401
+    from .value import distributions as _d, roster as _r, simulate as _s  # noqa: F401
+
+
 def serve(settings: Optional[Settings] = None, port: int = 8787) -> ThreadingHTTPServer:
     settings = settings or Settings()
+    _warm_imports()
     Handler.settings = settings
     Handler.token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
