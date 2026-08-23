@@ -345,8 +345,8 @@ def _warm_imports() -> None:
     a background thread importing lazily while the first request imports the
     same circular pair (roster <-> distributions) can observe a partially
     initialized module."""
-    from . import service as _service  # noqa: F401
-    from .value import distributions as _d, roster as _r, simulate as _s  # noqa: F401
+    from . import mocksim as _m, service as _service, status as _st  # noqa: F401
+    from .value import distributions as _d, policy as _p, roster as _r, simulate as _s  # noqa: F401
 
 
 def serve(settings: Optional[Settings] = None, port: int = 8787) -> ThreadingHTTPServer:

@@ -20,7 +20,7 @@ async function refresh(fast) {
   try { [ST, RISK] = await Promise.all([api('/api/state'), api('/api/risk')]); }
   catch (e) { return; }  // banner already shows the server's message
   renderHeader(); renderRail(); renderTermHint();
-  PICK = await api('/api/pick?top=25');
+  PICK = await api('/api/pick?top=40');
   renderBoard();
   if ($('strategyView').style.display !== 'none' && !fast) loadStrategyTab();
   if ($('rosterView').style.display !== 'none') loadSeasonGrid();
@@ -74,7 +74,6 @@ function renderBoard() {
   let rows = PICK.rows.filter(r => FILTER === 'ALL' || r.pos === FILTER);
   if (mc) rows = [...rows].sort((a, b) =>
     (mcRows[b.uid] ? mcRows[b.uid].value : b.value - 900) - (mcRows[a.uid] ? mcRows[a.uid].value : a.value - 900));
-  rows = rows.slice(0, 10);
   const best = rows.length ? (mc && mcRows[rows[0].uid] ? mcRows[rows[0].uid].value : rows[0].value) : 0;
   $('rows').innerHTML = h`${rows.map((r, i) => {
     const m = mcRows[r.uid];
@@ -100,6 +99,7 @@ function renderBoard() {
       <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${isBest ? raw('<span class="besttag">BEST</span>') : ''}${stchip}${tags}</td>
       <td class="mono r mid c-proj">${r.proj}</td>
       <td class="mono r mid c-adp">${r.adp ? r.adp.toFixed(1) : '—'}</td>
+      <td class="mono r mid" title="${r.adp_round ? 'market round R' + r.adp_round : 'undrafted in mocks'}${r.gone_by_round ? ' · likely gone before your R' + r.gone_by_round + ' pick' : ' · likely there at every remaining pick'}">${r.adp_round ? 'R' + r.adp_round : '—'}${r.gone_by_round ? h`<span class="dim" style="font-size:10px"> ›R${r.gone_by_round}</span>` : ''}</td>
       <td>${availbar}</td>
       <td class="mono r" style="font-weight:600">${value}</td>
       <td class="c-dist">${dist}</td>
@@ -108,7 +108,7 @@ function renderBoard() {
     </tr>`;
   })}`;
   $('mcstatus').textContent = mc ? `MC ${mc.sims} sims ready` : 'MC running…';
-  $('boardFoot').textContent = `Value = expected final starting-lineup points with bench insurance (take this player now, then draft optimally). Δ vs best. ` +
+  $('boardFoot').textContent = `${rows.length} candidates · Value = expected final starting-lineup points with bench insurance (take this player now, then draft optimally). Δ vs best. RD = market round › the first of your rounds he is likely gone. ` +
     (span ? `Outcome bars: p10–p90 across ${mc.sims} simulated seasons, scale ${span[0]}–${span[1]}, tick = mean.` : 'Monte Carlo refinement runs after every pick.');
 }
 

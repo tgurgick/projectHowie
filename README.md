@@ -42,6 +42,12 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
   `data/coach_sessions.json`. Treat its current 2025 replay score as
   diagnostic, not as an out-of-sample performance claim; follow-up work is
   tracked in [HARDENING_BACKLOG.md](HARDENING_BACKLOG.md).
+- **`howie autodraft signin|run`** — an optional Playwright bridge for a draft
+  room. It uses a persistent local browser profile, syncs room picks into the
+  Howie event log, and can queue or click picks only when `--autopilot` is
+  explicitly enabled. Real-room clicking additionally requires `--real`;
+  credentials stay in the user's browser profile and are never handled by
+  Howie.
 - **`python3 -m howie3.mcp_server`** — the engine as MCP tools for Claude
   Desktop/Code: chat marks picks into the same draft log the cockpit shows.
 - **`howie ask "..."`** — in-repo natural-language agent (needs
@@ -138,6 +144,7 @@ howie3/
   state.py         # the draft event log (validated schema; every surface writes it)
   service.py       # the JSON contract every surface calls
   value/policy.py  # strategy-rule effects applied to candidate rankings
+  autodraft.py     # optional local browser bridge for draft-room sync/clicks
   server.py        # cockpit HTTP server (session token on writes, CSP, body limit)
   ui/              # index.html (markup) + style.css + lib.js (pure helpers) + app.js
   egress.py        # the one redaction policy for model/MCP-bound payloads

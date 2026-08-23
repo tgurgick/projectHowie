@@ -68,6 +68,14 @@ _INSIGHT_PROMPTS = {
 }
 
 
+def _compact_strategy(strategy: Dict[str, Any]) -> Dict[str, Any]:
+    """What a model needs from the sheet: ON rules and the newest notes,
+    capped — the sheet is the user's, the context budget is not."""
+    rules = [r["text"] for r in strategy.get("rules", []) if r.get("on") and not r.get("inert")]
+    notes = [n.strip() for n in (strategy.get("notes") or "").split("\n") if n.strip()]
+    return {"rules": rules, "notes": notes[::-1][:6], "notes_chars_cap": True} if len("".join(notes)) > 900 else {"rules": rules, "notes": notes}
+
+
 def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) -> dict:
     from . import egress
 
@@ -88,7 +96,7 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
     )
     user = (
         f"{_INSIGHT_PROMPTS.get(kind, 'Analyze this data.')}\n\n"
-        f"Current strategy sheet: {json.dumps(payload.get('strategy', {}))}\n\n"
+        f"Current strategy sheet: {json.dumps(_compact_strategy(payload.get('strategy', {})))}\n\n"
         f"DATA:\n{json.dumps(payload.get('data', {}), default=str)[:14000]}"
     )
     try:

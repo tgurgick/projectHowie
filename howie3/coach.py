@@ -162,7 +162,7 @@ Respond with ONLY a JSON object:
 {"learnings": [3 specific sentences citing the numbers],
  "rules_add": ["WAIT QB UNTIL R7", ...],      // ONLY these exact patterns:
  "rules_remove": ["NO QB BEFORE R3", ...],    //   'WAIT <POS> UNTIL R<n>', 'NO <POS> BEFORE R<n>',
- "note": "one paragraph for the strategy notes",//   '<n> <POS> BY R<n>', 'TARGET <Player Name>'
+ "note": "ONE line, <= 30 words, only if it adds something new",//   '<n> <POS> BY R<n>', 'TARGET <Player Name>'
  "round_targets": {"1": "RB", "2": "WR", ...}} // optional: position per round you'd aim for
 Change at most 3 rules per iteration; removing a rule that hurt is as valuable
 as adding one. If the replay says the current rules beat the baseline and the
@@ -190,7 +190,7 @@ def _coach_call(settings: Settings, digest: dict) -> dict:
             "learnings": [str(x) for x in parsed.get("learnings", [])][:5],
             "rules_add": [str(x) for x in parsed.get("rules_add", [])][:3],
             "rules_remove": [str(x) for x in parsed.get("rules_remove", [])][:3],
-            "note": str(parsed.get("note", "") or "")[:800],
+            "note": " ".join(str(parsed.get("note", "") or "").split())[:240],
             "round_targets": parsed.get("round_targets") or {}}
 
 

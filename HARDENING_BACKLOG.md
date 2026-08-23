@@ -132,9 +132,32 @@ Correction:
 - calculate p10/p50/p90 over the intended population;
 - label per-draft and pooled statistics differently in the UI.
 
+#### 7. Harden the autodraft bridge before real-room use
+
+The browser bridge has useful safety gates—autopilot is opt-in and real-room
+clicking requires `--real`—but clicking a third-party draft room is a
+high-impact action.
+
+Relevant code:
+
+- `howie3/autodraft.py`
+- `howie3/cli.py:187-219`
+
+Before enabling real-room workflows:
+
+- require an explicit confirmation immediately before the first real click;
+- verify the allowed page origin and draft-room identity, not only the page
+  title;
+- make clicks idempotent against the synced event log and current player
+  availability;
+- refuse to click when the recommendation is stale, the room state changed,
+  or the player search is ambiguous;
+- keep browser profiles, autodraft logs, and room exports local and excluded
+  from context artifacts and Git.
+
 ### P2 — Improve concurrency, maintainability, and coverage
 
-#### 7. Isolate evaluation state
+#### 8. Isolate evaluation state
 
 `evals.set_rule_effects()` updates global mutable state. Concurrent sessions can
 therefore evaluate with another session's rules.
@@ -143,7 +166,7 @@ Pass effects explicitly through evaluation functions and remove the global
 mutable default. If a transition period is needed, reset global state in a
 `finally` block and add a concurrency test.
 
-#### 8. Serialize coach session ownership
+#### 9. Serialize coach session ownership
 
 `run_in_background()` checks `STATUS["running"]` without a lock. Two callers
 can race and start separate sessions that write the same session store.
@@ -151,14 +174,14 @@ can race and start separate sessions that write the same session store.
 Use a lock or an atomic state transition, and make session writes resilient to
 concurrent access.
 
-#### 9. Expand cross-season and league-shape evaluation
+#### 10. Expand cross-season and league-shape evaluation
 
 The current policy result is centered on one season and one primary league
 shape. Add multiple seasons, roster formats, scoring formats, and draft slots.
 Keep paired seeds and bootstrap intervals, and add ablations for market
 anchor, availability, bench insurance, schedule effects, and strategy rules.
 
-#### 10. Model correlated availability and scoring
+#### 11. Model correlated availability and scoring
 
 The simulator independently samples player shocks, weekly noise, and
 availability. Add multi-week injury durations, team/environment shocks, and

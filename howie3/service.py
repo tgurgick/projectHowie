@@ -25,11 +25,11 @@ def _conn(settings: Settings) -> sqlite3.Connection:
 def _pool(settings: Settings, conn: sqlite3.Connection) -> List[PoolPlayer]:
     """The draft pool with the Mock Draft Lab's empirical availability
     attached (players never seen taken before a pick keep the ADP model)."""
-    from .mocksim import availability_table
+    from . import mocksim  # module import (not from-import): safe if another thread is mid-import
 
     pool = load_pool(conn, settings.current_season, settings.league.scoring_format,
                      market_anchor=settings.league.market_anchor)
-    table = availability_table(settings)
+    table = mocksim.availability_table(settings)
     if table:
         for p in pool:
             p.emp_avail = table.get(p.uid)
