@@ -286,7 +286,7 @@ async function loadPlan() {
   $('planRows').innerHTML = h`${p.rows.map(r => {
     const rules = (r.rules || []).map(t => h`<span class="ruletag ${t.type}">${t.text}</span> `);
     if (r.state === 'done') return h`<div class="planrow done"><div class="rnd">R${r.round}<br>pick ${r.pick}</div><div class="target"><span class="kindtag">${r.pos}</span> ${r.player} <span class="mono dim">${r.pts ?? ''}</span></div><div class="dim mono" style="font-size:10px">taken</div><div></div></div>`;
-    const target = r.pos ? h`<span class="kindtag">${r.pos}</span>${r.state === 'now' ? h` ${r.player} <span class="mono dim">${r.pts}</span>` : h` <span class="mono mid">~${r.pts} pts</span><span class="agree">${Math.round((r.agree || 0) * 100)}% agree</span>`}` : raw('<span class="dim">—</span>');
+    const target = r.pos ? h`<span class="kindtag">${r.pos}</span>${r.state === 'now' ? h` ${r.player} <span class="mono dim">${r.pts}</span>` : h` <span class="mono mid" style="white-space:nowrap">~${r.pts}</span><span class="agree">${Math.round((r.agree || 0) * 100)}%</span>`}` : raw('<span class="dim">—</span>');
     return h`<div class="planrow ${r.state}"><div class="rnd">R${r.round}<br>pick ${r.pick}${r.state === 'now' ? raw('<br><span class="green">NOW</span>') : ''}</div>
       <div class="target">${target}${r.alt ? h`<div class="dim" style="font-size:10px;margin-top:2px">or ${r.alt}</div>` : ''}</div>
       <div class="depthbars">${p.positions.map(pos => depthBar(r.depth || {}, pos))}</div>
