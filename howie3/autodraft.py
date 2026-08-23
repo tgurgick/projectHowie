@@ -26,7 +26,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 from .config import Settings
 
@@ -249,7 +249,7 @@ class AutoDrafter:
         configured = False
         t_end = time.time() + max_minutes * 60
         last_clock_pick = None
-        cached = {"pick": None, "rows": []}   # Howie's ranking computed one pick early
+        cached: Dict[str, Any] = {"pick": None, "rows": []}   # Howie's ranking computed one pick early
         while time.time() < t_end:
             try:
                 if not configured:
@@ -286,7 +286,7 @@ class AutoDrafter:
                 if clock and nxt != last_clock_pick:
                     last_clock_pick = nxt
                     taken = state.taken_uids()
-                    rows = [r for r in cached["rows"] if r["uid"] not in taken] if cached["pick"] == nxt else []
+                    rows = [r for r in (cached["rows"] or []) if r["uid"] not in taken] if cached["pick"] == nxt else []
                     if not rows:  # nothing pre-computed for this pick: compute now
                         rows = service.pick_payload(self.settings, state, sims=0, top_n=3)["rows"]
                     log_event(self.settings, "on_clock", pick=nxt,
