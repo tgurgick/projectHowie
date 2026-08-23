@@ -156,6 +156,14 @@ class AutoDrafter:
         self._follow_room()
         return self.page.inner_text("body")
 
+    def is_on_clock(self) -> bool:
+        """Cheap check: the clock banner, not the whole page."""
+        self._follow_room()
+        try:
+            return self.page.get_by_text(re.compile(r"You(?:'re| are) on the clock!"), exact=False).first.is_visible(timeout=200)
+        except Exception:
+            return False
+
     def picks_text(self) -> str:
         """The pick-history panel; the whole body if no panel is recognized."""
         for sel in ("[class*='pick-list']", "[class*='picks']", "aside"):
@@ -172,28 +180,20 @@ class AutoDrafter:
     # -- actions (player search box, then the row's button — never coordinates)
     def _search(self, name: str) -> None:
         box = self.page.get_by_placeholder("Player Name").first
-        box.fill("")
-        box.fill(name)
-        self.page.wait_for_timeout(350)
+        box.fill(name, timeout=1500)
+        self.page.wait_for_timeout(250)
 
     def _row_button(self, name: str, label: str):
-        """The button labelled `label` on the row that names the player. ESPN's
-        list is virtualized: the first text match can be an off-screen clone,
-        so prefer a visible row and scroll it into view before clicking."""
-        pattern = re.compile(label, re.I)
-        for sel in ("tr", "[class*='row']", "[class*='player']", "li", "div"):
-            rows = self.page.locator(sel, has_text=name)
-            n = min(rows.count(), 6)
-            for i in range(n):
-                row = rows.nth(i)
-                btn = row.locator("button").filter(has_text=pattern)
-                if btn.count():
-                    b = btn.first
-                    try:
-                        if b.is_visible():
-                            return b
-                    except Exception:
-                        continue
+        """After the search box filters the list to this player, his row is
+        the only one with a visible button labelled `label`."""
+        btns = self.page.locator("button").filter(has_text=re.compile(label, re.I))
+        for i in range(min(btns.count(), 4)):
+            b = btns.nth(i)
+            try:
+                if b.is_visible():
+                    return b
+            except Exception:
+                continue
         return None
 
     def _click(self, btn) -> bool:
@@ -249,6 +249,7 @@ class AutoDrafter:
         configured = False
         t_end = time.time() + max_minutes * 60
         last_clock_pick = None
+        cached = {"pick": None, "rows": []}   # Howie's ranking computed one pick early
         while time.time() < t_end:
             try:
                 if not configured:
@@ -275,38 +276,43 @@ class AutoDrafter:
                               picks=[f"{p['round']}.{p['pick']} {p['name']} ({p['owner']})" for p in new],
                               unresolved=r["unresolved"], next_pick=r["next_pick"])
                 state = DraftState.load(self.settings)
-                if state.next_pick_no() > total:
+                nxt = state.next_pick_no()
+                if nxt > total:
                     log_event(self.settings, "complete", picks=len(state.events))
                     break
-                body = self.room_text()
-                if on_clock(body) and state.next_pick_no() != last_clock_pick:
-                    last_clock_pick = state.next_pick_no()
-                    pk = service.pick_payload(self.settings, state, sims=0, top_n=3)
-                    best = pk["rows"][0] if pk["rows"] else None
-                    log_event(self.settings, "on_clock", pick=pk["current_pick"],
-                              best=[{"name": r["name"], "pos": r["pos"], "delta": r["delta"],
-                                     "avail_next": r["avail_next"]} for r in pk["rows"][:3]])
-                    if best and self.autopilot:
-                        ok = self.click_draft(best["name"])
-                        if not ok and len(pk["rows"]) > 1:
-                            best = pk["rows"][1]
-                            ok = self.click_draft(best["name"])
-                        log_event(self.settings, "draft_click", name=best["name"], ok=ok,
+                my_next = next((k for k in range(nxt, min(nxt + 3, total + 1))
+                                if snake_team_for_pick(league, k) == league.draft_position), None)
+                clock = self.is_on_clock()
+                if clock and nxt != last_clock_pick:
+                    last_clock_pick = nxt
+                    taken = state.taken_uids()
+                    rows = [r for r in cached["rows"] if r["uid"] not in taken] if cached["pick"] == nxt else []
+                    if not rows:  # nothing pre-computed for this pick: compute now
+                        rows = service.pick_payload(self.settings, state, sims=0, top_n=3)["rows"]
+                    log_event(self.settings, "on_clock", pick=nxt,
+                              best=[{"name": r["name"], "pos": r["pos"], "delta": r["delta"]} for r in rows[:3]])
+                    if rows and self.autopilot:
+                        ok = self.click_draft(rows[0]["name"])
+                        chosen = rows[0]
+                        if not ok and len(rows) > 1:
+                            chosen = rows[1]
+                            ok = self.click_draft(chosen["name"])
+                        log_event(self.settings, "draft_click", name=chosen["name"], ok=ok,
                                   fallback="queue" if (not ok and self.queued) else None)
-                elif not on_clock(body) and self.autopilot:
-                    # pre-queue Howie's top two when our pick is within three
-                    nxt = state.next_pick_no()
-                    mine = [k for k in range(nxt, min(nxt + 4, total + 1))
-                            if snake_team_for_pick(league, k) == league.draft_position]
-                    if mine:
-                        pk = service.pick_payload(self.settings, state, sims=0, top_n=2)
-                        for r in pk["rows"][:2]:
-                            if r["name"] not in self.queued and self.queue(r["name"]):
-                                log_event(self.settings, "queued", name=r["name"], for_pick=mine[0])
+                    # the pick after this one may also be ours (the turn): prepare it
+                    cached = {"pick": None, "rows": []}
+                elif not clock and my_next is not None and self.autopilot and cached["pick"] != my_next:
+                    # one or two picks away: compute Howie's ranking now and put the
+                    # top two in the room's queue so the timer fallback is his
+                    rows = service.pick_payload(self.settings, state, sims=0, top_n=3)["rows"]
+                    cached = {"pick": my_next, "rows": rows}
+                    for r in rows[:2]:
+                        if r["name"] not in self.queued and self.queue(r["name"]):
+                            log_event(self.settings, "queued", name=r["name"], for_pick=my_next)
             except Exception as e:  # keep the loop alive; the log shows what broke
                 log_event(self.settings, "error", error=f"{e.__class__.__name__}: {e}"[:300])
                 time.sleep(2)
-            time.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS if my_next is None else 0.3)
         self.close()
 
 
