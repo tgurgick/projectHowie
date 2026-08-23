@@ -171,6 +171,32 @@ def draft_best(top_n: int, sims: int) -> None:
     }))
 
 
+@draft.command("roster-sync")
+@click.argument("entries", nargs=-1)
+@click.option("--file", "path", default=None, help="Lines like 'QB D. Prescott' or 'BE M. Stafford (QB)'; '-' for stdin")
+def draft_roster_sync(entries, path: Optional[str]) -> None:
+    """Make the log's ownership match a roster panel (the room's truth)."""
+    import re as _re
+    import sys
+
+    from . import service
+
+    lines = list(entries)
+    if path:
+        text = sys.stdin.read() if path == "-" else open(path).read()
+        lines += [ln for ln in text.splitlines() if ln.strip()]
+    roster = []
+    for ln in lines:
+        m = _re.match(r"^\s*(QB|RB|WR|TE|FLEX|D/ST|DST|K|BE|BN)?\s*(.+?)(?:\s*\((QB|RB|WR|TE|K|D/ST)\))?\s*$", ln)
+        if not m:
+            continue
+        slot, name, bpos = m.group(1), m.group(2).strip(), m.group(3)
+        pos = bpos or (slot if slot not in (None, "FLEX", "BE", "BN") else None)
+        roster.append({"slot": slot, "name": name, "pos": "DST" if pos == "D/ST" else pos})
+    r = service.reconcile_roster(Settings(), roster)
+    console.print(r)
+
+
 @draft.command("log")
 def draft_log() -> None:
     """The draft log as it stands."""

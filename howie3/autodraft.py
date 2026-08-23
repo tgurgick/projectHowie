@@ -79,6 +79,29 @@ def parse_picks(text: str) -> List[dict]:
     return picks
 
 
+ROSTER_LINE_RE = re.compile(r"^(QB|RB|WR|TE|FLEX|D/ST|K|BE|BN|IR)$")
+ROSTER_NAME_RE = re.compile(r"^(?P<name>[A-Z][\w.'-]*\.? [\w.'-]+(?: [\w.'-]+)*?)(?: \((?P<pos>QB|RB|WR|TE|K|D/ST)\))?$")
+
+
+def parse_roster(text: str) -> List[dict]:
+    """ESPN's roster panel: 'POS' line, then 'D. Prescott' (bench rows add
+    '(QB)'), then the bye. Returns [{slot, name, pos}] — pos is the slot
+    position for starters, the bracketed one for bench rows."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    out = []
+    for i, ln in enumerate(lines[:-1]):
+        if ROSTER_LINE_RE.match(ln):
+            nm = lines[i + 1]
+            if nm in ("Empty", "-"):
+                continue
+            m = ROSTER_NAME_RE.match(nm)
+            if not m:
+                continue
+            pos = m["pos"] or (ln if ln not in ("FLEX", "BE", "BN", "IR") else None)
+            out.append({"slot": ln, "name": m["name"], "pos": "DST" if pos == "D/ST" else pos})
+    return out
+
+
 def on_clock(text: str) -> bool:
     return "You are on the clock" in text or "You're on the clock!" in text
 
@@ -156,6 +179,19 @@ class AutoDrafter:
     def room_text(self) -> str:
         self._follow_room()
         return self.page.inner_text("body")
+
+    def roster_panel(self) -> List[dict]:
+        """The user's roster as the room shows it (ground truth for 'mine')."""
+        try:
+            for sel in ("[class*='roster']", "[class*='Roster']", "aside"):
+                loc = self.page.locator(sel).first
+                if loc.count():
+                    txt = loc.inner_text(timeout=400)
+                    if "Roster Limits" in txt or "\nQB\n" in txt:
+                        return parse_roster(txt)
+            return parse_roster(self.room_text())
+        except Exception:
+            return []
 
     def is_on_clock(self) -> bool:
         """Cheap check: the clock banner, not the whole page."""
@@ -314,6 +350,14 @@ class AutoDrafter:
                     log_event(self.settings, "sync",
                               picks=[f"{p['round']}.{p['pick']} {p['name']} ({p['owner']})" for p in new],
                               unresolved=r["unresolved"], gaps=r.get("gaps", []), next_pick=r["next_pick"])
+                # every ~8 s: the roster panel is the truth for which picks are ours
+                self._ticks = getattr(self, "_ticks", 0) + 1
+                if self._ticks % 8 == 0:
+                    roster = self.roster_panel()
+                    if roster:
+                        fix = service.reconcile_roster(self.settings, roster)
+                        if fix["changed"]:
+                            log_event(self.settings, "roster_fix", **fix)
                 state = DraftState.load(self.settings)
                 nxt = state.next_pick_no()
                 if nxt > total:

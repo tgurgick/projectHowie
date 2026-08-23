@@ -5,6 +5,7 @@ and gets plain JSON-able dicts. Nothing here renders; nothing here holds
 state beyond the draft event log it is handed. This module IS the API.
 """
 
+import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -329,6 +330,95 @@ def sync_picks(settings: Settings, names: List[str], source: str = "chrome",
     return {"added": added, "skipped": len(skipped), "unresolved": unresolved, "gaps": gaps,
             "next_pick": state.next_pick_no(),
             "on_clock": snake_team_for_pick(league, state.next_pick_no()) == league.draft_position}
+
+
+def reconcile_roster(settings: Settings, roster: List[dict]) -> dict:
+    """Make the log's 'mine' flags match the room's roster panel
+    ([{name: 'D. Prescott' | 'Dak Prescott', pos: 'QB'}]). Abbreviated names
+    resolve by initial + surname + position within the pool. Players on the
+    roster but attributed elsewhere in the log are flipped to the user; log
+    picks marked mine that the roster does not show are un-flipped; roster
+    players missing from the log entirely are appended as the user's."""
+    from .data.names import name_key
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+
+    def resolve(name: str, pos: Optional[str]) -> Optional[str]:
+        key = name_key(name)
+        exact = [p for p in pool if name_key(p.name) == key and (not pos or p.position == pos)]
+        if len(exact) == 1:
+            return exact[0].uid
+        m = re.match(r"^([A-Za-z])\.?\s+(.+)$", name.strip())
+        if m:
+            initial, last = m.group(1).lower(), name_key(m.group(2))
+            cands = [p for p in pool if (not pos or p.position == pos)
+                     and name_key(p.name).startswith(initial) and name_key(p.name).endswith(last)]
+            if len(cands) == 1:
+                return cands[0].uid
+            if cands:  # several ("A. Brown"): prefer the one the log already marks as ours,
+                # then one the log holds at all, then the best projected
+                st = DraftState.load(settings)
+                # was he taken at one of OUR snake slots? (pick number, not the
+                # mine flag — the flag is what we are correcting)
+                at_slot = {e.player_uid for e in st.events
+                           if snake_team_for_pick(league, e.pick_no) == league.draft_position}
+                held = st.taken_uids()
+                ranked = sorted(cands, key=lambda p: (p.uid not in at_slot, p.uid not in held, -(p.raw or p.proj)))
+                return ranked[0].uid
+        if pos == "DST":
+            team = name.replace("D/ST", "").replace("DST", "").strip()
+            from .graph import TEAM_NAMES
+            for code, full in TEAM_NAMES.items():
+                if team.lower() in (code.lower(), full.lower(), full.split()[-1].lower()):
+                    d = [p for p in pool if p.position == "DST" and p.team == code]
+                    if d:
+                        return d[0].uid
+        return None
+
+    wanted: Dict[str, str] = {}
+    unresolved = []
+    for r in roster:
+        uid = resolve(r["name"], r.get("pos"))
+        if uid:
+            wanted[uid] = r["name"]
+        else:
+            unresolved.append(r["name"])
+    flipped_on, flipped_off, added = [], [], []
+    with state_lock(settings):
+        state = DraftState.load(settings)
+        have = {e.player_uid: e for e in state.events}
+        for uid, name in wanted.items():
+            e = have.get(uid)
+            if e is None:
+                continue
+            if not e.mine:
+                e.mine, e.team = True, league.draft_position
+                flipped_on.append(e.player_name)
+        for e in state.events:
+            if e.mine and e.player_uid not in wanted and not e.player_uid.startswith("gap:"):
+                e.mine = False
+                flipped_off.append(e.player_name)
+        state.save(settings)
+    # roster players the log never saw (picks made while the observer was
+    # away): append them as the user's without the roster-limit check — the
+    # log's earlier attribution is what was wrong, not the roster
+    pool_by_uid = {p.uid: p for p in pool}
+    with state_lock(settings):
+        state = DraftState.load(settings)
+        have_uids = {e.player_uid for e in state.events}
+        for uid, name in wanted.items():
+            if uid in have_uids:
+                continue
+            p = pool_by_uid[uid]
+            state.add_pick(state.next_pick_no(), league.draft_position, uid, p.name, p.position,
+                           "roster", mine=True)
+            added.append(p.name)
+        state.save(settings)
+    return {"changed": bool(flipped_on or flipped_off or added), "flipped_on": flipped_on,
+            "flipped_off": flipped_off, "added": added, "unresolved": unresolved}
 
 
 # ------------------------------------------------------------ search
