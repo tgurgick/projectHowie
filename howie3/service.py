@@ -489,9 +489,19 @@ def team_payload(settings: Settings, state: DraftState, team: str) -> dict:
         "SELECT entity_id, kind, text, value, confidence, source, created FROM facts "
         "WHERE entity_id = ? OR entity_id LIKE ? ORDER BY id DESC LIMIT 40",
         (f"team:{team}", f"unit:{team}-%"))]
-    team_facts = [f for f in facts if f["entity_id"] == f"team:{team}"]
-    unit_facts: Dict[str, list] = {}
+    # newest first; keep the latest claim per (entity, kind) so repeated
+    # research runs read as one report, not a history
+    seen_kinds = set()
+    deduped = []
     for f in facts:
+        key = (f["entity_id"], f["kind"], f["source"] == "derived")
+        if key in seen_kinds:
+            continue
+        seen_kinds.add(key)
+        deduped.append(f)
+    team_facts = [f for f in deduped if f["entity_id"] == f"team:{team}"]
+    unit_facts: Dict[str, list] = {}
+    for f in deduped:
         if f["entity_id"].startswith("unit:"):
             unit_facts.setdefault(f["entity_id"].rsplit("-", 1)[1], []).append(f)
     shares = {}

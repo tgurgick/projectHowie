@@ -306,6 +306,17 @@ def import_facts(conn: sqlite3.Connection, path: Path, season: int) -> int:
         if missing:
             raise ValueError(f"Fact missing fields {sorted(missing)}: {f}")
         eid = _resolve_entity(conn, f["entity"])
+        # Re-running research must not pile up copies: an identical claim
+        # (entity, kind, text) is refreshed in place, not inserted again.
+        dup = conn.execute(
+            "SELECT id FROM facts WHERE entity_id = ? AND kind = ? AND text = ?",
+            (eid, f["kind"], f["text"])).fetchone()
+        if dup:
+            conn.execute(
+                "UPDATE facts SET value = ?, confidence = ?, source = ?, created = ?, expires = ? WHERE id = ?",
+                (f.get("value"), float(f["confidence"]), f["source"], _now(), f.get("expires"), dup["id"]))
+            count += 1
+            continue
         conn.execute(
             "INSERT INTO facts (entity_id, kind, season, text, value, confidence, source, created, expires) "
             "VALUES (?,?,?,?,?,?,?,?,?)",

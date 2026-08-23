@@ -61,6 +61,8 @@ def test_import_contract_and_validation(tmp_path):
         "players": [{"name": "Six Weeks", "status": "active", "role": "starter", "source": "cleared"}]}))
     assert import_facts(conn, f, 2026) == 2
     assert "00-0000003" not in st.current_status(conn, 2026), "a later 'active' row clears the injury"
+    import_facts(conn, f, 2026)   # same document again: refreshed, not duplicated
+    assert conn.execute("SELECT COUNT(*) FROM facts WHERE entity_id = 'team:AAA'").fetchone()[0] == 1
     conn.close()
 
 
