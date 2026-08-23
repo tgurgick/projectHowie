@@ -180,17 +180,29 @@ class AutoDrafter:
     # -- actions (player search box, then the row's button — never coordinates)
     def _search(self, name: str) -> None:
         box = self.page.get_by_placeholder("Player Name").first
+        box.fill("", timeout=1500)
         box.fill(name, timeout=1500)
-        self.page.wait_for_timeout(250)
+        # wait until the filtered list actually shows him (the old list can
+        # linger for a few hundred ms and its first button is someone else's)
+        try:
+            self.page.get_by_text(name, exact=False).first.wait_for(state="visible", timeout=1500)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(120)
 
     def _row_button(self, name: str, label: str):
-        """After the search box filters the list to this player, his row is
-        the only one with a visible button labelled `label`."""
-        btns = self.page.locator("button").filter(has_text=re.compile(label, re.I))
-        for i in range(min(btns.count(), 4)):
+        """The `label` button INSIDE the row that names the player — never a
+        button from a neighbouring row."""
+        pattern = re.compile(label, re.I)
+        btns = self.page.locator("button").filter(has_text=pattern)
+        for i in range(min(btns.count(), 8)):
             b = btns.nth(i)
             try:
-                if b.is_visible():
+                if not b.is_visible():
+                    continue
+                # the nearest ancestor that contains the player's name
+                owner = b.locator("xpath=ancestor::*[contains(., %s)][1]" % json.dumps(name))
+                if owner.count() and len(owner.first.inner_text(timeout=300)) < 400:
                     return b
             except Exception:
                 continue
@@ -260,6 +272,10 @@ class AutoDrafter:
                         service.update_config(self.settings, cfg)
                         service.reset_draft(self.settings, "live")
                         log_event(self.settings, "configured", **cfg)
+                        configured = True
+                    elif "/football/draft" in self.page.url and DraftState.load(self.settings).events:
+                        # rejoining a draft in progress: keep the log and the league as configured
+                        log_event(self.settings, "rejoined", picks=len(DraftState.load(self.settings).events))
                         configured = True
                     else:
                         time.sleep(POLL_SECONDS)
