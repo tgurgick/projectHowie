@@ -10,10 +10,15 @@ Effects on a ranked candidate list for the user's round `rnd`:
                 (if nothing is left, the original order stands)
   need        — "N POS by R": when the roster is still short at round R, that
                 position's candidates move to the front
-  target      — a named player still on the board moves to the front
+  target      — a named player still on the board moves to the front, but
+                only when he is within TARGET_TOLERANCE points of the best
+                candidate: a target is "take him when it's close", never
+                "take him at any cost" (a pick-17 target stays a tag at pick 5)
 """
 
 from typing import Dict, List, Sequence
+
+TARGET_TOLERANCE = 15.0   # engine value points a target may trail the best by and still jump the line
 
 
 def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
@@ -33,8 +38,14 @@ def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
             forced.add(pos)
     targets = [name_key(t) for t in effects.get("targets", [])]
 
+    def value(r) -> float:
+        sim = getattr(r, "sim", None)
+        return float(sim.mean) if sim is not None else float(getattr(r, "final_value", 0.0))
+
+    best_value = max((value(r) for r in allowed), default=0.0)
+
     def rank(r) -> tuple:
-        is_target = any(t and t in name_key(r.player.name) for t in targets)
+        is_target = any(t and t in name_key(r.player.name) for t in targets) and value(r) >= best_value - TARGET_TOLERANCE
         return (0 if is_target else 1, 0 if r.player.position in forced else 1)
 
     return sorted(allowed, key=rank)  # stable: engine order within each band

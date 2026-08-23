@@ -9,12 +9,14 @@ from howie3.value.policy import apply_rules, roster_counts
 
 
 class _Plan:
-    def __init__(self, p):
+    def __init__(self, p, value=100.0):
         self.player = p
+        self.final_value = value
+        self.sim = None
 
 
-def _pp(uid, name, pos):
-    return _Plan(PoolPlayer(uid, name, pos, None, 100, adp=None, stdev=None, bye=None))
+def _pp(uid, name, pos, value=100.0):
+    return _Plan(PoolPlayer(uid, name, pos, None, 100, adp=None, stdev=None, bye=None), value)
 
 
 def test_apply_rules_blocks_forces_and_targets():
@@ -29,6 +31,11 @@ def test_apply_rules_blocks_forces_and_targets():
     assert apply_rules(results, 3, fx, {"RB": 2})[0].player.position == "QB"                # need met
     fx = DraftState(rules=[Rule("TARGET McBride")]).active_rule_effects()
     assert apply_rules(results, 1, fx, {})[0].player.name == "Trey McBride"
+    # a target far below the best candidate stays where the engine put him
+    far = [_pp("q", "Josh Allen", "QB", 300), _pp("t", "Trey McBride", "TE", 240)]
+    assert apply_rules(far, 1, fx, {})[0].player.name == "Josh Allen"
+    close = [_pp("q", "Josh Allen", "QB", 300), _pp("t", "Trey McBride", "TE", 290)]
+    assert apply_rules(close, 1, fx, {})[0].player.name == "Trey McBride"
     assert roster_counts([results[1].player, results[2].player]) == {"RB": 1, "WR": 1}
 
 

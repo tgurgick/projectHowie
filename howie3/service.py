@@ -776,7 +776,7 @@ def strategy_payload(state: DraftState) -> dict:
     for r in state.rules:
         probe = DS(rules=[type(r)(text=r.text, on=True)])
         fx = probe.active_rule_effects()
-        inert = not (fx["targets"] or fx["wait"] or fx["ban"])
+        inert = not (fx["targets"] or fx["wait"] or fx["ban"] or fx["need"])
         rows.append({"text": r.text, "on": r.on, "inert": inert})
     return {"rules": rows, "notes": state.notes}
 
