@@ -109,12 +109,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, payload, status: int = 200) -> None:
         body = json.dumps(payload, default=str).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the page navigated away mid-response; nothing to report
 
     def _error(self, message: str, status: int = 400) -> None:
         self._json({"error": message}, status)
@@ -237,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
             self._error(f"draft log problem: {e}", 409)
         except ValueError as e:
             self._error(str(e))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
         except Exception as e:
             traceback.print_exc()
             self._error(f"{e.__class__.__name__}: {e}", 500)
