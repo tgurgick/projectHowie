@@ -556,7 +556,18 @@ class AutoDrafter:
                         if self.queue(r["name"]):
                             log_event(self.settings, "queued", name=r["name"], for_pick=my_next, cleared=removed)
             except Exception as e:  # keep the loop alive; the log shows what broke
-                log_event(self.settings, "error", error=f"{e.__class__.__name__}: {e}"[:300])
+                msg = f"{e.__class__.__name__}: {e}"
+                if "Target page" in msg or "has been closed" in msg:
+                    # the room tab was closed: follow any page still open, else stop
+                    alive = [pg for pg in self.ctx.pages if not pg.is_closed()]
+                    if not alive:
+                        log_event(self.settings, "closed", reason="the bridge's browser was closed")
+                        break
+                    self.page = alive[-1]
+                    log_event(self.settings, "room", url=self.page.url, title="(re-attached)")
+                    time.sleep(2)
+                    continue
+                log_event(self.settings, "error", error=msg[:300])
                 time.sleep(2)
             time.sleep(POLL_SECONDS if my_next is None else 0.3)
         self.close()
