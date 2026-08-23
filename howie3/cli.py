@@ -160,6 +160,131 @@ def draft_log() -> None:
 
 
 @main.group()
+def coach() -> None:
+    """Coached simulation: the engine drafts, Claude coaches the strategy sheet."""
+
+
+@coach.command("run")
+@click.option("--iterations", default=3, help="Coaching rounds")
+@click.option("--drafts", default=12, help="Simulated drafts per round")
+@click.option("--reps", default=6, help="2025 replay reps per slot (paired vs ADP)")
+@click.option("--seed", default=101)
+def coach_run(iterations: int, drafts: int, reps: int, seed: int) -> None:
+    """Simulate → score → coach → apply, keeping the best rule set."""
+    from . import coach as coach_mod
+
+    session = coach_mod.run_session(Settings(), iterations=iterations, n_drafts=drafts, reps=reps, seed=seed)
+    _print_session(session)
+
+
+def _print_session(session: dict) -> None:
+    from rich.table import Table as RTable
+
+    t = RTable(title="coaching session")
+    for c in ("iter", "rules", "MC mean", "MC p10", "holes", "2025 replay", "vs ADP", "best"):
+        t.add_column(c)
+    b = session.get("baseline")
+    if b:
+        rp = b.get("replay") or {}
+        t.add_row("base", "(no rules)", str(b["sim"]["mc_mean"]), str(b["sim"]["mc_p10"]), str(b["sim"]["holes"]),
+                  str(rp.get("mean_total", "—")), f"{rp.get('delta_vs_adp', '—')}", "")
+    for it in session.get("iterations", []):
+        sc = it["score"]; rp = sc.get("replay") or {}
+        t.add_row(str(it["iteration"]), " · ".join(it["rules"]) or "(none)", str(sc["sim"]["summary"]["mc_mean"]),
+                  str(sc["sim"]["summary"]["mc_p10"]), str(sc["sim"]["summary"]["holes"]),
+                  str(rp.get("mean_total", "—")), f"{rp.get('delta_vs_adp', '—')} {rp.get('ci', '')}",
+                  "★" if it.get("best") else "")
+    f = session.get("final")
+    if f:
+        rp = f.get("replay") or {}
+        t.add_row("final", " · ".join(f["rules"]) or "(none)", str(f["sim"]["mc_mean"]), str(f["sim"]["mc_p10"]),
+                  str(f["sim"]["holes"]), str(rp.get("mean_total", "—")), f"{rp.get('delta_vs_adp', '—')}", "")
+    console.print(t)
+    for it in session.get("iterations", []):
+        for l in it.get("learnings", []):
+            console.print(f"  [dim]iter {it['iteration']}[/dim] {l}")
+    if session.get("stopped"):
+        console.print(f"[yellow]stopped: {session['stopped']}[/yellow]")
+    console.print(f"[green]kept rule set:[/green] {' · '.join(session.get('best_rules') or []) or '(none)'}")
+
+
+@coach.command("review")
+def coach_review() -> None:
+    """Coach the current draft log (e.g. a real room observed with Claude in Chrome)."""
+    import json as _json
+
+    from . import coach as coach_mod
+    from .state import DraftState
+
+    settings = Settings()
+    st = DraftState.load(settings)
+    picks = [{"uid": e.player_uid, "name": e.player_name} for e in st.events if e.mine]
+    if not picks:
+        raise click.ClickException("no picks of yours in the draft log")
+    r = coach_mod.review_draft(settings, picks)
+    console.print_json(_json.dumps(r["digest"]["this_draft"]))
+    c = r["coach"]
+    if not c.get("available"):
+        raise click.ClickException(c.get("reason", "coach unavailable"))
+    for l in c.get("learnings", []):
+        console.print(f"  • {l}")
+    if c.get("rules_add") or c.get("rules_remove"):
+        console.print(f"suggested: add {c.get('rules_add')} · remove {c.get('rules_remove')} — apply with `howie strategy add/remove`")
+
+
+@main.group()
+def strategy() -> None:
+    """The strategy sheet from the command line (what the coach edits)."""
+
+
+@strategy.command("show")
+def strategy_show() -> None:
+    from .state import DraftState
+
+    st = DraftState.load(Settings())
+    for r in st.rules:
+        console.print(f"  {'●' if r.on else '○'} {r.text}")
+    if st.notes:
+        console.print(st.notes)
+
+
+@strategy.command("add")
+@click.argument("text", nargs=-1, required=True)
+def strategy_add(text) -> None:
+    from . import service
+
+    st = __import__("howie3.state", fromlist=["DraftState"]).DraftState.load(Settings())
+    rules = [{"text": r.text, "on": r.on} for r in st.rules] + [{"text": " ".join(text), "on": True}]
+    out = service.update_strategy(Settings(), rules=rules)
+    for c in out.get("conflicts", []):
+        console.print(f"[yellow]{c}[/yellow]")
+    console.print("added")
+
+
+@strategy.command("remove")
+@click.argument("text", nargs=-1, required=True)
+def strategy_remove(text) -> None:
+    from . import service
+
+    st = __import__("howie3.state", fromlist=["DraftState"]).DraftState.load(Settings())
+    key = " ".join(text).strip().upper()
+    rules = [{"text": r.text, "on": r.on} for r in st.rules if r.text.strip().upper() != key]
+    service.update_strategy(Settings(), rules=rules)
+    console.print("removed" if len(rules) < len(st.rules) else "no such rule")
+
+
+@strategy.command("note")
+@click.argument("text", nargs=-1, required=True)
+def strategy_note(text) -> None:
+    from . import service
+
+    st = __import__("howie3.state", fromlist=["DraftState"]).DraftState.load(Settings())
+    notes = (st.notes + "\n\n" if st.notes else "") + " ".join(text)
+    service.update_strategy(Settings(), notes=notes)
+    console.print("noted")
+
+
+@main.group()
 def context() -> None:
     """Portable strategy-context artifacts (derived data only, safe to share)."""
 

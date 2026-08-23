@@ -593,7 +593,37 @@ let MOCK = null, MOCKPOS = 'ALL', mockTimer = null, MOCK_loadedAfter = false;
 $('mockPick').addEventListener('change', renderMock);
 $('mockN').addEventListener('change', () => { MOCK_loadedAfter = false; });
 
-async function loadSimTab() { loadRosterSim(); await loadMockResults(); pollMock(); }
+async function loadSimTab() { loadRosterSim(); await loadMockResults(); pollMock(); pollCoach(); }
+
+// ---------------- coached simulation ----------------
+
+let coachTimer = null;
+async function runCoach() {
+  const r = await api('/api/coach/run', {iterations: +$('coachIter').value, drafts: +$('coachDrafts').value});
+  $('coachStatus').textContent = r.started ? 'starting…' : 'a session is already running';
+  pollCoach();
+}
+async function pollCoach() {
+  clearTimeout(coachTimer);
+  const st = await api('/api/coach/status');
+  if (st.running) { $('coachStatus').textContent = `${st.phase} · iteration ${st.iteration} / ${st.total}`; coachTimer = setTimeout(pollCoach, 3000); }
+  else if (st.error) $('coachStatus').textContent = 'error: ' + st.error;
+  else $('coachStatus').textContent = st.sessions.length ? `last session ${(st.sessions[st.sessions.length - 1].finished || '').slice(0, 16)}` : 'no sessions yet';
+  renderCoach(st.sessions[st.sessions.length - 1]);
+  if (!st.running && st.sessions.length) { strategy = await api('/api/strategy'); if ($('strategyView').style.display !== 'none') loadStrategyTab(); }
+}
+function renderCoach(sess) {
+  if (!sess) { $('coachOut').innerHTML = ''; return; }
+  const rp = x => (x && x.replay) ? h`${x.replay.mean_total} <span class="dim">(${x.replay.delta_vs_adp > 0 ? '+' : ''}${x.replay.delta_vs_adp} vs ADP)</span>` : raw('<span class="dim">—</span>');
+  const row = (k, rules, sim, replay, best, learnings) => h`<div class="coachrow ${best ? 'best' : ''}"><div class="k">${k}</div><div>${rules.length ? rules.map(r => h`<span class="ruletag target" style="margin:1px 4px 1px 0">${r}</span>`) : raw('<span class="dim">no rules</span>')}</div><div class="n">${sim.mc_mean} <span class="dim">/ ${sim.mc_p10}</span></div><div class="n" title="avg empty starting slots · bye stacks">${sim.holes} <span class="dim">/ ${sim.bye_stacks}</span></div><div class="n">${rp({replay})}</div></div>${learnings && learnings.length ? h`<div class="coachlearn">${learnings.map(l => h`<div>· ${l}</div>`)}</div>` : ''}`;
+  const head = raw('<div class="coachrow"><div class="k"></div><div class="k">RULE SET</div><div class="k" style="text-align:right">MC MEAN / P10</div><div class="k" style="text-align:right">HOLES / BYES</div><div class="k" style="text-align:right">2025 REPLAY</div></div>');
+  const parts = [head];
+  if (sess.baseline) parts.push(row('base', [], sess.baseline.sim, sess.baseline.replay, false, []));
+  (sess.iterations || []).forEach(it => parts.push(row('#' + it.iteration, it.rules, it.score.sim.summary, it.score.replay, it.best, it.learnings)));
+  if (sess.final) parts.push(row('final', sess.final.rules, sess.final.sim, sess.final.replay, false, []));
+  parts.push(h`<div class="mono" style="font-size:11px;margin-top:8px"><span class="green">KEPT</span> ${(sess.best_rules || []).join(' · ') || 'no rules'}${sess.stopped ? h` <span class="amber">· stopped: ${sess.stopped}</span>` : ''}</div>`);
+  $('coachOut').innerHTML = h`${parts}`;
+}
 
 async function loadMockResults() {
   MOCK = await api('/api/sim/mock/results');

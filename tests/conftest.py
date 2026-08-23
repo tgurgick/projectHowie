@@ -11,3 +11,11 @@ from howie3.config import LeagueConfig, Settings
 def league12(monkeypatch):
     monkeypatch.setattr(Settings, "league", property(lambda self: LeagueConfig()))
     return LeagueConfig()
+
+
+@pytest.fixture(scope="module")
+def settings():
+    s = Settings()
+    if not s.db_path.exists():
+        pytest.skip("howie.db not built")
+    return s

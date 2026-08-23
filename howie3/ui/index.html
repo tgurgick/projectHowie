@@ -129,6 +129,18 @@
 
 
       <div class="dsec">
+        <p class="sechead">COACHED SIMULATION <span class="dim" style="letter-spacing:0">— the engine drafts under your strategy sheet, Claude coaches it, the best rule set is kept</span></p>
+        <div class="ctl">
+          <span class="dim" style="font-size:11px">iterations</span><select id="coachIter"><option>1</option><option>2</option><option selected>3</option><option>5</option></select>
+          <span class="dim" style="font-size:11px">drafts each</span><select id="coachDrafts"><option>8</option><option selected>12</option><option>20</option></select>
+          <button class="primary" onclick="runCoach()">COACH</button>
+          <span class="mono dim" id="coachStatus" style="font-size:11px"></span>
+        </div>
+        <div id="coachOut"></div>
+        <div class="dim" style="font-size:11px;margin-top:8px">Each iteration: simulated drafts (engine + rules vs bots) scored on the 2026 Monte Carlo season and the heatmap's holes, plus the same rule set replayed on 2025's real results (paired vs follow-ADP). Claude reads the digest, changes up to 3 rules and writes a note; the best-scoring rule set is what the board and round-by-round use afterwards.</div>
+      </div>
+
+      <div class="dsec">
         <p class="sechead">MOCK DRAFT LAB — LEARN WHO IS USUALLY THERE AT YOUR PICKS</p>
         <div class="ctl">
           <span class="dim" style="font-size:11px">run</span>

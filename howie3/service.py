@@ -316,12 +316,15 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
     roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
     rnd, current_pick, next_pick, future = _pick_context(settings, state, league)
 
+    from .value.policy import apply_rules, roster_counts
+
     effects = state.active_rule_effects()
     results = evaluate_candidates(pool, roster, current_pick, future, league,
-                                  taken, top_n=max(top_n, 12))
+                                  taken, top_n=max(top_n, 24))
     if sims > 0:
         results = mc_rerank(conn, results, roster, pool, league,
                             settings.current_season, n_sims=sims)
+    results = apply_rules(results, rnd, effects, roster_counts(roster))
 
     rows: List[JsonDict] = []
     span = _outcome_span(results, sims)
@@ -342,9 +345,6 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
             "plan": r.plan_positions[:8],
             "rules": fired,
         })
-    demoted = [row for row in rows if any(f["type"] in ("wait", "ban") for f in row["rules"])]
-    kept = [row for row in rows if row not in demoted]
-    rows = kept + demoted
     best = rows[0]["value"] if rows else 0
     for row in rows:
         row["delta"] = row["value"] - best
@@ -933,17 +933,25 @@ def season_grid_payload(settings: Settings, state: DraftState) -> dict:
     column per week 1-17. Each cell is the player the weekly-optimal lineup
     would start there (byes, known games out and matchup-adjusted weekly
     means all applied), colored by his expected points relative to a
-    league-average starter at that position. Grey = nobody to start.
-    Per-week totals and bench depth make thin weeks obvious at a glance."""
+    league-average starter at that position. Grey = nobody to start."""
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    pool_by_uid = {p.uid: p for p in pool}
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    return season_grid_for(settings, pool, roster)
+
+
+def season_grid_for(settings: Settings, pool: List[PoolPlayer], roster: List[PoolPlayer]) -> dict:
+    """The grid for any roster drawn from `pool` (the coach scores simulated
+    drafts with it)."""
     from .value.distributions import build_sim_players
     from .value.lineup import FLEX_ELIGIBLE
     from .value.simulate import FANTASY_WEEKS
 
     league = settings.league
     conn = _conn(settings)
-    pool = _pool(settings, conn)
-    pool_by_uid = {p.uid: p for p in pool}
-    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
     proj_rank: Dict[str, int] = {}
     counts: Dict[str, int] = {}
     for p in pool:

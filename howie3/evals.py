@@ -230,6 +230,13 @@ def _score_roster(players: List[EvalPlayer], league) -> float:
 #              the bench rounds
 #   adp      — follow ADP
 POLICIES = ("howie", "proj", "vorp", "adp_need", "adp")
+_EFFECTS: Dict[str, Optional[Dict[str, list]]] = {"rules": None}   # rule set for the "howie+rules" policy
+
+
+def set_rule_effects(effects: Optional[Dict[str, list]]) -> None:
+    """Rule set the 'howie+rules' replay policy applies (the coaching loop
+    scores candidate strategies with it)."""
+    _EFFECTS["rules"] = effects
 BASELINE_POLICY = "adp"
 EVAL_SLOTS = (2, 5, 8, 11)
 EVAL_ROSTER_SIZE = 14  # K/DST are dropped from the replay; 14 rounds of offense
@@ -290,7 +297,8 @@ def _pick_vorp(pool_avail: List[EvalPlayer], roster: List[EvalPlayer]) -> EvalPl
 
 def _pick_engine(pool_avail: List[EvalPlayer], roster: List[EvalPlayer], league,
                  current_pick: int, future: List[int],
-                 anchored: Optional[Dict[str, float]]) -> EvalPlayer:
+                 anchored: Optional[Dict[str, float]],
+                 effects: Optional[Dict[str, list]] = None) -> EvalPlayer:
     """Marginal-value engine. With `anchored` (uid -> blended proj, computed
     ONCE over the full pool exactly as load_pool does) this is the product;
     with None it is the engine on raw projections (market_anchor=0)."""
@@ -302,11 +310,16 @@ def _pick_engine(pool_avail: List[EvalPlayer], roster: List[EvalPlayer], league,
             pp.proj = anchored[p.uid]
         return pp
 
+    from .value.policy import apply_rules, roster_counts
+
     results = evaluate_candidates(
         sorted((as_pp(p) for p in pool_avail), key=lambda p: -p.proj),
         [as_pp(p) for p in roster],
-        current_pick, future, league, frozenset(), top_n=1,
+        current_pick, future, league, frozenset(), top_n=48 if effects else 1,
     )
+    if effects:
+        rnd = len(roster) + 1
+        results = apply_rules(results, rnd, effects, roster_counts(roster))
     if not results:
         return pool_avail[0]
     uid = results[0].player.uid
@@ -326,6 +339,8 @@ def _policy_pick(policy: Union[str, PolicyFn], pool_avail: List[EvalPlayer],
         return _pick_vorp(pool_avail, roster)
     if policy == "howie":
         return _pick_engine(pool_avail, roster, league, current_pick, future, anchored)
+    if policy == "howie+rules":
+        return _pick_engine(pool_avail, roster, league, current_pick, future, anchored, _EFFECTS.get("rules"))
     if policy == "proj":
         return _pick_engine(pool_avail, roster, league, current_pick, future, None)
     raise ValueError(f"unknown policy {policy!r}")

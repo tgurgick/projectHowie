@@ -222,6 +222,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(mocksim.aggregates(s))
             elif url.path == "/api/config":
                 self._json(service.config_payload(s))
+            elif url.path == "/api/coach/status":
+                from . import coach
+                self._json({**coach.STATUS, "sessions": coach.load_sessions(s)["sessions"][-5:]})
             elif url.path == "/api/plan":
                 self._json(service.plan_payload(s, DraftState.load(s)))
             elif url.path == "/api/season_grid":
@@ -303,6 +306,13 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(insights.research_team(s, str(body["team"])))
                 else:
                     self._json(insights.research_player(s, str(body.get("player", "")), body.get("team_hint")))
+                return
+            elif url.path == "/api/coach/run":
+                from . import coach
+                started = coach.run_in_background(
+                    s, iterations=int(body.get("iterations", 3)), n_drafts=int(body.get("drafts", 12)),
+                    reps=int(body.get("reps", 6)), seed=int(body.get("seed", 101)))
+                self._json({"started": started, "status": dict(coach.STATUS)})
                 return
             elif url.path == "/api/sim/mock/import":
                 from . import mocksim

@@ -44,12 +44,16 @@ def save_store(settings: Settings, store: dict) -> None:
 
 
 def _user_pick(policy: str, pool: List[PoolPlayer], taken: set, roster: List[PoolPlayer],
-               pick_no: int, future: List[int], league, rng) -> Optional[PoolPlayer]:
+               pick_no: int, future: List[int], league, rng,
+               effects: Optional[Dict[str, list]] = None, rnd: int = 1) -> Optional[PoolPlayer]:
     from .mock import bot_pick
+    from .value.policy import apply_rules, roster_counts
     from .value.roster import evaluate_candidates
 
     if policy == "howie":
-        res = evaluate_candidates(pool, roster, pick_no, future, league, frozenset(taken), top_n=1)
+        # wide candidate set so a blocked position leaves others to choose from
+        res = evaluate_candidates(pool, roster, pick_no, future, league, frozenset(taken), top_n=48 if effects else 1)
+        res = apply_rules(res, rnd, effects or {}, roster_counts(roster))
         if res:
             return res[0].player
     tp: Dict[str, int] = {}
@@ -59,12 +63,19 @@ def _user_pick(policy: str, pool: List[PoolPlayer], taken: set, roster: List[Poo
 
 
 def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
-                    seed: Optional[int] = None) -> dict:
-    """Run n local drafts, persisting each; returns the refreshed aggregates."""
+                    seed: Optional[int] = None, effects: Optional[Dict[str, list]] = None,
+                    persist: bool = True, label: Optional[str] = None) -> dict:
+    """Run n local drafts, persisting each; returns the refreshed aggregates
+    (plus the drafts themselves under "drafts_run"). With policy "howie" the
+    user's picks follow the engine under the CURRENT strategy sheet (or the
+    `effects` passed in — the coaching loop evaluates candidate rule sets)."""
     from .db import connect
     from .mock import bot_pick
+    from .state import DraftState
     from .value.board import load_pool
 
+    if effects is None and policy == "howie":
+        effects = DraftState.load(settings).active_rule_effects()
     league = settings.league
     conn = connect(settings.db_path)
     pool = load_pool(conn, settings.current_season, league.scoring_format,
@@ -77,6 +88,7 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
 
     STATUS.update({"running": True, "done": 0, "total": n, "error": None})
     store = load_store(settings)
+    drafts_run: List[dict] = []
     try:
         for d in range(n):
             taken: set = set()
@@ -89,7 +101,8 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
                 rng = np.random.default_rng((base_seed + d) * 100_000 + pick_no)
                 if team == me:
                     future = [k for k in my_picks if k > pick_no]
-                    choice = _user_pick(policy, pool, taken, roster, pick_no, future, league, rng)
+                    choice = _user_pick(policy, pool, taken, roster, pick_no, future, league, rng,
+                                        effects=effects, rnd=my_picks.index(pick_no) + 1)
                     if choice:
                         roster.append(choice)
                 else:
@@ -104,19 +117,25 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
                 taken.add(choice.uid)
                 picks.append(choice.uid)
                 recent = (recent + [choice.position])[-5:]
-            store["drafts"].append({"source": "local", "policy": policy,
-                                    "seed": base_seed + d, "picks": picks})
+            rec = {"source": label or "local", "policy": policy, "seed": base_seed + d, "picks": picks,
+                   "mine": [p.uid for p in roster]}
+            drafts_run.append(rec)
+            if persist:
+                store["drafts"].append(rec)
             STATUS["done"] = d + 1
-            if (d + 1) % 5 == 0 or d + 1 == n:
+            if persist and ((d + 1) % 5 == 0 or d + 1 == n):
                 save_store(settings, store)
-        store["runs"].append({"ts": _now(), "n": n, "policy": policy, "seed": base_seed})
-        save_store(settings, store)
+        if persist:
+            store["runs"].append({"ts": _now(), "n": n, "policy": policy, "seed": base_seed})
+            save_store(settings, store)
     except Exception as e:  # surfaced through status; partial results are kept
         STATUS["error"] = f"{e.__class__.__name__}: {e}"
         save_store(settings, store)
     finally:
         STATUS["running"] = False
-    return aggregates(settings)
+    out = aggregates(settings)
+    out["drafts_run"] = drafts_run
+    return out
 
 
 def run_in_background(settings: Settings, n: int, policy: str = "adp") -> bool:
