@@ -143,12 +143,16 @@ async function resetDraft() {
 // Two-step confirmation inside the popover (no browser dialogs — those are
 // blocked in embedded browsers, which made reset look dead).
 let armed = null;
+const RESET_LABELS = {mock: h`New mock draft <span class="dim">— bots pick for the other teams</span>`, live: h`Clear draft <span class="dim">— empty log, live mode</span>`};
 function armReset(btn, mode) {
   const hasPicks = ST && ST.log.length;
-  if (!hasPicks || armed === mode) { armed = null; closePops(); return mode === 'mock' ? startMock() : resetDraft(); }
+  if (!hasPicks || armed === mode) {
+    armed = null; btn.innerHTML = RESET_LABELS[mode]; closePops();
+    return mode === 'mock' ? startMock() : resetDraft();
+  }
   armed = mode;
   btn.innerHTML = h`<span class="amber">Click again to confirm</span> <span class="dim">— ${mode === 'mock' ? 'starts a new mock' : 'clears the log'}; this draft is archived first</span>`;
-  setTimeout(() => { if (armed === mode) { armed = null; btn.innerHTML = mode === 'mock' ? h`New mock draft <span class="dim">— bots pick for the other 11 teams</span>` : h`Clear draft <span class="dim">— empty log, live mode</span>`; } }, 4000);
+  setTimeout(() => { if (armed === mode) { armed = null; btn.innerHTML = RESET_LABELS[mode]; } }, 4000);
 }
 
 // ---------------- season heatmap (ROSTER tab) ----------------
