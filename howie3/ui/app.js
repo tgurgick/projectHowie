@@ -175,9 +175,7 @@ function renderSeasonGrid() {
     <thead><tr><th class="slot"></th>${g.weeks.map(w => h`<th>${w}</th>`)}</tr></thead>
     <tbody>
       ${grid.map(grp => h`<tr><th class="slot">${grp.slot}${grp.n > 1 ? h`<span class="dim"> ×${grp.n}</span>` : ''}</th>${grp.cells.map((c, i) => h`<td><div class="cell ${c.level} ${c.sub ? 'sub' : ''}" data-g="${grp.pos}" data-w="${i}"><span>${c.names.length ? Math.round(c.pts) : (c.reason === 'bye' ? 'BYE' : c.reason === 'out' ? 'OUT' : '')}</span></div></td>`)}</tr>`)}
-      <tr><th class="slot">TOTAL</th>${g.week_totals.map(t => h`<td><div class="cell tot ${t.level}" title="${t.pts} expected · ${Math.round(t.ratio * 100)}% of a league-average lineup${t.bye.length ? ' · bye: ' + t.bye.join(', ') : ''}${t.out.length ? ' · out: ' + t.out.join(', ') : ''}"><span>${Math.round(t.pts)}</span></div></td>`)}</tr>
-      <tr><th class="slot dim">BENCH</th>${g.week_totals.map(t => h`<td><div class="depth ${depthCls(t.bench)}" title="healthy bench players this week · RB ${t.bench_by_pos.RB} WR ${t.bench_by_pos.WR} TE ${t.bench_by_pos.TE} QB ${t.bench_by_pos.QB}">${t.bench}</div></td>`)}</tr>
-      <tr><th class="slot dim">BYES</th>${g.week_totals.map(t => h`<td><div class="depth ${t.bye.length >= 3 ? 'none' : t.bye.length === 2 ? 'thin' : ''}" title="${t.bye.join(', ')}">${t.bye.length || ''}</div></td>`)}</tr>
+      <tr><th class="slot">TOTAL</th>${g.week_totals.map(t => h`<td><div class="cell tot" title="${Math.round(t.ratio * 100)}% of a league-average lineup${t.bye.length ? ' · bye: ' + t.bye.join(', ') : ''}${t.out.length ? ' · out: ' + t.out.join(', ') : ''}">${Math.round(t.pts)}</div></td>`)}</tr>
     </tbody></table></div>
     <div class="legend">
       <span><i style="background:rgba(61,219,132,.42)"></i>above a league-average starter (≥ 110%)</span>
@@ -185,7 +183,7 @@ function renderSeasonGrid() {
       <span><i style="background:rgba(224,100,86,.38)"></i>below (&lt; 85%) or a slot unfilled that week</span>
       <span><i style="background:#10150f;border:1px dashed #1f2a23"></i>nobody to start — bye / out / not drafted</span>
       <span><i style="box-shadow:inset 0 0 0 1px #7dd3fc"></i>bench player covering a slot</span>
-      <span class="base">RB and WR rows sum their slots · hover for points and who starts<br>league-average starter / week: ${Object.entries(g.baseline).map(([p, v]) => p + ' ' + v).join(' · ')}</span>
+      <span class="base">RB and WR rows sum their slots · hover for points and who starts<br>TOTAL = projected lineup points that week<br>league-average starter / week: ${Object.entries(g.baseline).map(([p, v]) => p + ' ' + v).join(' · ')}</span>
     </div>`;
   $('seasonGrid').onmouseover = e => {
     const el = e.target.closest('.cell[data-g]'); if (!el) return;

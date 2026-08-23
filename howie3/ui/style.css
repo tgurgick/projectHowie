@@ -237,10 +237,7 @@
   .sgrid .cell.grey { background: #10150f; border: 1px dashed #1f2a23; color: var(--dim); }
   .sgrid .cell.grey span { opacity: .8; }
   .sgrid .cell.sub { box-shadow: inset 0 0 0 1px #7dd3fc; }
-  .sgrid .tot { height: 18px; }
-  .sgrid .tot.green { background: rgba(61, 219, 132, .22); } .sgrid .tot.yellow { background: #1a221c; } .sgrid .tot.red { background: rgba(224, 100, 86, .22); }
-  .sgrid .depth { font-family: var(--mono); font-size: 9px; color: var(--dim); text-align: center; }
-  .sgrid .depth.thin { color: var(--amber); } .sgrid .depth.none { color: var(--red); }
+  .sgrid .tot { height: 18px; background: transparent; color: var(--mid); font-size: 10px; }
   .sgrid .legend { display: flex; flex-direction: column; gap: 7px; font-size: 10px; color: var(--dim); font-family: var(--mono); min-width: 200px; padding-top: 22px; }
   .sgrid .legend i { display: inline-block; width: 14px; height: 10px; margin-right: 6px; vertical-align: middle; }
   .sgrid .legend .base { margin-top: 6px; line-height: 1.6; }
