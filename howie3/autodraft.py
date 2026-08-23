@@ -399,6 +399,29 @@ class AutoDrafter:
                 pass
         return True
 
+    def clear_queue(self) -> int:
+        """Empty the room's Pick Queue (its REMOVE buttons) so a stale entry
+        can never outrank Howie's current choice when the timer fires."""
+        removed = 0
+        for _ in range(12):
+            btns = self.page.locator("button").filter(has_text=re.compile("^remove$", re.I))
+            target = None
+            for i in range(min(btns.count(), 6)):
+                try:
+                    if btns.nth(i).is_visible():
+                        target = btns.nth(i)
+                        break
+                except Exception:
+                    continue
+            if target is None:
+                break
+            if not self._click(target):
+                break
+            removed += 1
+            self.page.wait_for_timeout(120)
+        self.queued = set()
+        return removed
+
     def queue(self, name: str) -> bool:
         if name in self.queued:
             return True
@@ -502,7 +525,17 @@ class AutoDrafter:
                         if not ok and len(rows) > 1:
                             chosen = rows[1]
                             ok = self.click_draft(chosen["name"])
-                        log_event(self.settings, "draft_click", name=chosen["name"], ok=ok,
+                        # verify: the room must show him on our roster; else one retry
+                        landed = False
+                        if ok:
+                            for _ in range(6):
+                                self.page.wait_for_timeout(500)
+                                if any(chosen["name"].split()[-1] in r["name"] for r in self.roster_panel()):
+                                    landed = True
+                                    break
+                            if not landed and self.is_on_clock():
+                                ok = self.click_draft(chosen["name"])
+                        log_event(self.settings, "draft_click", name=chosen["name"], ok=ok, landed=landed,
                                   fallback="queue" if (not ok and self.queued) else None)
                     # the pick after this one may also be ours (the turn): prepare it
                     cached = {"pick": None, "rows": []}
@@ -516,9 +549,12 @@ class AutoDrafter:
                     why = reasoning(pk, service.positions_payload(self.settings, state), 100)
                     cached = {"pick": my_next, "rows": rows, "why": why}
                     log_event(self.settings, "thinking", for_pick=my_next, seconds=round(time.time() - t0, 1), **why)
+                    # the queue is rebuilt in Howie's order: a leftover from the
+                    # previous pick must never sit above the current best
+                    removed = self.clear_queue()
                     for r in rows[:2]:
-                        if r["name"] not in self.queued and self.queue(r["name"]):
-                            log_event(self.settings, "queued", name=r["name"], for_pick=my_next)
+                        if self.queue(r["name"]):
+                            log_event(self.settings, "queued", name=r["name"], for_pick=my_next, cleared=removed)
             except Exception as e:  # keep the loop alive; the log shows what broke
                 log_event(self.settings, "error", error=f"{e.__class__.__name__}: {e}"[:300])
                 time.sleep(2)
