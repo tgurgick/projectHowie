@@ -184,6 +184,45 @@ def draft_log() -> None:
 
 
 @main.group()
+def autodraft() -> None:
+    """Playwright bridge: the draft room streams into the cockpit; the engine can pick."""
+
+
+@autodraft.command("signin")
+def autodraft_signin() -> None:
+    """Open the bridge's own browser once so you can sign in to ESPN by hand."""
+    from .autodraft import signin
+
+    signin(Settings())
+
+
+@autodraft.command("run")
+@click.argument("url")
+@click.option("--autopilot", is_flag=True, help="Let the engine click DRAFT (mock rooms only unless --real)")
+@click.option("--real", is_flag=True, help="Allow clicking in a non-mock room (your call)")
+@click.option("--headless", is_flag=True)
+@click.option("--minutes", default=180.0)
+def autodraft_run(url: str, autopilot: bool, real: bool, headless: bool, minutes: float) -> None:
+    """Watch a draft room (and pick, with --autopilot). Reset the board first:
+    howie draft reset --mode live --slot N."""
+    from .autodraft import AutoDrafter, log_path
+
+    settings = Settings()
+    console.print(f"bridge up · events → {log_path(settings)} · autopilot={'ON' if autopilot else 'off'}")
+    AutoDrafter(settings, url, autopilot=autopilot, real=real, headless=headless).run(max_minutes=minutes)
+
+
+@autodraft.command("events")
+@click.option("-n", default=30)
+def autodraft_events(n: int) -> None:
+    """The bridge's recent events (what Claude reads to analyze the draft)."""
+    from .autodraft import recent_events
+
+    for e in recent_events(Settings(), n):
+        console.print(f"[dim]{e['ts'][11:19]}[/dim] {e['kind']}: " + " ".join(f"{k}={v}" for k, v in e.items() if k not in ("ts", "kind")))
+
+
+@main.group()
 def coach() -> None:
     """Coached simulation: the engine drafts, Claude coaches the strategy sheet."""
 

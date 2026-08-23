@@ -222,6 +222,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(mocksim.aggregates(s))
             elif url.path == "/api/config":
                 self._json(service.config_payload(s))
+            elif url.path == "/api/autodraft/events":
+                from .autodraft import recent_events
+                self._json({"events": recent_events(s, int(q.get("n", 30)))})
             elif url.path == "/api/coach/status":
                 from . import coach
                 self._json({**coach.STATUS, "sessions": coach.load_sessions(s)["sessions"][-5:]})

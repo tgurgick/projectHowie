@@ -285,7 +285,8 @@ async function loadPlan() {
     return h`<span title="${n} starter-tier ${pos} likely still there"><i class="${cls}" style="opacity:${Math.min(1, 0.35 + n / cap)}"></i>${pos} ${n}</span>`;
   };
   $('planRows').innerHTML = h`${p.rows.map(r => {
-    const rules = (r.rules || []).map(t => h`<span class="ruletag ${t.type}">${t.text}</span> `);
+    // a rule shows only where it bites: on the row whose target (or alternate) is the rule's position
+    const rules = (r.rules || []).filter(t => t.pos === r.pos || t.pos === r.alt).map(t => h`<span class="ruletag ${t.type}" title="${t.text}">${t.text}</span> `);
     if (r.state === 'done') return h`<div class="planrow done"><div class="rnd">R${r.round}<br>pick ${r.pick}</div><div class="target"><span class="kindtag">${r.pos}</span> ${r.player} <span class="mono dim">${r.pts ?? ''}</span></div><div class="dim mono" style="font-size:10px">taken</div><div></div></div>`;
     const target = r.pos ? h`<span class="kindtag">${r.pos}</span>${r.state === 'now' ? h` ${r.player} <span class="mono dim">${r.pts}</span>` : h` <span class="mono mid" style="white-space:nowrap">~${r.pts}</span><span class="agree">${Math.round((r.agree || 0) * 100)}%</span>`}` : raw('<span class="dim">—</span>');
     return h`<div class="planrow ${r.state}"><div class="rnd">R${r.round}<br>pick ${r.pick}${r.state === 'now' ? raw('<br><span class="green">NOW</span>') : ''}</div>
@@ -1014,3 +1015,24 @@ async function saveConfig() {
 
 refresh();
 setInterval(() => { if (!document.hidden) refresh(true); }, 2500);
+
+// ---------------- autodraft bridge events → Howie panel ----------------
+let lastBridgeTs = localStorage.getItem('bridgeTs') || '';
+async function pollBridge() {
+  try {
+    const r = await api('/api/autodraft/events?n=20');
+    for (const e of r.events) {
+      if (e.ts <= lastBridgeTs) continue;
+      lastBridgeTs = e.ts; localStorage.setItem('bridgeTs', lastBridgeTs);
+      if (e.kind === 'sync') termPrint('dim', 'room: ' + e.picks.join(' · ') + (e.unresolved.length ? ' · unresolved ' + e.unresolved.join(', ') : ''));
+      else if (e.kind === 'on_clock') termPrint('out', `ON THE CLOCK pick ${e.pick} → ` + e.best.map(b => `${b.pos} ${b.name} (${fmtDelta(b.delta)})`).join(' · '));
+      else if (e.kind === 'draft_click') termPrint(e.ok ? 'out' : 'dim', (e.ok ? 'Howie drafted ' : 'click failed for ') + e.name);
+      else if (e.kind === 'queued') termPrint('dim', `queued ${e.name} for pick ${e.for_pick}`);
+      else if (e.kind === 'error') termPrint('dim', 'bridge error: ' + e.error);
+      else if (e.kind === 'start') termPrint('out', `bridge connected: ${e.title} · autopilot ${e.autopilot ? 'ON' : 'off'}`);
+      else if (e.kind === 'refused') termPrint('dim', 'bridge refused autopilot: ' + e.reason);
+      else if (e.kind === 'complete') termPrint('out', 'draft complete — run /coach review');
+    }
+  } catch (err) {}
+}
+setInterval(() => { if (!document.hidden) pollBridge(); }, 2000);

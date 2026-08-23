@@ -36,6 +36,12 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
   anchor and variance model all came out of this harness. One season of
   preseason inputs exists, so the CI covers draft-to-draft variance, not
   season-to-season.
+- **`howie coach run`** — an experimental strategy loop: Howie runs mock
+  drafts under the current strategy sheet, scores roster structure and season
+  simulations, asks Claude for bounded rule changes, and records the trace in
+  `data/coach_sessions.json`. Treat its current 2025 replay score as
+  diagnostic, not as an out-of-sample performance claim; follow-up work is
+  tracked in [HARDENING_BACKLOG.md](HARDENING_BACKLOG.md).
 - **`python3 -m howie3.mcp_server`** — the engine as MCP tools for Claude
   Desktop/Code: chat marks picks into the same draft log the cockpit shows.
 - **`howie ask "..."`** — in-repo natural-language agent (needs
@@ -79,6 +85,10 @@ Architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
 - **The agent needs the local database.** Context-only mode (`--context`)
   covers the draft board and Monte Carlo; the agent's player and
   knowledge-graph tools are not available from an artifact alone.
+- **Strategy rules are now active engine policy.** `WAIT`, `NO`, `TARGET`, and
+  positional `BY` rules affect the cockpit, mock-draft lab, and policy
+  replays. The policy layer is new and remains under hardening; validate target
+  resolution before relying on a target outside the displayed candidate set.
 
 ## Data: build it locally
 
@@ -104,12 +114,16 @@ machine — the `data/` directory is never committed.
 
 `howie context export` writes a **strategy-context artifact**: a small,
 versioned JSON of derived abstractions (tiers, availability probabilities,
-outcome summaries, the simulation parameters and variance buckets, and
-provenance) with no provider rows. It can be imported elsewhere
-(`howie context import`) and powers the draft views — Monte Carlo
-included — without a database. Packaging is an explicit allowlist
-(`MANIFEST.in`, `setup.py`): databases, `.env`, and `data/` never ship, and
-`tests/test_boundary.py` builds an sdist to prove it.
+outcome summaries, simulation parameters, variance buckets, and provenance)
+with no provider rows or raw scraped tables. Each user can construct the
+underlying local database independently from the documented source adapters.
+Only the necessary strategy context should be shared; the local `data/`
+directory, provider exports, raw draft data, and credentials stay on the
+machine. The artifact can be imported elsewhere (`howie context import`) and
+powers the draft views — Monte Carlo included — without a database.
+Packaging is an explicit allowlist (`MANIFEST.in`, `setup.py`): databases,
+`.env`, and `data/` never ship, and `tests/test_boundary.py` builds an sdist
+to prove it.
 
 ## Architecture (v3)
 
@@ -123,11 +137,13 @@ howie3/
   views.py         # command output as renderables
   state.py         # the draft event log (validated schema; every surface writes it)
   service.py       # the JSON contract every surface calls
+  value/policy.py  # strategy-rule effects applied to candidate rankings
   server.py        # cockpit HTTP server (session token on writes, CSP, body limit)
   ui/              # index.html (markup) + style.css + lib.js (pure helpers) + app.js
   egress.py        # the one redaction policy for model/MCP-bound payloads
   mcp_server.py    # MCP tools over the service layer
   agent.py         # Anthropic tool-calling agent (engine tools; SQL opt-in)
+  coach.py         # experimental mock-draft strategy coaching loop
   evals.py         # paired backtests with bootstrap CIs
 ```
 
