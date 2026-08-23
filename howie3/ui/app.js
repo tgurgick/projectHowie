@@ -1048,7 +1048,18 @@ async function pollBridge() {
       if (e.ts <= lastBridgeTs) continue;
       lastBridgeTs = e.ts; localStorage.setItem('bridgeTs', lastBridgeTs);
       if (e.kind === 'sync') termPrint('dim', 'room: ' + e.picks.join(' · ') + (e.unresolved.length ? ' · unresolved ' + e.unresolved.join(', ') : ''));
-      else if (e.kind === 'on_clock') termPrint('out', `ON THE CLOCK pick ${e.pick} → ` + e.best.map(b => `${b.pos} ${b.name} (${fmtDelta(b.delta)})`).join(' · '));
+      else if (e.kind === 'thinking') {
+        const band = c => c.p10 != null ? ` ${c.p10}–${c.p90}` : '';
+        termPrint('dim', `thinking for pick ${e.for_pick} · ${e.sims ? e.sims + ' simulated seasons' : 'deterministic'} · ${e.seconds}s`);
+        termPrint('out', e.candidates.map((c, i) => `${i + 1}. ${c.pos} ${c.name} ${c.value}${band(c)} · ${Math.round(c.avail_next * 100)}% there at ${e.next_pick}${i ? ' · ' + fmtDelta(c.delta) : ''}`).join('\n'));
+        const pc = Object.entries(e.positional || {}).filter(([, v]) => v.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 3);
+        if (pc.length) termPrint('dim', 'cost of waiting: ' + pc.map(([pos, v]) => `${pos} ${v.cost}`).join(' · '));
+        (e.why || []).forEach(w => termPrint('howie', w));
+      }
+      else if (e.kind === 'on_clock') {
+        termPrint('out', `ON THE CLOCK pick ${e.pick} → ` + e.best.map(b => `${b.pos} ${b.name} (${fmtDelta(b.delta)})`).join(' · '));
+        if (e.why && e.why.why && !e.why.sims) (e.why.why || []).forEach(w => termPrint('howie', w));
+      }
       else if (e.kind === 'draft_click') termPrint(e.ok ? 'out' : 'dim', (e.ok ? 'Howie drafted ' : 'click failed for ') + e.name);
       else if (e.kind === 'queued') termPrint('dim', `queued ${e.name} for pick ${e.for_pick}`);
       else if (e.kind === 'error') termPrint('dim', 'bridge error: ' + e.error);

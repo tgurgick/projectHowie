@@ -134,6 +134,39 @@ def room_config(text: str, title: str) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- reasoning
+
+def reasoning(pick: dict, positional: dict, sims: int) -> dict:
+    """What the Howie panel shows while the engine thinks: the top
+    candidates with value / outcome band / availability at the next pick,
+    the cost of waiting at each position, and the rules that fired."""
+    rows = pick["rows"][:4]
+    best = rows[0] if rows else None
+    alt = rows[1] if len(rows) > 1 else None
+    pos_cost = {r["pos"]: {"cost": r["cost"], "avail_next": r["avail_next"], "tier_drop": r["tier_drop"],
+                           "player": r["player"]} for r in positional.get("rows", [])}
+    why = []
+    if best:
+        if alt:
+            why.append(f"{best['name']} over {alt['name']}: {abs(alt['delta'])} pts of final-lineup value"
+                       + (f" ({alt['pos']} {int(alt['avail_next'] * 100)}% there next pick vs {best['pos']} {int(best['avail_next'] * 100)}%)" if alt["pos"] != best["pos"] else ""))
+        pc = pos_cost.get(best["pos"])
+        if pc:
+            why.append(f"waiting on {best['pos']} costs {pc['cost']} (next tier −{pc['tier_drop']}, {int(pc['avail_next'] * 100)}% chance the best is still there)")
+        if best.get("rules"):
+            why.append("rules: " + ", ".join(f["text"] for f in best["rules"]))
+        if best.get("status"):
+            why.append(f"status: {best['status']['text']}")
+    return {
+        "sims": sims,
+        "candidates": [{"name": r["name"], "pos": r["pos"], "value": r["value"], "delta": r["delta"],
+                        "p10": r.get("p10"), "p90": r.get("p90"), "avail_next": r["avail_next"],
+                        "avail_src": r.get("avail_src")} for r in rows],
+        "positional": {pos: {"cost": v["cost"], "avail_next": v["avail_next"]} for pos, v in pos_cost.items()},
+        "next_pick": pick["next_pick"], "why": why,
+    }
+
+
 # ---------------------------------------------------------------- the bridge
 
 class AutoDrafter:
@@ -448,10 +481,14 @@ class AutoDrafter:
                     last_clock_pick = nxt
                     taken = state.taken_uids()
                     rows = [r for r in (cached["rows"] or []) if r["uid"] not in taken] if cached["pick"] == nxt else []
-                    if not rows:  # nothing pre-computed for this pick: compute now
-                        rows = service.pick_payload(self.settings, state, sims=0, top_n=3)["rows"]
+                    why = cached.get("why") if (rows and cached["pick"] == nxt) else None
+                    if not rows:  # nothing pre-computed for this pick: compute now (deterministic, fast)
+                        pk = service.pick_payload(self.settings, state, sims=0, top_n=4)
+                        rows = pk["rows"]
+                        why = reasoning(pk, service.positions_payload(self.settings, state), 0)
                     log_event(self.settings, "on_clock", pick=nxt,
-                              best=[{"name": r["name"], "pos": r["pos"], "delta": r["delta"]} for r in rows[:3]])
+                              best=[{"name": r["name"], "pos": r["pos"], "delta": r["delta"]} for r in rows[:3]],
+                              why=why)
                     if rows and self.autopilot:
                         ok = self.click_draft(rows[0]["name"])
                         chosen = rows[0]
@@ -463,10 +500,15 @@ class AutoDrafter:
                     # the pick after this one may also be ours (the turn): prepare it
                     cached = {"pick": None, "rows": []}
                 elif not clock and my_next is not None and self.autopilot and cached["pick"] != my_next:
-                    # one or two picks away: compute Howie's ranking now and put the
-                    # top two in the room's queue so the timer fallback is his
-                    rows = service.pick_payload(self.settings, state, sims=0, top_n=3)["rows"]
-                    cached = {"pick": my_next, "rows": rows}
+                    # one or two picks away: run the Monte Carlo on the top candidates
+                    # (there is time now, not on the clock), stream the reasoning, and
+                    # put the top two in the room's queue so the timer fallback is his
+                    t0 = time.time()
+                    pk = service.pick_payload(self.settings, state, sims=100, top_n=5)
+                    rows = pk["rows"]
+                    why = reasoning(pk, service.positions_payload(self.settings, state), 100)
+                    cached = {"pick": my_next, "rows": rows, "why": why}
+                    log_event(self.settings, "thinking", for_pick=my_next, seconds=round(time.time() - t0, 1), **why)
                     for r in rows[:2]:
                         if r["name"] not in self.queued and self.queue(r["name"]):
                             log_event(self.settings, "queued", name=r["name"], for_pick=my_next)
