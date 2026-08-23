@@ -143,7 +143,17 @@ class AutoDrafter:
             self._pw.stop()
 
     # -- reads
+    def _follow_room(self) -> None:
+        """ESPN opens the draft room in a new window from the lobby: follow
+        whichever page is the room."""
+        for pg in self.ctx.pages:
+            if "/football/draft" in pg.url and pg is not self.page:
+                self.page = pg
+                log_event(self.settings, "room", url=pg.url, title=pg.title())
+                break
+
     def room_text(self) -> str:
+        self._follow_room()
         return self.page.inner_text("body")
 
     def picks_text(self) -> str:
@@ -167,17 +177,45 @@ class AutoDrafter:
         self.page.wait_for_timeout(350)
 
     def _row_button(self, name: str, label: str):
-        row = self.page.locator("tr", has_text=name).first
-        if not row.count():
-            row = self.page.locator("[class*='row']", has_text=name).first
-        return row.get_by_role("button", name=re.compile(label, re.I)).first
+        """The button labelled `label` on the row that names the player. ESPN's
+        list is virtualized: the first text match can be an off-screen clone,
+        so prefer a visible row and scroll it into view before clicking."""
+        pattern = re.compile(label, re.I)
+        for sel in ("tr", "[class*='row']", "[class*='player']", "li", "div"):
+            rows = self.page.locator(sel, has_text=name)
+            n = min(rows.count(), 6)
+            for i in range(n):
+                row = rows.nth(i)
+                btn = row.locator("button").filter(has_text=pattern)
+                if btn.count():
+                    b = btn.first
+                    try:
+                        if b.is_visible():
+                            return b
+                    except Exception:
+                        continue
+        return None
+
+    def _click(self, btn) -> bool:
+        try:
+            btn.scroll_into_view_if_needed(timeout=1000)
+        except Exception:
+            pass
+        try:
+            btn.click(timeout=3000)
+            return True
+        except Exception:
+            try:
+                btn.click(force=True, timeout=2000)
+                return True
+            except Exception:
+                return False
 
     def click_draft(self, name: str) -> bool:
         self._search(name)
-        btn = self._row_button(name, "DRAFT")
-        if not btn.count():
+        btn = self._row_button(name, "^draft$")
+        if btn is None or not self._click(btn):
             return False
-        btn.click(timeout=2000)
         self.page.wait_for_timeout(400)
         confirm = self.page.get_by_role("button", name=re.compile("^(draft|confirm|yes)$", re.I))
         if confirm.count():
@@ -191,10 +229,9 @@ class AutoDrafter:
         if name in self.queued:
             return True
         self._search(name)
-        btn = self._row_button(name, "QUEUE")
-        if not btn.count():
+        btn = self._row_button(name, "^queue$")
+        if btn is None or not self._click(btn):
             return False
-        btn.click(timeout=2000)
         self.queued.add(name)
         return True
 
@@ -254,7 +291,8 @@ class AutoDrafter:
                         if not ok and len(pk["rows"]) > 1:
                             best = pk["rows"][1]
                             ok = self.click_draft(best["name"])
-                        log_event(self.settings, "draft_click", name=best["name"], ok=ok)
+                        log_event(self.settings, "draft_click", name=best["name"], ok=ok,
+                                  fallback="queue" if (not ok and self.queued) else None)
                 elif not on_clock(body) and self.autopilot:
                     # pre-queue Howie's top two when our pick is within three
                     nxt = state.next_pick_no()
