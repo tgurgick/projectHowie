@@ -53,7 +53,7 @@ def _user_pick(policy: str, pool: List[PoolPlayer], taken: set, roster: List[Poo
     if policy == "howie":
         # wide candidate set so a blocked position leaves others to choose from
         res = evaluate_candidates(pool, roster, pick_no, future, league, frozenset(taken), top_n=48 if effects else 1)
-        res = apply_rules(res, rnd, effects or {}, roster_counts(roster))
+        res = apply_rules(res, rnd, effects or {}, roster_counts(roster), roster)
         if res:
             return res[0].player
     tp: Dict[str, int] = {}

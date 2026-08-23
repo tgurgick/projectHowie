@@ -215,7 +215,7 @@ class DraftState:
     def active_rule_effects(self) -> Dict[str, list]:
         """Parse ON rules into effects the ranking layer applies:
         targets: [player name], wait: [(POS, round)], ban: [(POS, round)]."""
-        effects: Dict[str, list] = {"targets": [], "wait": [], "ban": [], "need": []}
+        effects: Dict[str, list] = {"targets": [], "wait": [], "ban": [], "need": [], "bye_cap": [], "age": []}
         for rule in self.rules:
             if not rule.on:
                 continue
@@ -231,6 +231,14 @@ class DraftState:
             m = re.match(r"(?i)(\d+)\s+(QB|RB|WR|TE)s?\s+by\s+r(?:ound)?\s*(\d+)", text)
             if m:
                 effects["need"].append((m.group(2).upper(), int(m.group(1)), int(m.group(3))))
+                continue
+            m = re.match(r"(?i)no\s+bye\s+stack\s*(?:>|over|above)\s*(\d+)", text)
+            if m:
+                effects["bye_cap"].append(int(m.group(1)))   # at most N starters may share a bye
+                continue
+            m = re.match(r"(?i)no\s+(QB|RB|WR|TE)\s+age\s*(?:>=|over|above|\+)?\s*(\d+)\+?\s+before\s+r(?:ound)?\s*(\d+)", text)
+            if m:
+                effects["age"].append((m.group(1).upper(), int(m.group(2)), int(m.group(3))))
                 continue
             m = re.match(r"(?i)no\s+([A-Z/\s]+?)\s+before\s+r(?:ound)?\s*(\d+)", text)
             if m:
@@ -257,6 +265,11 @@ def rule_key(text: str) -> Optional[Tuple[str, str]]:
     m = re.match(r"(?i)(\d+)\s+(QB|RB|WR|TE)s?\s+by\s+r", t)
     if m:
         return ("need", m.group(2).upper())
+    if re.match(r"(?i)no\s+bye\s+stack", t):
+        return ("bye_cap", "*")
+    m = re.match(r"(?i)no\s+(QB|RB|WR|TE)\s+age", t)
+    if m:
+        return ("age", m.group(1).upper())
     return None
 
 

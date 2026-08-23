@@ -46,6 +46,7 @@ class PoolPlayer:
     # live board (value/flow.py). Beats the lab blend and the analytic model
     # for those picks.
     flow_avail: Optional[Dict[int, float]] = None
+    age: Optional[float] = None   # as of the season's September 1 (birthdate from the crosswalk)
     # Availability prior for players with NO market ADP: an implied pick past
     # the drafted range, ordered by projection, with a wide spread. Never
     # shown as an ADP; only used so late-round availability is not a flat 100%.
@@ -103,7 +104,7 @@ def apply_market_anchor(pool: List[PoolPlayer], weight: float) -> List[PoolPlaye
             new_proj = (1 - weight) * p.proj + weight * implied if implied is not None else p.proj
             blended.append(PoolPlayer(p.uid, p.name, p.position, p.team,
                                       round(new_proj, 1), p.adp, p.stdev, p.bye,
-                                      raw=p.raw if p.raw is not None else p.proj))
+                                      raw=p.raw if p.raw is not None else p.proj, age=p.age))
     blended.sort(key=lambda p: -p.proj)
     return blended
 
@@ -118,7 +119,7 @@ def load_pool(
 ) -> List[PoolPlayer]:
     rows = conn.execute(
         f"""
-        SELECT pr.player_uid, p.name, pr.position, pr.team,
+        SELECT pr.player_uid, p.name, pr.position, pr.team, p.birthdate,
                pr.pts_{fmt} AS proj, a.adp, a.stdev, a.bye_week
         FROM projections pr
         JOIN players p ON p.player_uid = pr.player_uid
@@ -133,6 +134,7 @@ def load_pool(
         PoolPlayer(
             r["player_uid"], r["name"], r["position"], r["team"],
             float(r["proj"]), r["adp"], r["stdev"], r["bye_week"],
+            age=_age_on(r["birthdate"], season),
         )
         for r in rows
         if r["position"] in POSITIONS
@@ -142,6 +144,17 @@ def load_pool(
     # Status is applied AFTER the anchor: a stale ADP must not pull an
     # injured or released player's value back up.
     return apply_status(pool, current_status(conn, season))
+
+
+def _age_on(birthdate: Optional[str], season: int) -> Optional[float]:
+    if not birthdate:
+        return None
+    try:
+        from datetime import date
+        y, m, d = (int(x) for x in str(birthdate)[:10].split("-"))
+        return round((date(season, 9, 1) - date(y, m, d)).days / 365.25, 1)
+    except (ValueError, TypeError):
+        return None
 
 
 def apply_implied_adp(pool: List[PoolPlayer]) -> None:

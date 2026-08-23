@@ -162,7 +162,8 @@ Respond with ONLY a JSON object:
 {"learnings": [3 specific sentences citing the numbers],
  "rules_add": ["WAIT QB UNTIL R7", ...],      // ONLY these exact patterns:
  "rules_remove": ["NO QB BEFORE R3", ...],    //   'WAIT <POS> UNTIL R<n>', 'NO <POS> BEFORE R<n>',
- "note": "ONE line, <= 30 words, only if it adds something new",//   '<n> <POS> BY R<n>', 'TARGET <Player Name>'
+ "note": "ONE line, <= 30 words, only if it adds something new",//   '<n> <POS> BY R<n>', 'TARGET <Player Name>',
+                                               //   'NO BYE STACK > <n>', 'NO <POS> AGE <a>+ BEFORE R<n>'
  "round_targets": {"1": "RB", "2": "WR", ...}} // optional: position per round you'd aim for
 Change at most 3 rules per iteration; removing a rule that hurt is as valuable
 as adding one. If the replay says the current rules beat the baseline and the
@@ -194,7 +195,7 @@ def _coach_call(settings: Settings, digest: dict) -> dict:
             "round_targets": parsed.get("round_targets") or {}}
 
 
-RULE_OK = re.compile(r"(?i)^(WAIT (QB|RB|WR|TE|K|DST) UNTIL R\d+|NO (QB|RB|WR|TE|K|DST) BEFORE R\d+|\d+ (QB|RB|WR|TE)S? BY R\d+|TARGET .+)$")
+RULE_OK = re.compile(r"(?i)^(WAIT (QB|RB|WR|TE|K|DST) UNTIL R\d+|NO (QB|RB|WR|TE|K|DST) BEFORE R\d+|\d+ (QB|RB|WR|TE)S? BY R\d+|TARGET .+|NO BYE STACK ?> ?\d+|NO (QB|RB|WR|TE) AGE \d+\+? BEFORE R\d+)$")
 
 
 def digest_for(settings: Settings, rules: List[Rule], notes: str, current: dict,

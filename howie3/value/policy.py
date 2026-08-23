@@ -22,15 +22,31 @@ TARGET_TOLERANCE = 15.0   # engine value points a target may trail the best by a
 
 
 def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
-                roster_positions: Dict[str, int]) -> List:
-    """Reorder PickPlan-like objects (have .player with .name/.position)."""
+                roster_positions: Dict[str, int], roster: Sequence = ()) -> List:
+    """Reorder PickPlan-like objects (have .player with .name/.position).
+    `roster` (PoolPlayers) is needed for the bye-stack cap."""
     from ..data.names import name_key
 
     if not effects or not results:
         return list(results)
     blocked = {pos for pos, until in effects.get("wait", []) if rnd < until}
     blocked |= {pos for pos, before in effects.get("ban", []) if rnd < before}
-    allowed = [r for r in results if r.player.position not in blocked] or list(results)
+    age_rules = [(pos, age, before) for pos, age, before in effects.get("age", []) if rnd < before]
+
+    def too_old(p) -> bool:
+        return any(p.position == pos and (p.age or 0) >= age for pos, age, _ in age_rules)
+
+    allowed = [r for r in results if r.player.position not in blocked and not too_old(r.player)] or list(results)
+    caps = effects.get("bye_cap", [])
+    if caps and roster:
+        cap = min(caps)
+        bye_counts: Dict[int, int] = {}
+        for p in roster:
+            if getattr(p, "bye", None):
+                bye_counts[p.bye] = bye_counts.get(p.bye, 0) + 1
+        stacked = {r.player.uid for r in allowed
+                   if getattr(r.player, "bye", None) and bye_counts.get(r.player.bye, 0) + 1 > cap}
+        allowed = [r for r in allowed if r.player.uid not in stacked] + [r for r in allowed if r.player.uid in stacked]
 
     forced = set()
     for pos, n, by in effects.get("need", []):

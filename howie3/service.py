@@ -356,7 +356,7 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
     if sims > 0:
         results = mc_rerank(conn, results, roster, pool, league,
                             settings.current_season, n_sims=sims)
-    results = apply_rules(results, rnd, effects, roster_counts(roster))
+    results = apply_rules(results, rnd, effects, roster_counts(roster), roster)
 
     rows: List[JsonDict] = []
     span = _outcome_span(results, sims)
@@ -498,13 +498,13 @@ def sequence_payload(settings: Settings, state: DraftState, now_uid: Optional[st
     effects = state.active_rule_effects()
     # 1. the strategy prior: the rollout WITHOUT conditioned availability
     prior = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6)
-    prior = apply_rules(prior, rnd, effects, roster_counts(roster))
+    prior = apply_rules(prior, rnd, effects, roster_counts(roster), roster)
     prior_plan = prior[0].plan_positions[:FLOW_HORIZON] if prior else []
     # 2. the same decision with the live board rolled forward (plan-aware at my own picks)
     flow = draft_flow_for(settings, state, pool, plan=prior_plan)
     attach(pool, flow)
     results = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6)
-    results = apply_rules(results, rnd, effects, roster_counts(roster))
+    results = apply_rules(results, rnd, effects, roster_counts(roster), roster)
     if not results:
         return {"now": None, "next": [], "runs": flow.runs, "horizon_picks": flow.picks}
     # follow the board's Monte Carlo best when the server has one for this generation
@@ -633,6 +633,11 @@ def _round_rules(effects: Dict[str, list], rnd: int) -> List[dict]:
     for pos, n, by in effects.get("need", []):
         if rnd <= by:
             out.append({"type": "need", "pos": pos, "text": f"{n} {pos} by R{by}"})
+    for cap in effects.get("bye_cap", []):
+        out.append({"type": "wait", "pos": "*", "text": f"bye stack ≤ {cap}"})
+    for pos, age, before in effects.get("age", []):
+        if rnd < before:
+            out.append({"type": "ban", "pos": pos, "text": f"no {pos} {age}+ before R{before}"})
     return out
 
 
@@ -893,7 +898,7 @@ def strategy_payload(state: DraftState) -> dict:
     for r in state.rules:
         probe = DS(rules=[type(r)(text=r.text, on=True)])
         fx = probe.active_rule_effects()
-        inert = not (fx["targets"] or fx["wait"] or fx["ban"] or fx["need"])
+        inert = not any(fx[k] for k in ("targets", "wait", "ban", "need", "bye_cap", "age"))
         rows.append({"text": r.text, "on": r.on, "inert": inert})
     return {"rules": rows, "notes": state.notes}
 

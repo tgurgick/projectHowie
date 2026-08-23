@@ -90,7 +90,7 @@ def generate_insights(settings: Settings, kind: str, payload: Dict[str, Any]) ->
         "Respond with ONLY a JSON object: {\"learnings\": [exactly 3 separate strings, one specific sentence each], "
         "\"suggestions\": [{\"type\": \"rule\"|\"note\", \"text\": \"...\", \"why\": \"...\"}]}. "
         "Rules must use these exact patterns so the engine can enforce them: "
-        "'WAIT <POS> UNTIL R<n>', 'TARGET <Player Name>', 'NO <POS> BEFORE R<n>'. "
+        "'WAIT <POS> UNTIL R<n>', 'TARGET <Player Name>', 'NO <POS> BEFORE R<n>', '<n> <POS> BY R<n>', 'NO BYE STACK > <n>', 'NO <POS> AGE <a>+ BEFORE R<n>'. "
         "Notes are free text (one line). Zero suggestions is fine if nothing should change. "
         "Keep each learning under 35 words and at most 3 suggestions. Cite numbers from the data. No preamble."
     )
