@@ -232,7 +232,7 @@ def _coach_call(settings: Settings, digest: dict) -> dict:
     user = (f"League: {league.num_teams}-team, slot {league.draft_position}, {league.scoring_format}, "
             f"roster {league.roster_size}.\n\nDIGEST:\n{json.dumps(digest, default=str)[:16000]}")
     try:
-        resp = client.messages.create(model=_model(), max_tokens=1800, system=COACH_SYSTEM,
+        resp = client.messages.create(model=_model(), max_tokens=6000, system=COACH_SYSTEM,
                                       messages=[{"role": "user", "content": user}])
     except Exception as e:
         return {"available": False, "reason": f"{e.__class__.__name__}: {e}"}
@@ -464,4 +464,63 @@ def review_draft(settings: Settings, picks: List[dict]) -> dict:
                        "weak_weeks": [t["week"] for t in grid["week_totals"] if t["level"] == "red"],
                        "bye_stacks": [t["week"] for t in grid["week_totals"] if len(t["bye"]) >= 3]},
     }
+    return {"digest": digest, "coach": _coach_call(settings, digest)}
+
+
+def review_recent(settings: Settings, n: int = 2) -> dict:
+    """Coach the last n real drafts together: the current log plus the
+    archived cockpit drafts (newest first). One call sees all of them, so it
+    can say what repeated — the signal one draft cannot give."""
+    from . import service
+    from .mocksim import load_store
+    from .value.distributions import build_sim_players
+    from .value.simulate import simulate_roster
+
+    league = settings.league
+    state = DraftState.load(settings)
+    drafts: List[dict] = []
+    if state.events:
+        drafts.append({"label": "current", "mine": [e.player_uid for e in state.events if e.mine],
+                       "picks": [e.player_uid for e in state.events], "created": state.created})
+    for d in reversed(load_store(settings)["drafts"]):
+        if d.get("source", "").startswith("cockpit") and d.get("mine") and d.get("created") != state.created:
+            drafts.append({"label": d["source"], "mine": d["mine"], "picks": d["picks"], "created": d.get("created")})
+        if len(drafts) >= n:
+            break
+    conn = service._conn(settings)
+    pool = service._pool(settings, conn)
+    by_uid = {p.uid: p for p in pool}
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+    games = {r["player_uid"]: r["games"] for r in conn.execute(
+        "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'", (settings.current_season,))}
+    summaries = []
+    for d in drafts:
+        roster = [by_uid[u] for u in d["mine"] if u in by_uid]
+        order = {u: i + 1 for i, u in enumerate(d["picks"])}
+        sps = build_sim_players(conn, roster, settings.current_season, league.scoring_format, proj_rank, games)
+        sim = simulate_roster(sps, league, n_sims=300) if roster else None
+        grid = service.season_grid_for(settings, pool, roster)
+        summaries.append({
+            "draft": d["label"], "created": (d.get("created") or "")[:16],
+            "picks": [{"pick": order.get(p.uid), "round": (order.get(p.uid, 1) - 1) // league.num_teams + 1,
+                       "pos": p.position, "name": p.name, "proj": round(p.raw or p.proj), "adp": p.adp} for p in roster],
+            "by_pos": {pos: sum(1 for p in roster if p.position == pos) for pos in ("QB", "RB", "WR", "TE", "K", "DST")},
+            "mc_mean": round(sim.mean) if sim else None, "mc_p10": round(sim.p10) if sim else None, "mc_p90": round(sim.p90) if sim else None,
+            "weak_weeks": [t["week"] for t in grid["week_totals"] if t["level"] == "red"],
+            "bye_stacks": [t["week"] for t in grid["week_totals"] if len(t["bye"]) >= 3],
+            "worst_week": min((t["pts"] for t in grid["week_totals"]), default=0),
+            "reaches": [f"{p.name} R{(order.get(p.uid, 1) - 1) // league.num_teams + 1} (ADP round {int((p.adp - 1) // league.num_teams + 1)})"
+                        for p in roster if p.adp and (order.get(p.uid, 1) - 1) // league.num_teams + 1 < (p.adp - 1) // league.num_teams],
+        })
+    conn.close()
+    digest = {"rules": [r.text for r in state.rules if r.on], "notes": state.notes[-1500:],
+              "league": {"teams": league.num_teams, "slot": league.draft_position, "scoring": league.scoring_format},
+              "drafts": summaries,
+              "ask": "These are real ESPN rooms; the most recent is an expert room and the closest proxy for "
+                     "the real draft. Say what REPEATED across them (timing, positions, structure), what the "
+                     "engine got right, and the specific rule changes that would have improved BOTH."}
     return {"digest": digest, "coach": _coach_call(settings, digest)}

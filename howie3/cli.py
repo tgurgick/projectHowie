@@ -330,14 +330,31 @@ def _print_session(session: dict) -> None:
 
 
 @coach.command("review")
-def coach_review() -> None:
-    """Coach the current draft log (e.g. a real room observed with Claude in Chrome)."""
+@click.option("--last", default=1, help="Review the last N real drafts together (current log + archived)")
+def coach_review(last: int) -> None:
+    """Coach the current draft log (or the last N real drafts together)."""
     import json as _json
 
     from . import coach as coach_mod
     from .state import DraftState
 
     settings = Settings()
+    if last > 1:
+        r = coach_mod.review_recent(settings, last)
+        for d in r["digest"]["drafts"]:
+            console.print(f"[bold]{d['draft']}[/bold] {d['created']} · MC {d['mc_mean']} (p10 {d['mc_p10']}) · worst week {d['worst_week']} · "
+                          f"bye stacks {d['bye_stacks']} · reaches {d['reaches'] or 'none'}")
+            console.print("  " + " ".join(f"R{p['round']}:{p['pos']}" for p in sorted(d["picks"], key=lambda x: x["pick"] or 0)))
+        c = r["coach"]
+        if not c.get("available"):
+            raise click.ClickException(c.get("reason", "coach unavailable"))
+        for l in c.get("learnings", []):
+            console.print(f"  • {l}")
+        if c.get("rules_add") or c.get("rules_remove"):
+            console.print(f"suggested: add {c.get('rules_add')} · remove {c.get('rules_remove')}")
+        if c.get("note"):
+            console.print(f"[dim]{c['note']}[/dim]")
+        return
     st = DraftState.load(settings)
     picks = [{"uid": e.player_uid, "name": e.player_name} for e in st.events if e.mine]
     if not picks:
