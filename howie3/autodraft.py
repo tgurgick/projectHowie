@@ -179,31 +179,36 @@ class AutoDrafter:
         return self.room_text()
 
     # -- actions (player search box, then the row's button — never coordinates)
-    def _search(self, name: str) -> None:
+    def _search(self, name: str):
+        """ESPN's player search is an autocomplete: type, then click the
+        suggestion (button.player--search--match, which carries the player
+        id); the table then shows that player's row. Returns the id."""
         box = self.page.get_by_placeholder("Player Name").first
         box.fill("", timeout=1500)
         box.fill(name, timeout=1500)
-        # wait until the filtered list actually shows him (the old list can
-        # linger for a few hundred ms and its first button is someone else's)
+        match = self.page.locator("button.player--search--match").filter(has_text=name.split()[-1])
         try:
-            self.page.get_by_text(name, exact=False).first.wait_for(state="visible", timeout=1500)
+            match.first.wait_for(state="visible", timeout=2000)
         except Exception:
-            pass
-        self.page.wait_for_timeout(120)
+            return self.player_ids.get(name)
+        exact = self.page.locator(f"button.player--search--match[data-player-search-playername='{name}']")
+        target = exact.first if exact.count() else match.first
+        pid = target.get_attribute("data-player-search-playerid", timeout=500)
+        target.click(timeout=1500)
+        if pid:
+            self.player_ids[name] = pid
+        self.page.wait_for_timeout(250)
+        return pid
 
-    def _row_button(self, name: str, label: str):
-        """The `label` button INSIDE the row that names the player — never a
-        button from a neighbouring row."""
-        pattern = re.compile(label, re.I)
-        btns = self.page.locator("button").filter(has_text=pattern)
-        for i in range(min(btns.count(), 8)):
+    def _row_button(self, pid, label: str):
+        """The visible DRAFT / QUEUE button that carries this player id."""
+        if not pid:
+            return None
+        btns = self.page.locator(f"button[data-player-id='{pid}']")
+        for i in range(min(btns.count(), 6)):
             b = btns.nth(i)
             try:
-                if not b.is_visible():
-                    continue
-                # the nearest ancestor that contains the player's name
-                owner = b.locator("xpath=ancestor::*[contains(., %s)][1]" % json.dumps(name))
-                if owner.count() and len(owner.first.inner_text(timeout=300)) < 400:
+                if b.is_visible() and re.search(label, b.inner_text(timeout=300), re.I):
                     return b
             except Exception:
                 continue
@@ -224,33 +229,18 @@ class AutoDrafter:
             except Exception:
                 return False
 
-    def _debug_row(self, name: str) -> str:
+    def _debug_buttons(self, pid) -> str:
         try:
-            owner = self.page.get_by_text(name, exact=False).first.locator("xpath=ancestor::*[3]")
-            return owner.inner_html(timeout=500)[:900]
+            btns = self.page.locator(f"button[data-player-id='{pid}']")
+            return " | ".join(btns.nth(i).inner_text(timeout=200).strip() for i in range(min(btns.count(), 4))) or "(no buttons with that id)"
         except Exception as e:
-            return f"(no row html: {e.__class__.__name__})"
+            return f"(debug failed: {e.__class__.__name__})"
 
     def click_draft(self, name: str) -> bool:
-        self._search(name)
-        btn = None
-        pid = self.player_ids.get(name)
-        if pid:
-            # the same data-player-id the QUEUE button carried; the DRAFT
-            # button on the clock is the other visible button with it
-            cands = self.page.locator(f"button[data-player-id='{pid}']")
-            for i in range(min(cands.count(), 6)):
-                b = cands.nth(i)
-                try:
-                    if b.is_visible() and not re.search("queue", b.inner_text(timeout=300), re.I):
-                        btn = b
-                        break
-                except Exception:
-                    continue
-        if btn is None:
-            btn = self._row_button(name, "draft")
+        pid = self._search(name)
+        btn = self._row_button(pid, "draft")
         if btn is None or not self._click(btn):
-            log_event(self.settings, "draft_button_missing", name=name, pid=pid, row=self._debug_row(name))
+            log_event(self.settings, "draft_button_missing", name=name, pid=pid, buttons=self._debug_buttons(pid))
             return False
         self.page.wait_for_timeout(400)
         confirm = self.page.get_by_role("button", name=re.compile("^(draft|confirm|yes)$", re.I))
@@ -264,17 +254,11 @@ class AutoDrafter:
     def queue(self, name: str) -> bool:
         if name in self.queued:
             return True
-        self._search(name)
-        btn = self._row_button(name, "queue")
+        pid = self._search(name)
+        btn = self._row_button(pid, "queue")
         if btn is None or not self._click(btn):
-            log_event(self.settings, "queue_button_missing", name=name, row=self._debug_row(name))
+            log_event(self.settings, "queue_button_missing", name=name, pid=pid, buttons=self._debug_buttons(pid))
             return False
-        try:
-            pid = btn.get_attribute("data-player-id", timeout=300)
-            if pid:
-                self.player_ids[name] = pid
-        except Exception:
-            pass
         self.queued.add(name)
         return True
 
