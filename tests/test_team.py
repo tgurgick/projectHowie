@@ -47,3 +47,17 @@ def test_team_payload_fuses_chart_projection_status_and_board(tmp_path, monkeypa
     assert r["next_pick"] > r["current_pick"]
     with pytest.raises(ValueError):
         service.team_payload(s, DraftState.load(s), "XYZ")
+
+
+def test_resolve_team_accepts_codes_names_and_nicknames():
+    from howie3.service import resolve_team
+
+    assert resolve_team("phi") == "PHI"
+    assert resolve_team("eagles") == "PHI"
+    assert resolve_team("Philadelphia Eagles") == "PHI"
+    assert resolve_team("philly") == "PHI"
+    assert resolve_team("giants") == "NYG"
+    with pytest.raises(ValueError, match="matches"):
+        resolve_team("new york")
+    with pytest.raises(ValueError):
+        resolve_team("mars")

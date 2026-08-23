@@ -660,15 +660,15 @@ async function askHowie(kind) {
 
 let TEAM = localStorage.getItem('teamTab') || 'PHI', teamListLoaded = false;
 async function loadTeamTab(team) {
-  if (team) { TEAM = team; localStorage.setItem('teamTab', TEAM); }
   if (!teamListLoaded) {
     const st = await api('/api/research/status');
     $('teamSel').innerHTML = h`${st.teams.map(t => h`<option value="${t.team}">${t.team} — ${t.name}</option>`)}`;
     $('teamSel').addEventListener('change', () => loadTeamTab($('teamSel').value));
     teamListLoaded = true;
   }
+  const r = await api('/api/team?team=' + encodeURIComponent(team || TEAM));
+  TEAM = r.team; localStorage.setItem('teamTab', TEAM);
   $('teamSel').value = TEAM;
-  const r = await api('/api/team?team=' + encodeURIComponent(TEAM));
   renderTeam(r);
 }
 function renderTeam(r) {
@@ -763,7 +763,11 @@ async function findPlayer(q) { const hits = await api('/api/search?q=' + encodeU
 
 // One keystroke per pick: the classification decides, the modifier decides the action.
 async function handleEntry(line, items, selIdx, ev) {
-  const cls = classifyInput(line, items, selIdx);
+  let cls = classifyInput(line, items, selIdx);
+  if ((cls.kind === 'nomatch' || (cls.kind === 'ask' && !/^[?]|^(hey\s+)?howie/i.test(line))) && !(items && items.length)) {
+    // Enter landed before the dropdown fetch came back — look it up now
+    try { cls = classifyInput(line, await api('/api/search?q=' + encodeURIComponent(line)), -1); } catch (e) {}
+  }
   if (cls.kind === 'player') {
     let action = ev.key === 'Tab' ? 'card' : pickAction(ev, drafting());
     if (cls.hit.taken && action !== 'card') {
@@ -777,7 +781,7 @@ async function handleEntry(line, items, selIdx, ev) {
   }
   if (cls.kind === 'team') {
     termPrint('cmd', '› ' + (cls.hit ? cls.hit.name : cls.team) + '  → team report');
-    showTab('team'); return loadTeamTab(cls.team);
+    showTab('team'); return loadTeamTab(cls.team).catch(e => termPrint('dim', e.message));
   }
   if (cls.kind === 'nomatch') {
     termPrint('cmd', '› ' + line);
@@ -811,7 +815,7 @@ async function handleTerm(line, acItems, cls) {
         '/read · Howie reads the board', '/sim NAME · simulate a season', '/mock N [howie|adp] · run mock drafts', '/research TEAM|NAME · deep research',
         '/sql SELECT … · read-only query', '/data Q · look up a player/team/room', '/strategy · show rules & notes', '/ask Q or ?Q · ask Howie'].join('\n'));
     } else if (cmd === 'ask') { return handleTerm('?' + arg, acItems); }
-    else if (cmd === 'team') { showTab('team'); await loadTeamTab((arg || TEAM).toUpperCase()); }
+    else if (cmd === 'team') { showTab('team'); await loadTeamTab(arg || TEAM); }
     else if (cmd === 'card') { const p = await findPlayer(arg); p ? openCard(p.uid) : termPrint('dim', 'no player found'); }
     else if (cmd === 'mine' || cmd === 'taken') { const p = await findPlayer(arg); p ? await mark(p.uid, cmd === 'mine') : termPrint('dim', 'no player found'); }
     else if (cmd === 'undo') { await undoPick(); }

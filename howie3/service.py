@@ -459,6 +459,26 @@ def card_payload(settings: Settings, uid: str) -> dict:
 
 # ------------------------------------------------------------ TEAM report
 
+def resolve_team(q: str) -> str:
+    """'PHI', 'phi', 'eagles', 'Philadelphia Eagles', 'philly' -> 'PHI'."""
+    from .graph import TEAM_NAMES
+
+    text = (q or "").strip()
+    if text.upper() in TEAM_NAMES:
+        return text.upper()
+    low = text.lower()
+    aliases = {"philly": "PHI", "niners": "SF", "49ers": "SF", "jags": "JAX", "bucs": "TB",
+               "pats": "NE", "skins": "WAS", "commanders": "WAS", "rams": "LA", "chargers": "LAC",
+               "raiders": "LV", "jets": "NYJ", "giants": "NYG"}
+    if low in aliases:
+        return aliases[low]
+    hits = [code for code, name in TEAM_NAMES.items()
+            if low and (low in name.lower() or name.lower().split()[-1] == low)]
+    if len(hits) == 1:
+        return hits[0]
+    raise ValueError(f"Unknown team {q!r}" + (f" (matches {', '.join(sorted(hits))})" if hits else ""))
+
+
 def team_payload(settings: Settings, state: DraftState, team: str) -> dict:
     """Everything the TEAM tab shows: header facts, the official depth chart
     fused with projections / ADP / last-season share / status / researched
@@ -471,9 +491,7 @@ def team_payload(settings: Settings, state: DraftState, team: str) -> dict:
     from .status import research_coverage
     from .value.distributions import team_bye_weeks
 
-    team = team.upper()
-    if team not in TEAM_NAMES:
-        raise ValueError(f"Unknown team {team!r}")
+    team = resolve_team(team)
     league = settings.league
     conn = _conn(settings)
     ensure_graph_schema(conn)
