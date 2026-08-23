@@ -43,6 +43,7 @@ class EvalPlayer:
     adp: Optional[float]
     actual_total: float
     actual_weeks: Dict[int, float]
+    age: Optional[float] = None   # as of Sept 1 of the eval season (so age rules replay honestly)
 
     @property
     def stdev(self) -> float:
@@ -75,6 +76,10 @@ def load_eval_players(settings: Settings) -> List[EvalPlayer]:
         "WHERE season = ? AND scoring_format = 'ppr'", (EVAL_SEASON,)):
         adp[(name_key(r["player_name"]), fix_position(r["position"]))] = r["avg_adp"]
 
+    from .value.board import _age_on
+
+    birthdates = {r["player_uid"]: r["birthdate"] for r in conn.execute(
+        "SELECT player_uid, birthdate FROM players WHERE birthdate IS NOT NULL")}
     out: List[EvalPlayer] = []
     seen = set()
     for r in lconn.execute(
@@ -113,6 +118,7 @@ def load_eval_players(settings: Settings) -> List[EvalPlayer]:
             adp=adp.get((name_key(r["player_name"]), pos)),
             actual_total=round(sum(w.values()), 1),
             actual_weeks=w,
+            age=_age_on(birthdates.get(uid), EVAL_SEASON),
         ))
     lconn.close()
     conn.close()
@@ -200,7 +206,7 @@ def eval_calibration(settings: Settings, players: List[EvalPlayer],
 
 def _to_pool_player(p: EvalPlayer) -> PoolPlayer:
     return PoolPlayer(uid=p.uid, name=p.name, position=p.position, team=None,
-                      proj=p.proj, adp=p.adp, stdev=p.stdev, bye=None)
+                      proj=p.proj, adp=p.adp, stdev=p.stdev, bye=None, age=p.age)
 
 
 def _score_roster(players: List[EvalPlayer], league) -> float:
