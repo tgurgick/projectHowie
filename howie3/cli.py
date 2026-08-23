@@ -258,11 +258,12 @@ def coach() -> None:
 @click.option("--drafts", default=12, help="Simulated drafts per round")
 @click.option("--reps", default=6, help="2025 replay reps per slot (paired vs ADP)")
 @click.option("--seed", default=101)
-def coach_run(iterations: int, drafts: int, reps: int, seed: int) -> None:
-    """Simulate → score → coach → apply, keeping the best rule set."""
+@click.option("--workers", default=None, type=int, help="Parallel scoring processes (default: cores-1)")
+def coach_run(iterations: int, drafts: int, reps: int, seed: int, workers: Optional[int]) -> None:
+    """Simulate → score candidates on paired seeds → adopt only CI-confirmed gains."""
     from . import coach as coach_mod
 
-    session = coach_mod.run_session(Settings(), iterations=iterations, n_drafts=drafts, reps=reps, seed=seed)
+    session = coach_mod.run_session(Settings(), iterations=iterations, n_drafts=drafts, reps=reps, seed=seed, workers=workers)
     _print_session(session)
 
 
@@ -292,6 +293,11 @@ def _print_session(session: dict) -> None:
     for it in session.get("iterations", []):
         for l in it.get("learnings", []):
             console.print(f"  [dim]iter {it['iteration']}[/dim] {l}")
+        if it.get("decision"):
+            console.print(f"  [green]iter {it['iteration']} decision:[/green] {it['decision']}")
+    if session.get("holdout"):
+        h = session["holdout"]
+        console.print(f"  holdout: {'confirmed' if h['confirmed'] else 'NOT confirmed'} {h.get('gain')} {h.get('note', '')}")
     if session.get("stopped"):
         console.print(f"[yellow]stopped: {session['stopped']}[/yellow]")
     console.print(f"[green]kept rule set:[/green] {' · '.join(session.get('best_rules') or []) or '(none)'}")

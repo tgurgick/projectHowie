@@ -116,20 +116,39 @@ def _pos_by_round(drafts: List[dict]) -> List[dict]:
     return out
 
 
+_EVAL_PLAYERS: Dict[str, Any] = {}
+
+
 def replay_2025(settings: Settings, effects: Optional[Dict[str, list]], reps: int = 6) -> Optional[dict]:
-    """The rule set on last season's real results: paired vs follow-ADP.
+    """The rule set on last season's real results, replayed with the SAME
+    seeded opponents for every rule set (common random numbers): per-replay
+    realized points (paired by slot/rep) plus the summary vs follow-ADP.
     None when the legacy preseason inputs are not available."""
+    from dataclasses import replace as dc_replace
+
     from . import evals
+    from .value.board import apply_market_anchor
 
     try:
-        players = evals.load_eval_players(settings)
+        players = _EVAL_PLAYERS.get("players") or evals.load_eval_players(settings)
+        _EVAL_PLAYERS["players"] = players
     except FileNotFoundError:
         return None
     evals.set_rule_effects(effects)
-    r = evals.eval_policy(settings, players, reps=reps, policies=("howie+rules", "adp"))
-    row = r["howie+rules"]
-    return {"mean_total": round(row["mean_total"]), "delta_vs_adp": round(row["delta_vs_adp"]),
-            "ci": [round(row["ci_low"]), round(row["ci_high"])], "win_rate": row["win_rate"], "n": row["n"]}
+    base_league = settings.league
+    pool = [p for p in evals._top_pool(players) if p.adp is not None]
+    anchored = {p.uid: p.proj for p in apply_market_anchor([evals._to_pool_player(p) for p in pool], base_league.market_anchor)}
+    mine, adp = [], []
+    for slot in evals.EVAL_SLOTS:
+        league = dc_replace(base_league, draft_position=slot, k_slots=0, dst_slots=0, roster_size=evals.EVAL_ROSTER_SIZE)
+        for rep in range(reps):
+            r1, _ = evals.replay_draft("howie+rules", pool, league, slot, rep, anchored=anchored)
+            r2, _ = evals.replay_draft("adp", pool, league, slot, rep, anchored=anchored)
+            mine.append(evals._score_roster(r1, league)); adp.append(evals._score_roster(r2, league))
+    summ = evals.summarize_paired({"howie+rules": mine, "adp": adp})["howie+rules"]
+    return {"mean_total": round(summ["mean_total"]), "delta_vs_adp": round(summ["delta_vs_adp"]),
+            "ci": [round(summ["ci_low"]), round(summ["ci_high"])], "win_rate": summ["win_rate"], "n": summ["n"],
+            "scores": [round(x, 1) for x in mine]}
 
 
 def score(settings: Settings, rules: List[Rule], n_drafts: int, seed: int, reps: int) -> dict:
@@ -139,14 +158,44 @@ def score(settings: Settings, rules: List[Rule], n_drafts: int, seed: int, reps:
     return {"sim": sim, "replay": replay, "effects": effects}
 
 
+def paired_gain(a: dict, b: dict) -> dict:
+    """Candidate a vs incumbent b on common random numbers: mean paired
+    difference and a 95% bootstrap CI, for the 2025 replay (realized points)
+    and the 2026 simulation (MC mean per draft, same seeds)."""
+    from .evals import bootstrap_mean_ci
+
+    out: Dict[str, Any] = {}
+    ra, rb = a.get("replay"), b.get("replay")
+    if ra and rb and ra.get("scores") and rb.get("scores") and len(ra["scores"]) == len(rb["scores"]):
+        d = [x - y for x, y in zip(ra["scores"], rb["scores"])]
+        lo, hi = bootstrap_mean_ci(d)
+        out["replay"] = {"mean": round(sum(d) / len(d)), "ci": [round(lo), round(hi)], "n": len(d)}
+    da, db = a["sim"]["drafts"], b["sim"]["drafts"]
+    if da and db and len(da) == len(db):
+        d = [x["mc_mean"] - y["mc_mean"] for x, y in zip(da, db)]
+        lo, hi = bootstrap_mean_ci(d)
+        out["sim"] = {"mean": round(sum(d) / len(d)), "ci": [round(lo), round(hi)], "n": len(d)}
+    return out
+
+
 def better(a: dict, b: Optional[dict]) -> bool:
-    """Is score a better than b? Realized 2025 points decide; MC mean breaks ties."""
+    """Accept candidate a over incumbent b only when a paired difference's CI
+    excludes zero in its favour — realized 2025 points first, the 2026
+    simulation otherwise — and never when either says it is worse. Ties
+    keep the incumbent (the simpler sheet)."""
     if b is None:
         return True
-    ra, rb = a.get("replay"), b.get("replay")
-    if ra and rb and ra["mean_total"] != rb["mean_total"]:
-        return ra["mean_total"] > rb["mean_total"]
-    return a["sim"]["summary"]["mc_mean"] > b["sim"]["summary"]["mc_mean"]
+    g = paired_gain(a, b)
+    rep, sim = g.get("replay"), g.get("sim")
+    if rep and rep["ci"][1] < 0:
+        return False
+    if sim and sim["ci"][1] < 0:
+        return False
+    if rep and rep["ci"][0] > 0:
+        return True
+    if sim and sim["ci"][0] > 0:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------- the coach
@@ -160,15 +209,17 @@ how the rule set performed when replayed on LAST season's real results.
 
 Respond with ONLY a JSON object:
 {"learnings": [3 specific sentences citing the numbers],
- "rules_add": ["WAIT QB UNTIL R7", ...],      // ONLY these exact patterns:
- "rules_remove": ["NO QB BEFORE R3", ...],    //   'WAIT <POS> UNTIL R<n>', 'NO <POS> BEFORE R<n>',
- "note": "ONE line, <= 30 words, only if it adds something new",//   '<n> <POS> BY R<n>', 'TARGET <Player Name>',
-                                               //   'NO BYE STACK > <n>', 'NO <POS> AGE <a>+ BEFORE R<n>'
- "round_targets": {"1": "RB", "2": "WR", ...}} // optional: position per round you'd aim for
-Change at most 3 rules per iteration; removing a rule that hurt is as valuable
-as adding one. If the replay says the current rules beat the baseline and the
-structure is sound, say so and change nothing. Never suggest a rule the
-engine cannot express."""
+ "candidates": [                                 // 1-3 DISTINCT rule-set changes to test; each is scored
+   {"label": "short name",                       //   on the same seeded drafts and the same 2025 replays,
+    "rules_add": ["WAIT QB UNTIL R7", ...],      //   and only a change whose paired gain's 95% CI excludes
+    "rules_remove": ["NO QB BEFORE R3", ...],    //   zero is adopted. ONLY these patterns:
+    "why": "one line"}],                         //   'WAIT <POS> UNTIL R<n>', 'NO <POS> BEFORE R<n>',
+ "note": "ONE line, <= 30 words, only if new"}  //   '<n> <POS> BY R<n>', 'TARGET <Player Name>',
+                                                 //   'NO BYE STACK > <n>', 'NO <POS> AGE <a>+ BEFORE R<n>'
+Make the candidates different hypotheses (timing, structure, targets), not
+variants of one idea. Removing a rule that hurt is a valid candidate. If the
+sheet already beats the baseline and the structure is sound, return an empty
+candidates list and say so. Never suggest a rule the engine cannot express."""
 
 
 def _coach_call(settings: Settings, digest: dict) -> dict:
@@ -187,12 +238,20 @@ def _coach_call(settings: Settings, digest: dict) -> dict:
         return {"available": False, "reason": f"{e.__class__.__name__}: {e}"}
     text = "".join(getattr(b, "text", "") for b in resp.content)
     parsed = _json_block(text) or {}
+    cands = []
+    for c in (parsed.get("candidates") or [])[:3]:
+        if isinstance(c, dict):
+            cands.append({"label": str(c.get("label", "candidate"))[:60],
+                          "rules_add": [str(x) for x in c.get("rules_add", [])][:3],
+                          "rules_remove": [str(x) for x in c.get("rules_remove", [])][:3],
+                          "why": str(c.get("why", ""))[:200]})
+    if not cands and (parsed.get("rules_add") or parsed.get("rules_remove")):   # single-change replies still work
+        cands.append({"label": "coach", "rules_add": [str(x) for x in parsed.get("rules_add", [])][:3],
+                      "rules_remove": [str(x) for x in parsed.get("rules_remove", [])][:3], "why": ""})
     return {"available": True, "model": _model(),
             "learnings": [str(x) for x in parsed.get("learnings", [])][:5],
-            "rules_add": [str(x) for x in parsed.get("rules_add", [])][:3],
-            "rules_remove": [str(x) for x in parsed.get("rules_remove", [])][:3],
-            "note": " ".join(str(parsed.get("note", "") or "").split())[:240],
-            "round_targets": parsed.get("round_targets") or {}}
+            "candidates": cands,
+            "note": " ".join(str(parsed.get("note", "") or "").split())[:240]}
 
 
 RULE_OK = re.compile(r"(?i)^(WAIT (QB|RB|WR|TE|K|DST) UNTIL R\d+|NO (QB|RB|WR|TE|K|DST) BEFORE R\d+|\d+ (QB|RB|WR|TE)S? BY R\d+|TARGET .+|NO BYE STACK ?> ?\d+|NO (QB|RB|WR|TE) AGE \d+\+? BEFORE R\d+)$")
@@ -210,93 +269,161 @@ def digest_for(settings: Settings, rules: List[Rule], notes: str, current: dict,
                            "bye_stacks": d["bye_stacks"], "worst_week": d["worst_week"]}
                           for d in current["sim"]["drafts"][:6]],
         "previous_iterations": [{"rules": h["rules"], "replay_mean": (h["score"].get("replay") or {}).get("mean_total"),
-                                 "mc_mean": h["score"]["sim"]["summary"]["mc_mean"], "learnings": h.get("learnings", [])[:2]}
+                                 "mc_mean": h["score"]["sim"]["summary"]["mc_mean"], "learnings": h.get("learnings", [])[:2],
+                                 "decision": h.get("decision")}
                                 for h in history[-4:]],
+        "how_candidates_are_judged": "paired on the same seeds; adopted only if the 95% CI of the gain excludes 0 "
+                                     "(2025 realized points first, then the 2026 simulation); ties keep the simpler sheet",
     }
 
 
-def apply_changes(settings: Settings, rules: List[Rule], notes: str, changes: dict) -> List[Rule]:
+def candidate_rules(rules: List[Rule], changes: dict) -> List[Rule]:
+    """The rule set a candidate describes (no persistence)."""
     keep = [r for r in rules if r.text.strip().upper() not in {x.strip().upper() for x in changes.get("rules_remove", [])}]
     for text in changes.get("rules_add", []):
         text = text.strip()
         if RULE_OK.match(text) and text.upper() not in {r.text.upper() for r in keep}:
             keep.append(Rule(text=text, on=True))
     new_rules, _ = reconcile_rules(keep)
-    note = (changes.get("note") or "").strip()
+    return new_rules
+
+
+def persist(settings: Settings, rules: List[Rule], note: str = "") -> None:
     with state_lock(settings):
         state = DraftState.load(settings)
-        state.rules = new_rules
+        state.rules = list(rules)
         if note:
             stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             state.notes = (state.notes + "\n\n" if state.notes else "") + f"— coach {stamp}: {note}"
         state.save(settings)
+
+
+def apply_changes(settings: Settings, rules: List[Rule], notes: str, changes: dict) -> List[Rule]:
+    new_rules = candidate_rules(rules, changes)
+    persist(settings, new_rules, (changes.get("note") or "").strip())
     return new_rules
+
+
+def _score_worker(args: tuple) -> dict:
+    """Process-pool entry: score one rule set (texts) on fixed seeds."""
+    from .config import Settings as _S
+
+    texts, n_drafts, seed, reps = args
+    return score(_S(), [Rule(text=t, on=True) for t in texts], n_drafts, seed, reps)
+
+
+def score_many(settings: Settings, rule_sets: List[List[Rule]], n_drafts: int, seed: int, reps: int,
+               workers: Optional[int] = None) -> List[dict]:
+    """Score several rule sets on the SAME seeds, in parallel processes."""
+    import os as _os
+    from concurrent.futures import ProcessPoolExecutor
+
+    jobs = [([r.text for r in rs if r.on], n_drafts, seed, reps) for rs in rule_sets]
+    if len(jobs) == 1 or (workers or 0) == 1:
+        return [_score_worker(j) for j in jobs]
+    with ProcessPoolExecutor(max_workers=workers or min(len(jobs), max(2, (_os.cpu_count() or 2) - 1))) as ex:
+        return list(ex.map(_score_worker, jobs))
 
 
 # ---------------------------------------------------------------- the loop
 
 def run_session(settings: Settings, iterations: int = 3, n_drafts: int = 12,
-                reps: int = 6, seed: int = 101) -> dict:
-    """Coach for `iterations` rounds; keep the best rule set; record everything."""
+                reps: int = 6, seed: int = 101, workers: Optional[int] = None) -> dict:
+    """Coach for `iterations` rounds. Every rule set in a session is scored
+    on the SAME seeded drafts and replays (common random numbers), so
+    candidate-vs-incumbent differences are paired; a candidate is adopted
+    only when its paired gain's 95% CI excludes zero. A fresh holdout seed
+    at the end confirms the kept sheet against the starting one."""
     STATUS.update({"running": True, "phase": "baseline", "iteration": 0, "total": iterations, "error": None})
     session: Dict[str, Any] = {"started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "iterations": [],
-                               "n_drafts": n_drafts, "reps": reps, "seed": seed}
+                               "n_drafts": n_drafts, "reps": reps, "seed": seed, "design": "paired seeds, CI-gated"}
     try:
         state = DraftState.load(settings)
         rules, notes = list(state.rules), state.notes
-        baseline = score(settings, [], n_drafts, seed, reps)
-        session["baseline"] = {"sim": baseline["sim"]["summary"], "replay": baseline["replay"]}
-        best: Optional[dict] = None
-        best_rules = rules
+        start_rules = list(rules)
+        STATUS["phase"] = "scoring baseline + current sheet"
+        baseline, incumbent = score_many(settings, [[], rules], n_drafts, seed, reps, workers)
+        session["baseline"] = {"sim": baseline["sim"]["summary"], "replay": _replay_summary(baseline["replay"])}
+        session["start"] = {"rules": [r.text for r in rules if r.on], "sim": incumbent["sim"]["summary"],
+                            "replay": _replay_summary(incumbent["replay"]), "vs_baseline": paired_gain(incumbent, baseline)}
         history: List[dict] = []
         for it in range(1, iterations + 1):
-            STATUS.update({"phase": "simulating", "iteration": it})
-            current = score(settings, rules, n_drafts, seed + it, reps)
-            record = {"iteration": it, "rules": [r.text for r in rules if r.on],
-                      "score": {"sim": {"summary": current["sim"]["summary"]}, "replay": current["replay"]}}
-            if better(current, best):
-                best, best_rules = current, rules
-                record["best"] = True
-            STATUS["phase"] = "coaching"
-            changes = _coach_call(settings, digest_for(settings, rules, notes, current, baseline, history))
-            record["coach"] = changes
+            STATUS.update({"phase": "coaching", "iteration": it})
+            record: Dict[str, Any] = {"iteration": it, "rules": [r.text for r in rules if r.on],
+                                      "score": {"sim": {"summary": incumbent["sim"]["summary"]}, "replay": _replay_summary(incumbent["replay"])}}
+            changes = _coach_call(settings, digest_for(settings, rules, notes, incumbent, baseline, history))
+            record["coach"] = {k: v for k, v in changes.items() if k != "candidates"}
             record["learnings"] = changes.get("learnings", [])
             if not changes.get("available"):
-                session["iterations"].append(record)
-                session["stopped"] = changes.get("reason")
+                record["decision"] = "coach unavailable: " + str(changes.get("reason"))
+                session["iterations"].append(record); session["stopped"] = changes.get("reason")
                 break
-            rules = apply_changes(settings, rules, notes, changes)
-            notes = DraftState.load(settings).notes
+            cands = changes.get("candidates") or []
+            if changes.get("note"):
+                persist(settings, rules, changes["note"]); notes = DraftState.load(settings).notes
+            if not cands:
+                record["decision"] = "coach proposed no change"
+                session["iterations"].append(record); history.append(record)
+                _save(settings, session)
+                continue
+            STATUS["phase"] = f"scoring {len(cands)} candidates (iteration {it})"
+            sets = [candidate_rules(rules, c) for c in cands]
+            scores = score_many(settings, sets, n_drafts, seed, reps, workers)
+            judged = []
+            for c, rs, sc in zip(cands, sets, scores):
+                g = paired_gain(sc, incumbent)
+                judged.append({"label": c["label"], "why": c["why"], "rules": [r.text for r in rs if r.on],
+                               "gain": g, "accept": better(sc, incumbent),
+                               "sim": sc["sim"]["summary"], "replay": _replay_summary(sc["replay"])})
+            record["candidates"] = judged
+            winners = [(j, sc, rs) for j, sc, rs in zip(judged, scores, sets) if j["accept"]]
+            if winners:
+                def key(x):
+                    g = x[0]["gain"]
+                    return ((g.get("replay") or {}).get("mean", 0), (g.get("sim") or {}).get("mean", 0))
+                j, sc, rs = max(winners, key=key)
+                rules, incumbent = rs, sc
+                persist(settings, rules)
+                record["decision"] = f"adopted '{j['label']}': " + ", ".join(
+                    f"{k} {v['mean']:+} [{v['ci'][0]:+}, {v['ci'][1]:+}]" for k, v in j["gain"].items())
+            else:
+                record["decision"] = "no candidate cleared the CI gate; sheet unchanged — " + "; ".join(
+                    f"{j['label']}: " + ", ".join(f"{k} {v['mean']:+} [{v['ci'][0]:+}, {v['ci'][1]:+}]" for k, v in j["gain"].items())
+                    for j in judged)
             record["rules_after"] = [r.text for r in rules if r.on]
-            session["iterations"].append(record)
-            history.append(record)
-            doc = load_sessions(settings)
-            doc["sessions"] = [x for x in doc["sessions"] if x.get("started") != session["started"]] + [session]
-            save_sessions(settings, doc)
-        # the final rule set is also scored so the best is chosen among all
-        if session["iterations"] and "stopped" not in session:
-            STATUS["phase"] = "final score"
-            final = score(settings, rules, n_drafts, seed + iterations + 1, reps)
-            session["final"] = {"rules": [r.text for r in rules if r.on], "sim": final["sim"]["summary"], "replay": final["replay"]}
-            if better(final, best):
-                best, best_rules = final, rules
-        with state_lock(settings):
-            state = DraftState.load(settings)
-            state.rules = list(best_rules)
-            state.save(settings)
-        session["best_rules"] = [r.text for r in best_rules if r.on]
-        session["best"] = {"sim": best["sim"]["summary"], "replay": best["replay"]} if best else None
+            session["iterations"].append(record); history.append(record)
+            _save(settings, session)
+        # holdout: the kept sheet vs the starting sheet on seeds nobody optimized on
+        if [r.text for r in rules if r.on] != [r.text for r in start_rules if r.on]:
+            STATUS["phase"] = "holdout"
+            hold_start, hold_kept = score_many(settings, [start_rules, rules], n_drafts, seed + 7919, reps, workers)
+            session["holdout"] = {"gain": paired_gain(hold_kept, hold_start), "kept": [r.text for r in rules if r.on],
+                                  "confirmed": better(hold_kept, hold_start)}
+            if not session["holdout"]["confirmed"]:
+                rules = start_rules
+                persist(settings, rules)
+                session["holdout"]["note"] = "holdout did not confirm the gain — starting sheet restored"
+        session["best_rules"] = [r.text for r in rules if r.on]
+        session["best"] = {"sim": incumbent["sim"]["summary"], "replay": _replay_summary(incumbent["replay"])}
         session["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     except Exception as e:
         STATUS["error"] = f"{e.__class__.__name__}: {e}"
         session["error"] = STATUS["error"]
         raise
     finally:
-        doc = load_sessions(settings)
-        doc["sessions"] = [x for x in doc["sessions"] if x.get("started") != session["started"]] + [session]
-        save_sessions(settings, doc)
+        _save(settings, session)
         STATUS.update({"running": False, "phase": "done"})
     return session
+
+
+def _replay_summary(rep: Optional[dict]) -> Optional[dict]:
+    return {k: v for k, v in rep.items() if k != "scores"} if rep else None
+
+
+def _save(settings: Settings, session: dict) -> None:
+    doc = load_sessions(settings)
+    doc["sessions"] = [x for x in doc["sessions"] if x.get("started") != session["started"]] + [session]
+    save_sessions(settings, doc)
 
 
 def run_in_background(settings: Settings, **kw) -> bool:

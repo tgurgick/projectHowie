@@ -84,3 +84,35 @@ def test_apply_changes_validates_rule_patterns(settings, tmp_path, monkeypatch):
     assert texts == ["WAIT QB UNTIL R7", "2 RBs BY R4"], texts
     st = DraftState.load(settings)
     assert "coach" in st.notes and "stack RBs early" in st.notes
+
+
+def test_ci_gate_keeps_the_incumbent_unless_the_paired_gain_is_clear():
+    from howie3 import coach
+
+    def sc(mc, rep):
+        return {"sim": {"summary": {"mc_mean": sum(mc) / len(mc)}, "drafts": [{"mc_mean": x} for x in mc]},
+                "replay": {"mean_total": sum(rep) / len(rep), "scores": rep}}
+    base = sc([2000 + i * 10 for i in range(12)], [1600 + i * 5 for i in range(16)])
+    noise = sc([2000 + i * 10 + (3 if i % 2 else -4) for i in range(12)], [1600 + i * 5 + (2 if i % 2 else -3) for i in range(16)])
+    clear = sc([2000 + i * 10 + 40 + (i % 3) for i in range(12)], [1600 + i * 5 + 30 + (i % 2) for i in range(16)])
+    worse = sc([2000 + i * 10 - 30 for i in range(12)], [1600 + i * 5 + 30 for i in range(16)])
+    g = coach.paired_gain(noise, base)
+    assert g["replay"]["ci"][0] < 0 < g["replay"]["ci"][1] and not coach.better(noise, base), "noise never wins"
+    assert coach.paired_gain(clear, base)["replay"]["ci"][0] > 0 and coach.better(clear, base)
+    assert not coach.better(worse, base), "a clear loss on either axis is never adopted"
+    assert coach.better(base, None)
+
+
+def test_candidate_rules_and_parallel_scoring_shape(settings, tmp_path, monkeypatch, league12):
+    from howie3 import coach, mocksim
+    from howie3.state import Rule
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    monkeypatch.setattr(mocksim, "store_path", lambda st: tmp_path / "mock_sims.json")
+    rs = coach.candidate_rules([Rule("NO QB BEFORE R3")], {"rules_add": ["NO BYE STACK > 2", "nonsense rule"], "rules_remove": ["no qb before r3"]})
+    assert [r.text for r in rs] == ["NO BYE STACK > 2"]
+    a, b = coach.score_many(settings, [[], rs], n_drafts=2, seed=5, reps=1, workers=1)
+    assert len(a["sim"]["drafts"]) == 2 == len(b["sim"]["drafts"])
+    assert a["sim"]["drafts"][0]["seed"] == b["sim"]["drafts"][0]["seed"], "candidates share seeds"
+    g = coach.paired_gain(b, a)
+    assert "sim" in g and g["sim"]["n"] == 2
