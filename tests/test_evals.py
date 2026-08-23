@@ -155,7 +155,7 @@ def test_eval_policy_returns_structured_paired_report():
     assert rep["howie"]["mean_total"] > 0
 
 
-def test_paired_seed_same_opponents_real_data():
+def test_paired_seed_same_opponents_real_data(league12):
     s = Settings()
     if not (s.data_dir / "fantasy_ppr.db").exists() or not s.db_path.exists():
         pytest.skip("legacy fantasy_ppr.db / howie.db not built")

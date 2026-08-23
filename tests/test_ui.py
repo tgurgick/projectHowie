@@ -35,8 +35,8 @@ def test_no_unescaped_template_assignments():
     offenders = []
     for m in re.finditer(r"\.(innerHTML|outerHTML)\s*=\s*([^;]+)", src):
         rhs = " ".join(m.group(2).split())
-        if rhs.startswith("text.slice(0, i)"):
-            continue  # the typed wordmark: a constant
+        if rhs.startswith("text.slice(0, i)") or rhs.startswith("RESET_LABELS["):
+            continue  # the typed wordmark / popover labels: constants built with h``
         if rhs.startswith("h`") or rhs.startswith("qtable(") or rhs.startswith("saved"):
             continue
         if re.match(r"^'[^']*'$", rhs) or re.match(r'^"[^"]*"$', rhs):

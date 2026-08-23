@@ -294,7 +294,7 @@ def test_empirical_availability_blends_toward_lab_rate():
     assert abs(p.p_available(32) - 0.95) < abs(model - 0.95)
 
 
-def test_lab_availability_table_feeds_pool(settings, tmp_path, monkeypatch):
+def test_lab_availability_table_feeds_pool(settings, tmp_path, monkeypatch, league12):
     from howie3 import mocksim, service
 
     monkeypatch.setattr(mocksim, "store_path", lambda st: tmp_path / "mock_sims.json")
@@ -349,7 +349,7 @@ def test_rule_reconciliation_keeps_latest_per_constraint():
     assert len(notes) == 1 and "superseded" in notes[0]
 
 
-def test_pick_context_follows_the_draft_not_the_roster(settings, tmp_path, monkeypatch):
+def test_pick_context_follows_the_draft_not_the_roster(settings, tmp_path, monkeypatch, league12):
     """Marking your own slot as taken (live mode) must not rewind the engine
     to an earlier round; and a mock refuses 'taken' while you're on the clock."""
     from howie3 import service
@@ -378,7 +378,7 @@ def test_pick_context_follows_the_draft_not_the_roster(settings, tmp_path, monke
         service.mark_pick(settings, avail.uid, mine=False)
 
 
-def test_card_reports_taken_players(settings, tmp_path, monkeypatch):
+def test_card_reports_taken_players(settings, tmp_path, monkeypatch, league12):
     from howie3 import service
 
     monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
@@ -441,7 +441,7 @@ def test_implied_adp_keeps_late_availability_below_certainty():
     assert b.availability_source(190).startswith("implied")
 
 
-def test_reset_archives_the_draft_and_sync_is_idempotent(settings, tmp_path, monkeypatch):
+def test_reset_archives_the_draft_and_sync_is_idempotent(settings, tmp_path, monkeypatch, league12):
     from howie3 import mocksim, service
 
     monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))

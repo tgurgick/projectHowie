@@ -63,7 +63,7 @@ def test_resolve_team_accepts_codes_names_and_nicknames():
         resolve_team("mars")
 
 
-def test_season_grid_marks_byes_outs_and_empty_slots(tmp_path, monkeypatch):
+def test_season_grid_marks_byes_outs_and_empty_slots(tmp_path, monkeypatch, league12):
     from howie3 import service
 
     s = Settings()

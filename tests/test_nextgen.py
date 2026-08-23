@@ -118,7 +118,7 @@ def _isolate_state(tmp_path, monkeypatch):
                         staticmethod(lambda s: tmp_path / "draft.json"))
 
 
-def test_bots_complete_draft_sanely(settings, tmp_path, monkeypatch):
+def test_bots_complete_draft_sanely(settings, tmp_path, monkeypatch, league12):
     from howie3.db import connect
     from howie3.mock import advance_bots
     from howie3.value.board import load_pool
@@ -194,7 +194,7 @@ def _post(port, path, body, token=None):
         return json.loads(r.read())
 
 
-def test_full_mock_draft_over_http(settings, tmp_path, monkeypatch):
+def test_full_mock_draft_over_http(settings, tmp_path, monkeypatch, league12):
     from howie3 import server as srv
 
     _isolate_state(tmp_path, monkeypatch)
@@ -358,7 +358,7 @@ def test_query_builder_whitelists(settings):
             service.build_query(settings, **bad)
 
 
-def test_mock_draft_lab(settings, tmp_path, monkeypatch):
+def test_mock_draft_lab(settings, tmp_path, monkeypatch, league12):
     from howie3 import mocksim
     monkeypatch.setattr(mocksim, "store_path", lambda s: tmp_path / "mock_sims.json")
     agg = mocksim.run_mock_drafts(settings, 3, policy="adp", seed=5)
@@ -414,7 +414,7 @@ def test_query_detail_includes_projections(settings):
 
 # ---------------- roster risk ----------------
 
-def test_need_rule_and_roster_risk(settings, tmp_path, monkeypatch):
+def test_need_rule_and_roster_risk(settings, tmp_path, monkeypatch, league12):
     from howie3 import service
     _isolate_state(tmp_path, monkeypatch)
     st = DraftState(rules=[Rule("2 RB BY ROUND 2"), Rule("WAIT QB UNTIL R3")])
@@ -433,7 +433,8 @@ def test_config_roundtrip_and_validation(settings, tmp_path, monkeypatch):
     from howie3 import service
     monkeypatch.setenv("HOWIE_DATA_DIR", str(tmp_path))
     s2 = Settings()
-    (tmp_path / "league_config.json").write_text((settings.repo_root / "data" / "league_config.json").read_text())
+    from dataclasses import asdict
+    (tmp_path / "league_config.json").write_text(json.dumps(asdict(LeagueConfig())))  # the default shape, not the user's
     c = service.config_payload(s2)
     assert c["num_teams"] == 12 and c["scoring_type"] == "half_ppr"
     out = service.update_config(s2, {"draft_position": "3", "market_anchor": "0.5"})
