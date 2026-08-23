@@ -42,7 +42,13 @@ test('classifyInput: commands, questions, players, no match', () => {
   assert.deepEqual(classifyInput('robinson', items, -1).suggestions, ['Bijan Robinson', 'Brian Robinson Jr.']);
   assert.equal(classifyInput('zzz', [], -1).kind, 'nomatch');
   assert.equal(classifyInput('  ', [], -1).kind, 'empty');
-  assert.equal(classifyInput('dallas cowboys', items, -1).kind, 'nomatch');       // teams are not pick targets
+  const withTeams = [...items, {id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}, {id: 'unit:DAL-WR', kind: 'unit', name: 'DAL WR room', team: 'DAL'}];
+  assert.deepEqual(classifyInput('dallas cowboys', withTeams, -1).team, 'DAL');   // team name -> team report
+  assert.equal(classifyInput('dal', [{id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}], -1).team, 'DAL'); // abbreviation
+  assert.equal(classifyInput('cowboys', [{id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}, {id: 'unit:DAL-WR', kind: 'unit', name: 'DAL WR room', team: 'DAL'}], -1).team, 'DAL'); // unique team across hits
+  assert.equal(classifyInput('xyz', withTeams, 3).kind, 'team');                  // arrow-key selection of a team row
+  assert.equal(classifyInput('robinson', withTeams, -1).kind, 'nomatch');         // players still ambiguous
+  assert.equal(classifyInput('dallas cowboys', items, -1).kind, 'nomatch');       // no team hits -> nomatch
 });
 
 test('pickAction: Enter is taken while drafting, card otherwise; shift is mine', () => {

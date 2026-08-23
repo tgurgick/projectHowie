@@ -747,7 +747,7 @@ function openTerminal() { chatOpen(); $('termIn').focus(); if (!$('termOut').chi
   if (localStorage.getItem('chatOpen') === '1') chatOpen();
 })();
 function renderTermHint() {
-  $('termHint').textContent = drafting() ? '⏎ taken · ⇧⏎ mine · ⇥ card · ?ask · /help' : '⏎ card · ⇧⏎ draft to me · ?ask · /help';
+  $('termHint').textContent = drafting() ? '⏎ taken · ⇧⏎ mine · ⇥ card · team → report · ?ask · /help' : '⏎ card · ⇧⏎ draft to me · team → report · ?ask · /help';
   $('termIn').placeholder = drafting() ? 'player → ⏎ marks taken, ⇧⏎ drafts to you · /undo · ?ask Howie' : 'player name → card · /mine · /taken · /mock · ?ask Howie · /help';
 }
 
@@ -775,9 +775,13 @@ async function handleEntry(line, items, selIdx, ev) {
     try { await mark(cls.hit.uid, action === 'mine'); } catch (err) { termPrint('dim', 'could not record the pick: ' + err.message); }
     return;
   }
+  if (cls.kind === 'team') {
+    termPrint('cmd', '› ' + (cls.hit ? cls.hit.name : cls.team) + '  → team report');
+    showTab('team'); return loadTeamTab(cls.team);
+  }
   if (cls.kind === 'nomatch') {
     termPrint('cmd', '› ' + line);
-    termPrint('dim', `no player matches "${line}"` + (cls.suggestions.length ? ` — did you mean ${cls.suggestions.join(', ')}?` : '') + ' · prefix with ? to ask Howie');
+    termPrint('dim', `no player or team matches "${line}"` + (cls.suggestions.length ? ` — did you mean ${cls.suggestions.join(', ')}?` : '') + ' · prefix with ? to ask Howie');
     return;
   }
   return handleTerm(line, items, cls);
@@ -797,6 +801,7 @@ async function handleTerm(line, acItems, cls) {
     return;
   }
   if (cls.kind === 'player') return openCard(cls.hit.uid);
+  if (cls.kind === 'team') { showTab('team'); return loadTeamTab(cls.team); }
   if (cls.kind !== 'cmd') return;
   const {cmd, rest, arg} = cls;
   try {

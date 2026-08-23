@@ -39,6 +39,8 @@ function textHtml(s) { return new Raw(esc(s).replace(/\n/g, '<br>')); }
  *   '?question' / '…?'  -> {kind:'ask', question}
  *   a player name       -> {kind:'player', hit}  (exact match, the navigated
  *                          selection, a unique player hit, or a unique prefix)
+ *   a team / room       -> {kind:'team', team:'GB'} (abbreviation, team name,
+ *                          "GB WR room", the navigated selection, or a unique hit)
  *   anything else       -> {kind:'nomatch', suggestions[]}
  * `items` are the autocomplete hits for the current text; `selIdx` is the
  * arrow-key selection (-1 when the user hasn't navigated).
@@ -54,17 +56,29 @@ function classifyInput(line, items, selIdx) {
     return {kind: 'ask', question: text.replace(/^\?\s*|^(hey\s+)?howie[,:]?\s*/i, '').trim() || text};
   }
   const players = (items || []).filter(x => x && x.uid);
-  if (selIdx != null && selIdx >= 0 && items && items[selIdx] && items[selIdx].uid) {
-    return {kind: 'player', hit: items[selIdx]};
+  const teams = (items || []).filter(x => x && !x.uid && (x.kind === 'team' || x.kind === 'unit') && x.team);
+  if (selIdx != null && selIdx >= 0 && items && items[selIdx]) {
+    const sel = items[selIdx];
+    if (sel.uid) return {kind: 'player', hit: sel};
+    if (sel.team) return {kind: 'team', team: sel.team, hit: sel};
   }
   const lower = text.toLowerCase();
+  if (/^[a-z]{2,3}$/.test(lower) && teams.some(t => t.team.toLowerCase() === lower)) {
+    return {kind: 'team', team: lower.toUpperCase()};
+  }
+  const teamExact = teams.find(t => t.name.toLowerCase() === lower);
+  if (teamExact) return {kind: 'team', team: teamExact.team, hit: teamExact};
   const exact = players.find(p => p.name.toLowerCase() === lower);
   if (exact) return {kind: 'player', hit: exact};
   if (players.length === 1 && lower.length >= 3) return {kind: 'player', hit: players[0]};
   const prefix = players.filter(p => p.name.toLowerCase().startsWith(lower));
   if (prefix.length === 1 && lower.length >= 4) return {kind: 'player', hit: prefix[0]};
+  if (!players.length && teams.length && lower.length >= 3) {
+    const uniq = [...new Set(teams.map(t => t.team))];
+    if (uniq.length === 1) return {kind: 'team', team: uniq[0], hit: teams[0]};
+  }
   if (/\?$/.test(text) || text.split(/\s+/).length >= 5) return {kind: 'ask', question: text};
-  return {kind: 'nomatch', suggestions: players.slice(0, 4).map(p => p.name)};
+  return {kind: 'nomatch', suggestions: [...players.slice(0, 4).map(p => p.name), ...teams.slice(0, 2).map(t => t.name)]};
 }
 
 /** Which pick action a key combination means while a draft is in progress. */
