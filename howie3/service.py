@@ -450,7 +450,53 @@ def search_payload(settings: Settings, q: str, limit: int = 8) -> List[dict]:
 
 # ------------------------------------------------------------ recommendations
 
-def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: int = 10) -> dict:
+def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: int = 10,
+                 pos: Optional[str] = None) -> dict:
+    """The board. Without `pos`: the engine's candidates at the current pick
+    (up to ~8 per position, K/DST only in the closing rounds). With `pos`:
+    a BROWSE list — every draftable player at that position ranked by value,
+    so the position chips always show the full depth chart of the board."""
+    if pos:
+        return _browse_position(settings, state, pos.upper(), top_n)
+    return _candidates_payload(settings, state, sims, top_n)
+
+
+def _browse_position(settings: Settings, state: DraftState, pos: str, top_n: int) -> dict:
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    taken = state.taken_uids()
+    rnd, current_pick, next_pick, _future = _pick_context(settings, state, league)
+    effects = state.active_rule_effects()
+    picks = snake_picks(league)
+    rows: List[JsonDict] = []
+    avail_pool = [p for p in pool if p.position == pos and p.uid not in taken]
+    best_val = avail_pool[0].proj if avail_pool else 0
+    for p in avail_pool[:max(top_n, 30)]:
+        adp_round = int((p.adp - 1) // league.num_teams + 1) if p.adp else None
+        gone_by = None
+        for i, k in enumerate(picks):
+            if k > current_pick and p.p_available(k) < 0.5:
+                gone_by = i + 1
+                break
+        rows.append({
+            "adp_round": adp_round, "gone_by_round": gone_by,
+            "uid": p.uid, "name": p.name, "pos": p.position, "team": p.team,
+            "proj": round(p.raw or p.proj), "adp": p.adp,
+            "avail_now": round(p.p_available(current_pick), 2),
+            "avail_next": round(p.p_available(next_pick), 2),
+            "avail_src": p.availability_source(next_pick),
+            "status": status_chip(p.status),
+            "value": round(p.proj), "delta": round(p.proj - best_val),
+            "p10": None, "p90": None, "plan": [],
+            "rules": _fired_rules(p, rnd, effects),
+        })
+    return {"current_pick": current_pick, "next_pick": next_pick, "round": rnd,
+            "sims": 0, "rows": rows, "outcome_span": None, "browse": pos}
+
+
+def _candidates_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: int = 10) -> dict:
     from .value.roster import evaluate_candidates, mc_rerank
 
     league = settings.league
@@ -494,6 +540,7 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
             "avail_next": round(r.player.p_available(next_pick), 2),
             "avail_src": r.player.availability_source(next_pick),
             "status": status_chip(r.player.status),
+            "badges": r.player.badges,
             "value": round(value),
             "p10": round(r.sim.p10) if (sims and r.sim) else None,
             "p90": round(r.sim.p90) if (sims and r.sim) else None,
@@ -799,6 +846,7 @@ def _round_rules(effects: Dict[str, list], rnd: int) -> List[dict]:
 # ------------------------------------------------------------ player card
 
 def card_payload(settings: Settings, uid: str) -> dict:
+    from .data.names import name_key
     from .graph import entity_context
     from .value.distributions import build_sim_players
     from .value.simulate import simulate_player_totals
@@ -877,6 +925,8 @@ def card_payload(settings: Settings, uid: str) -> dict:
                  "p50": round(float(np.percentile(totals, 50))),
                  "p90": round(float(np.percentile(totals, 90)))},
         "room": (ctx or {}).get("room"),
+        "badges": getattr(player, "badges", []),
+        "favorite": name_key(player.name) in favorite_keys(state),
         "facts": (ctx or {}).get("facts", []),
         "team_facts": (ctx or {}).get("team_facts", []),
         "playoff_sos": [{"week": r["week"], "value": round(r["value"], 1)} for r in sos_rows],
@@ -1076,6 +1126,42 @@ def update_strategy(settings: Settings,
     payload = strategy_payload(state)
     payload["conflicts"] = conflicts
     return payload
+
+
+def toggle_favorite(settings: Settings, name: str) -> dict:
+    """Star or unstar a player. A favorite IS a Target rule — it lands in the
+    strategy sheet, survives a draft reset the way every rule does, and gets
+    the same "take him when it's close" treatment from the ranking layer."""
+    from .data.names import name_key
+    from .state import Rule, reconcile_rules
+
+    name = str(name).strip()[:80]
+    if not name:
+        raise ValueError("a favorite needs a player name")
+    key = name_key(name)
+    with state_lock(settings):
+        state = DraftState.load(settings)
+        existing = [r for r in state.rules
+                    if r.text.lower().startswith("target") and key == name_key(r.text.split(":", 1)[-1])]
+        if existing:
+            state.rules = [r for r in state.rules if r not in existing]
+            on = False
+        else:
+            state.rules, _ = reconcile_rules(state.rules + [Rule(text=f"Target: {name}")])
+            on = True
+        state.save(settings)
+    payload = strategy_payload(state)
+    payload["favorite"] = on
+    payload["name"] = name
+    return payload
+
+
+def favorite_keys(state: DraftState) -> set:
+    """name_keys of every starred player, for rendering the star filled."""
+    from .data.names import name_key
+
+    return {name_key(r.text.split(":", 1)[-1]) for r in state.rules
+            if r.on and r.text.lower().startswith("target")}
 
 
 # ------------------------------------------------------------ data tab

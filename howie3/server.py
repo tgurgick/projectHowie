@@ -169,6 +169,9 @@ class Handler(BaseHTTPRequestHandler):
                 state = DraftState.load(s)
                 gen = _generation(s, state)
                 top = int(q.get("top", 10))
+                if q.get("pos"):
+                    self._json(service.pick_payload(s, state, sims=0, top_n=top, pos=q["pos"]))
+                    return
                 with _lock:
                     cached = _det_cache["pick"] if _det_cache["gen"] == gen else None
                 if cached is None or len(cached["rows"]) < top:
@@ -292,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = service.start_mock(s)
             elif url.path == "/api/reset":
                 result = service.reset_draft(s, str(body.get("mode", "live")))
+            elif url.path == "/api/favorite":
+                result = service.toggle_favorite(s, str(body.get("name", "")))
             elif url.path == "/api/strategy":
                 result = service.update_strategy(s, rules=body.get("rules"),
                                                  notes=body.get("notes"))

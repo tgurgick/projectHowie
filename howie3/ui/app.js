@@ -3,7 +3,7 @@
 // exceptions (HTML we wrote ourselves).
 const $ = (id) => document.getElementById(id);
 const TOKEN = (document.querySelector('meta[name=howie-token]') || {}).content || '';
-let ST = null, PICK = null, FILTER = 'ALL', RISK = null, notesTimer = null, strategy = {rules: [], notes: ''};
+let ST = null, PICK = null, BROWSE = null, FILTER = 'ALL', RISK = null, notesTimer = null, strategy = {rules: [], notes: ''};
 
 async function api(path, body) {
   const opts = body ? {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Howie-Token': TOKEN}, body: JSON.stringify(body)} : {};
@@ -21,6 +21,7 @@ async function refresh(fast) {
   catch (e) { return; }  // banner already shows the server's message
   renderHeader(); renderRail(); renderTermHint();
   PICK = await api('/api/pick?top=40');
+  if (FILTER !== 'ALL') { try { BROWSE = await api('/api/pick?top=30&pos=' + FILTER); } catch (e) {} }
   renderBoard();
   if ($('strategyView').style.display !== 'none' && !fast) loadStrategyTab();
   if ($('rosterView').style.display !== 'none') loadSeasonGrid();
@@ -89,9 +90,10 @@ function renderBoard() {
   $('availHead').textContent = `AVAIL @${PICK.next_pick}`;
   $('boardTable').classList.toggle('compact', COMPACT);
   $('moreLink').textContent = COMPACT ? 'MORE ▸' : 'LESS ▾';
-  const mc = PICK.mc, span = mc ? mc.outcome_span : null;
+  const browsing = FILTER !== 'ALL' && BROWSE;
+  const mc = browsing ? null : PICK.mc, span = mc ? mc.outcome_span : null;
   const mcRows = mc ? Object.fromEntries(mc.rows.map(r => [r.uid, r])) : {};
-  let rows = PICK.rows.filter(r => FILTER === 'ALL' || r.pos === FILTER);
+  let rows = browsing ? BROWSE.rows : PICK.rows.filter(r => FILTER === 'ALL' || r.pos === FILTER);
   if (mc) rows = [...rows].sort((a, b) =>
     (mcRows[b.uid] ? mcRows[b.uid].value : b.value - 900) - (mcRows[a.uid] ? mcRows[a.uid].value : a.value - 900));
   const best = rows.length ? (mc && mcRows[rows[0].uid] ? mcRows[rows[0].uid].value : rows[0].value) : 0;
@@ -116,10 +118,13 @@ function renderBoard() {
     }
     const tags = (r.rules || []).map(f => h`<span class="ruletag ${f.type}">${f.text}</span>`);
     const stchip = r.status ? h`<span class="stchip ${r.status.level}" title="player status (roster feed / research)">${r.status.text}</span>` : '';
+    const badges = (r.badges || []).map(b => h`<span class="badge b-${b.code}" title="${b.code}: ${b.why} · ${b.nudge > 0 ? '+' : ''}${b.nudge} to pick order">${b.label}</span>`);
+    const starred = (r.rules || []).some(f => f.type === 'target');
+    const star = h`<span class="star ${starred ? 'on' : ''}" title="${starred ? 'starred — remove from your targets' : 'star him: adds a Target rule to your strategy sheet'}" data-name="${r.name}" onclick="event.stopPropagation(); favorite(this.dataset.name)">${starred ? '\u2605' : '\u2606'}</span>`;
     const isBest = i === 0 && FILTER === 'ALL';
     return h`<tr class="${isBest ? 'best' : ''}" onclick="openCard('${r.uid}')" style="cursor:pointer">
       <td class="mono dim">${i + 1}</td>
-      <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${isBest ? raw('<span class="besttag">BEST</span>') : ''}${stchip}${tags}</td>
+      <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${star}${isBest ? raw('<span class="besttag">BEST</span>') : ''}${stchip}${badges}${tags}</td>
       <td class="mono r mid c-proj">${r.proj}</td>
       <td class="mono r mid c-adp">${r.adp ? r.adp.toFixed(1) : '—'}</td>
       <td class="mono r mid" title="${r.adp_round ? 'market round R' + r.adp_round : 'undrafted in mocks'}${r.gone_by_round ? ' · likely gone before your R' + r.gone_by_round + ' pick' : ' · likely there at every remaining pick'}">${r.adp_round ? 'R' + r.adp_round : '—'}${r.gone_by_round ? h`<span class="dim" style="font-size:10px"> ›R${r.gone_by_round}</span>` : ''}</td>
@@ -130,8 +135,10 @@ function renderBoard() {
       <td class="mono dim c-plan" style="font-size:11px">${(r.plan || []).join(' ')}</td>
     </tr>`;
   })}`;
-  $('mcstatus').textContent = mc ? `MC ${mc.sims} sims ready` : 'MC running…';
-  $('boardFoot').textContent = `${rows.length} candidates · Value = expected final starting-lineup points with bench insurance (take this player now, then draft optimally). Δ vs best. RD = market round › the first of your rounds he is likely gone. ` +
+  $('mcstatus').textContent = browsing ? `browsing all ${FILTER} on the board` : (mc ? `MC ${mc.sims} sims ready` : 'MC running…');
+  $('boardFoot').textContent = browsing
+    ? `${rows.length} ${FILTER} still on the board, ranked by engine value · Δ vs the best ${FILTER} · RD = market round › the first of your rounds he is likely gone.`
+    : `${rows.length} candidates · Value = expected final starting-lineup points with bench insurance (take this player now, then draft optimally). Δ vs best. RD = market round › the first of your rounds he is likely gone. ` +
     (span ? `Outcome bars: p10–p90 across ${mc.sims} simulated seasons, scale ${span[0]}–${span[1]}, tick = mean.` : 'Monte Carlo refinement runs after every pick.');
 }
 
@@ -141,7 +148,11 @@ function renderBoard() {
   const el = document.createElement('span');
   el.className = 'poschip' + (p === 'ALL' ? ' active' : '');
   el.textContent = p;
-  el.onclick = () => { FILTER = p; document.querySelectorAll('#poschips .poschip').forEach(c => c.classList.toggle('active', c.textContent === p)); renderBoard(); };
+  el.onclick = async () => {
+    FILTER = p; document.querySelectorAll('#poschips .poschip').forEach(c => c.classList.toggle('active', c.textContent === p));
+    if (p === 'ALL') { BROWSE = null; renderBoard(); }
+    else { BROWSE = await api('/api/pick?top=30&pos=' + p); renderBoard(); }
+  };
   $('poschips').appendChild(el);
 });
 
@@ -151,6 +162,16 @@ async function mark(uid, mine) {
   const r = await api('/api/mark', {uid, mine});
   termPrint('out', `${mine ? 'drafted' : 'marked taken'}: ${r.name} (pick ${r.pick_no})` + (r.bots ? ` · bots made ${r.bots.length} picks` : '') + ' · /undo reverts');
   closeCard(); await refresh(true);
+}
+// A favorite IS a Target rule: it lands in the strategy sheet, survives a
+// reset the way rules do, and the ranking layer treats it as "take him when
+// it's close" rather than "take him at any cost".
+async function favorite(name) {
+  const r = await api('/api/favorite', {name});
+  termPrint('out', `${r.favorite ? 'starred' : 'unstarred'}: ${r.name}` + (r.favorite ? ' · added TARGET to your strategy sheet' : ' · TARGET removed'));
+  await refresh(true);
+  const open = $('drawer') && $('drawer').dataset.uid;
+  if (open) await openCard(open);
 }
 async function undoPick() { const r = await api('/api/undo', {}); termPrint('out', r.undone ? `undid ${r.undone.name} (pick ${r.undone.pick_no})` : 'nothing to undo'); await refresh(true); }
 async function startMock() {
@@ -375,9 +396,10 @@ async function openCard(uid) {
   $('drawer').innerHTML = h`<div class="cardgrid">
     <div class="cardcol">
       <div class="cardhead">
-        <div style="font-size:19px;font-weight:700;line-height:1.15">${c.name}</div>
+        <div style="font-size:19px;font-weight:700;line-height:1.15">${c.name}<span class="star ${c.favorite ? 'on' : ''}" title="${c.favorite ? 'starred — remove from your targets' : 'star him: adds a Target rule to your strategy sheet'}" data-name="${c.name}" onclick="favorite(this.dataset.name)">${c.favorite ? '\u2605' : '\u2606'}</span></div>
         <div class="mono mid" style="font-size:11px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div>
         ${c.status ? h`<div class="stline"><span class="stchip ${c.status.level}">${c.status.text}</span> <span class="mid">${c.status_detail.note || c.status_detail.injury || ''}</span> <span class="dim">· ${c.status_detail.source} · ${c.status_detail.as_of}${c.status_detail.role && c.status_detail.role !== 'unknown' ? ' · ' + c.status_detail.role : ''}</span></div>` : ''}
+        ${(c.badges || []).length ? h`<div class="badgerow">${c.badges.map(b => h`<span class="badge b-${b.code}">${b.label}</span><span class="badgewhy">${b.why}</span>`)}</div>` : ''}
         ${c.taken ? h`<div class="ctarow"><span class="mono amber" style="font-size:11px;letter-spacing:1.5px;padding:9px 0">TAKEN · PICK ${c.taken_pick} · ${(c.taken_by || '').toUpperCase()}</span></div>`
           : h`<div class="ctarow"><button class="danger" onclick="mark('${c.uid}', false)">MARK TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT TO ME</button></div>`}
       </div>
@@ -412,6 +434,7 @@ async function openCard(uid) {
         <div class="mono dim shrink" style="font-size:11px;margin-top:6px" id="mrate"></div>` : raw('<span class="dim" style="font-size:12px">No game history.</span>')}
     </div>
   </div>`;
+  $('drawer').dataset.uid = uid;
   sideOpen(); $('drawer').scrollTop = 0; $('sideLabel').textContent = 'PLAYER'; $('sideHint').textContent = c.team ? `${c.pos} · ${c.team}` : '';
   CARD = c;
   applyCardMode();
@@ -448,7 +471,7 @@ function placeTip(ev, html) {
   t.style.top = (ev.clientY - 10) + 'px';
 }
 function hideTip() { $('tip').style.display = 'none'; }
-function closeCard() { $('drawer').innerHTML = ''; $('findings').innerHTML = ''; $('findings').classList.remove('on'); $('side').classList.add('collapsed'); CARD = null; }
+function closeCard() { $('drawer').innerHTML = ''; delete $('drawer').dataset.uid; $('findings').innerHTML = ''; $('findings').classList.remove('on'); $('side').classList.add('collapsed'); CARD = null; }
 
 // ---------------- DATA tab ----------------
 
