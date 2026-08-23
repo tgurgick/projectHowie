@@ -147,7 +147,7 @@
   .rulerow.off { border-color: var(--line); color: var(--dim); }
   .dot { width: 8px; height: 8px; background: var(--acc); cursor: pointer; flex-shrink: 0; }
   .rulerow.off .dot { background: #3a4a40; }
-  #notes { width: 100%; min-height: 220px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
+  #notes { width: 100%; min-height: 140px; background: var(--panel2); border: 1px solid var(--line2); color: #c9d6cc; font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 12px; outline: none; resize: vertical; }
 
   .cardcol { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .cardcol > * { flex: none; }

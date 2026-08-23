@@ -239,8 +239,9 @@ async function loadAnchors() {
     const arrow = Math.abs(d) < 0.03 ? raw('<span class="dim">→</span>') : (d > 0 ? raw('<span class="green">▲</span>') : raw('<span class="red">▼</span>'));
     rows.push(h`<div class="anchorrow"><span><span class="kindtag">${pos}</span> ${m}</span><span class="mono r mid">${v(s0)}</span><span class="mono r mid">${v(s1)}</span><span class="mono r" style="font-weight:600">${v(s2)}</span><span class="r">${arrow}</span></div>`);
   }
-  $('leagueAnchors').innerHTML = h`${rows}`;
+  if ($('leagueAnchors')) $('leagueAnchors').innerHTML = h`${rows}`;
   const r = a.roster;
+  if (!$('rosterAnchors')) return;
   if (!r.starters.length) { $('rosterAnchors').innerHTML = '<span class="dim" style="font-size:12px">Draft some starters — anchors appear as your roster fills.</span>'; return; }
   $('rosterAnchors').innerHTML = h`
     <div style="display:flex;gap:18px;margin-bottom:10px">
