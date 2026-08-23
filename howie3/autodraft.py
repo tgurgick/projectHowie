@@ -325,7 +325,12 @@ class AutoDrafter:
                     # the room states the league shape and your seat; take it
                     # and wipe the board before the first pick lands
                     cfg = room_config(self.room_text(), self.page.title())
-                    if cfg.get("draft_position"):
+                    st0 = DraftState.load(self.settings)
+                    in_progress = st0.events and st0.next_pick_no() <= self.settings.league.num_teams * self.settings.league.roster_size
+                    if cfg.get("draft_position") and not in_progress:
+                        # a fresh room: take its shape, archive whatever finished draft is on the
+                        # board, wipe. A draft in progress is never wiped (the post-draft page and
+                        # a rejoin both show the same banner).
                         service.update_config(self.settings, cfg)
                         service.reset_draft(self.settings, "live")
                         log_event(self.settings, "configured", **cfg)
