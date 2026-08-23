@@ -75,15 +75,17 @@ function renderBoard() {
   if (mc) rows = [...rows].sort((a, b) =>
     (mcRows[b.uid] ? mcRows[b.uid].value : b.value - 900) - (mcRows[a.uid] ? mcRows[a.uid].value : a.value - 900));
   const best = rows.length ? (mc && mcRows[rows[0].uid] ? mcRows[rows[0].uid].value : rows[0].value) : 0;
+  const detBest = PICK.rows.length ? PICK.rows[0].value : 0;   // deterministic best, for rows MC didn't cover
   $('rows').innerHTML = h`${rows.map((r, i) => {
     const m = mcRows[r.uid];
     const value = m ? m.value : r.value;
-    const delta = Math.round(value - best);
-    const dc = delta === 0 ? 'green' : (delta > -8 ? 'mid' : 'red');
+    const detOnly = mc && !m;
+    const delta = Math.round(value - (detOnly ? detBest : best));
+    const dc = detOnly ? 'dim' : delta === 0 ? 'green' : (delta > -8 ? 'mid' : 'red');
     const p = r.avail_next;
     const lab = r.avail_src && r.avail_src !== 'model';
     const availbar = h`<span class="bar" title="${lab ? 'availability: ' + r.avail_src + ' (mock lab blended with the ADP model)' : 'availability: ADP model'}"><i style="width:${Math.round(p * 100)}%; background:var(--${availClass(p)})"></i></span><span class="mono mid" style="font-size:12px">${Math.round(p * 100)}%</span>${lab ? raw('<span class="labtag" title="blended with mock-lab drafts">LAB</span>') : ''}`;
-    let dist = raw('<span class="dim mono" style="font-size:11px">sims…</span>');
+    let dist = raw(mc ? '<span class="dim mono" style="font-size:11px">—</span>' : '<span class="dim mono" style="font-size:11px">sims…</span>');
     if (m && span) {
       const [lo, hi] = span, w = hi - lo;
       const L = (v) => ((v - lo) / w * 100).toFixed(1) + '%';
@@ -103,7 +105,7 @@ function renderBoard() {
       <td>${availbar}</td>
       <td class="mono r" style="font-weight:600">${value}</td>
       <td class="c-dist">${dist}</td>
-      <td class="mono r ${dc}" style="font-weight:600">${fmtDelta(delta)}</td>
+      <td class="mono r ${dc}" style="font-weight:600" title="${detOnly ? 'deterministic value vs the deterministic best (Monte Carlo covers the top 10)' : 'vs best'}">${fmtDelta(delta)}</td>
       <td class="mono dim c-plan" style="font-size:11px">${(r.plan || []).join(' ')}</td>
     </tr>`;
   })}`;
