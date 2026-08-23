@@ -89,3 +89,11 @@ draft room (ESPN / Sleeper / Yahoo) and keeps Howie's log in sync with
 `howie draft sync`; when you are on the clock it returns `howie draft pick`.
 Reset with `howie draft reset --mode live --slot N` first; every finished
 draft is archived into the Mock Draft Lab for availability learning.
+
+## Autopilot (mock rooms only)
+
+`.claude/skills/draft-autopilot/SKILL.md` — the observer skill plus
+execution: Howie picks (`howie draft best --json`), Claude in Chrome clicks
+DRAFT in the ESPN/Sleeper mock room, narrates, and `howie coach review`
+turns the finished draft into strategy changes. Gated: the user must say
+"autopilot on", and it refuses real league drafts. Use a 90-second clock.

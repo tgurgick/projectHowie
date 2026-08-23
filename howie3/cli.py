@@ -147,6 +147,30 @@ def draft_sync(names, path: Optional[str]) -> None:
         console.print(f"[yellow]unresolved: {', '.join(r['unresolved'])}[/yellow]")
 
 
+@draft.command("best")
+@click.option("--top", "top_n", default=5)
+@click.option("--sims", default=150, help="Monte Carlo sims (0 = deterministic)")
+def draft_best(top_n: int, sims: int) -> None:
+    """Howie's ranked picks for the live draft log as JSON — what the
+    autopilot clicks (top row) and the alternatives."""
+    import json as _json
+
+    from . import service
+    from .state import DraftState
+
+    settings = Settings()
+    st = DraftState.load(settings)
+    pk = service.pick_payload(settings, st, sims=sims, top_n=top_n)
+    sp = service.state_payload(settings, st)
+    click.echo(_json.dumps({
+        "on_clock": sp["you_are_on_clock"], "pick": pk["current_pick"], "next_pick": pk["next_pick"], "round": pk["round"],
+        "best": [{"name": r["name"], "pos": r["pos"], "team": r["team"], "value": r["value"], "delta": r["delta"],
+                  "avail_next": r["avail_next"], "rules": [f["text"] for f in r["rules"]],
+                  "status": (r.get("status") or {}).get("text")} for r in pk["rows"][:top_n]],
+        "roster": [x["name"] for x in sp["roster"] if x["name"]],
+    }))
+
+
 @draft.command("log")
 def draft_log() -> None:
     """The draft log as it stands."""
