@@ -61,3 +61,27 @@ def test_resolve_team_accepts_codes_names_and_nicknames():
         resolve_team("new york")
     with pytest.raises(ValueError):
         resolve_team("mars")
+
+
+def test_season_grid_marks_byes_outs_and_empty_slots(tmp_path, monkeypatch):
+    from howie3 import service
+
+    s = Settings()
+    if not s.db_path.exists():
+        pytest.skip("howie.db not built")
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    st = DraftState(created="x", mode="live"); st.save(s)
+    empty = service.season_grid_payload(s, DraftState.load(s))
+    assert empty["players"] == 0 and len(empty["weeks"]) == 17
+    assert all(c["level"] == "grey" and c["reason"] == "not drafted" for r in empty["rows"] for c in r["cells"])
+    conn = service._conn(s); pool = service._pool(s, conn); conn.close()
+    rb = next(p for p in pool if p.position == "RB" and p.bye and p.draftable)
+    service.mark_pick(s, rb.uid, mine=True)
+    g = service.season_grid_payload(s, DraftState.load(s))
+    row = next(r for r in g["rows"] if r["slot"] == "RB1")
+    bye_cell = row["cells"][rb.bye - 1]
+    assert bye_cell["level"] == "grey" and bye_cell["reason"] == "bye"
+    live = [c for c in row["cells"] if c["name"]]
+    assert len(live) == 16 and all(c["name"] == rb.name and c["pts"] > 0 for c in live)
+    assert g["week_totals"][rb.bye - 1]["bye"] == [rb.name]
+    assert {c["level"] for c in live} <= {"green", "yellow", "red"}

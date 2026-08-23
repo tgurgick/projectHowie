@@ -770,6 +770,130 @@ def roster_sim_payload(settings: Settings, state: DraftState, n_sims: int = 300)
     }
 
 
+# ------------------------------------------------------------ season grid (ROSTER tab)
+
+GRID_LEVELS = ((1.10, "green"), (0.85, "yellow"), (0.0, "red"))
+
+
+def season_grid_payload(settings: Settings, state: DraftState) -> dict:
+    """Week-by-week heatmap of the roster: one row per starting slot, one
+    column per week 1-17. Each cell is the player the weekly-optimal lineup
+    would start there (byes, known games out and matchup-adjusted weekly
+    means all applied), colored by his expected points relative to a
+    league-average starter at that position. Grey = nobody to start.
+    Per-week totals and bench depth make thin weeks obvious at a glance."""
+    from .value.distributions import build_sim_players
+    from .value.lineup import FLEX_ELIGIBLE
+    from .value.simulate import FANTASY_WEEKS
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    pool_by_uid = {p.uid: p for p in pool}
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    proj_rank: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
+    for p in pool:
+        counts[p.position] = counts.get(p.position, 0) + 1
+        proj_rank[p.uid] = counts[p.position]
+    # league-average starter, per position, in weekly points: the mean of the
+    # top (teams x slots [+ flex share]) projections / 17
+    slots = {"QB": league.qb_slots, "RB": league.rb_slots, "WR": league.wr_slots,
+             "TE": league.te_slots, "K": league.k_slots, "DST": league.dst_slots}
+    baseline: Dict[str, float] = {}
+    for pos, n_slots in slots.items():
+        n = league.num_teams * n_slots + (league.num_teams * league.flex_slots // 3 if pos in FLEX_ELIGIBLE else 0)
+        top = [p.raw or p.proj for p in pool if p.position == pos][:max(n, 1)]
+        baseline[pos] = (sum(top) / len(top) / FANTASY_WEEKS) if top else 1.0
+    games = {r["player_uid"]: r["games"] for r in conn.execute(
+        "SELECT player_uid, games FROM projections WHERE season = ? AND source = 'pff'",
+        (settings.current_season,))}
+    sps = build_sim_players(conn, roster, settings.current_season, league.scoring_format,
+                            proj_rank, games) if roster else []
+    conn.close()
+
+    # expected points per player per week; known games out are taken from week 1
+    weekly: List[List[float]] = []
+    byes: List[Optional[int]] = []
+    out_until: List[int] = []
+    for p, sp in zip(roster, sps):
+        st = p.status or {}
+        miss = int(st.get("games_out") or 0) if st.get("status") not in ("out_season", "released", "retired") else FANTASY_WEEKS
+        out_until.append(miss)
+        byes.append(sp.bye_week)
+        # weekly_mu already divides the season by played weeks; use the raw
+        # projection's per-week rate so a player out N games isn't inflated
+        rate = (p.raw or p.proj) / FANTASY_WEEKS
+        wk: List[float] = []
+        for w in range(1, FANTASY_WEEKS + 1):
+            if (sp.bye_week and w == sp.bye_week) or w <= miss:
+                wk.append(0.0)
+            else:
+                wk.append(rate * float(sp.sos_mult[w - 1]))
+        weekly.append(wk)
+
+    slot_rows: List[dict] = []
+    for pos, n_slots in slots.items():
+        for k in range(n_slots):
+            slot_rows.append({"slot": pos if n_slots == 1 else f"{pos}{k + 1}", "pos": pos, "cells": []})
+    for k in range(league.flex_slots):
+        slot_rows.append({"slot": "FLEX" if league.flex_slots == 1 else f"FLEX{k + 1}", "pos": "FLEX", "cells": []})
+
+    def level(ratio: float) -> str:
+        for cut, name in GRID_LEVELS:
+            if ratio >= cut:
+                return name
+        return "grey"
+
+    week_totals = []
+    for w in range(FANTASY_WEEKS):
+        order = sorted(range(len(roster)), key=lambda i: -weekly[i][w])
+        used = set()
+        assigned: Dict[str, List[int]] = {pos: [] for pos in slots}
+        flex: List[int] = []
+        for i in order:
+            if weekly[i][w] <= 0:
+                break
+            pos = roster[i].position
+            if len(assigned[pos]) < slots[pos]:
+                assigned[pos].append(i); used.add(i)
+        for i in order:
+            if len(flex) >= league.flex_slots or weekly[i][w] <= 0:
+                break
+            if i not in used and roster[i].position in FLEX_ELIGIBLE:
+                flex.append(i); used.add(i)
+        total = 0.0
+        for row in slot_rows:
+            pos = row["pos"]
+            idx = int(row["slot"][len(pos):] or 1) - 1 if pos != "FLEX" else (0 if row["slot"] == "FLEX" else int(row["slot"][4:]) - 1)
+            picks = flex if pos == "FLEX" else assigned[pos]
+            if idx < len(picks):
+                i = picks[idx]
+                pts = weekly[i][w]
+                base = baseline[roster[i].position]
+                ratio = pts / base if base else 0.0
+                total += pts
+                row["cells"].append({"week": w + 1, "name": roster[i].name, "pts": round(pts, 1),
+                                     "ratio": round(ratio, 2), "level": level(ratio),
+                                     "sub": roster[i].position != pos and pos != "FLEX"})
+            else:
+                # why empty: everyone at this position is on bye / out, or the slot was never drafted
+                holders = [i for i in range(len(roster)) if roster[i].position == pos or (pos == "FLEX" and roster[i].position in FLEX_ELIGIBLE)]
+                reason = "not drafted" if not holders else ("bye" if any(byes[i] == w + 1 for i in holders) else "out")
+                row["cells"].append({"week": w + 1, "name": None, "pts": 0, "ratio": 0, "level": "grey", "reason": reason})
+        bench = [i for i in range(len(roster)) if i not in used and weekly[i][w] > 0]
+        on_bye = [roster[i].name for i in range(len(roster)) if byes[i] == w + 1]
+        out = [roster[i].name for i in range(len(roster)) if w + 1 <= out_until[i]]
+        league_avg = sum(baseline[pos] * n for pos, n in slots.items()) + league.flex_slots * (baseline["RB"] + baseline["WR"]) / 2
+        week_totals.append({"week": w + 1, "pts": round(total, 1), "ratio": round(total / league_avg, 2) if league_avg else 0,
+                            "level": level(total / league_avg) if league_avg else "grey",
+                            "bench": len(bench), "bench_by_pos": {pos: sum(1 for i in bench if roster[i].position == pos) for pos in ("QB", "RB", "WR", "TE")},
+                            "bye": on_bye, "out": out})
+    return {"weeks": list(range(1, FANTASY_WEEKS + 1)), "rows": slot_rows, "week_totals": week_totals,
+            "baseline": {pos: round(v, 1) for pos, v in baseline.items()},
+            "players": len(roster), "legend": {"green": "≥ 110% of a league-average starter", "yellow": "85–110%", "red": "< 85%", "grey": "nobody to start (bye / out / not drafted)"}}
+
+
 QUERY_PRESETS = [
     ("Top 20 RB by 2025 pts", "SELECT p.name, SUM(w.pts_{fmt}) pts, COUNT(*) g FROM weekly_stats w JOIN players p USING(player_uid) WHERE w.season=2025 AND w.position='RB' GROUP BY p.name ORDER BY pts DESC LIMIT 20"),
     ("WR 100-yd games, 2025", "SELECT p.name, COUNT(*) games_100 FROM weekly_stats w JOIN players p USING(player_uid) WHERE w.season=2025 AND w.position='WR' AND w.rec_yards>=100 GROUP BY p.name ORDER BY games_100 DESC LIMIT 20"),

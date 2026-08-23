@@ -189,6 +189,109 @@ The remaining limitations are:
 - Add ablations for availability, roster marginal value, schedule, strategy rules, and research facts.
 - Replace the legacy database dependency with normalized derived evaluation inputs.
 
+### 8. Recalibrate simulation uncertainty and remove evaluation leakage — P1
+
+The simulation preserves the input projection mean well. Direct 100,000-run checks produced values close to the projection input, for example:
+
+- Josh Allen: projection `307.4`, simulated mean `307.39`;
+- Jahmyr Gibbs: projection `306.3`, simulated mean `307.75`;
+- Drake Maye: projection `299.4`, simulated mean `299.44`.
+
+That validates the mean-preservation arithmetic, but it does not validate the probability ranges.
+
+The current 2025 calibration check reports:
+
+| Position | p10–p90 coverage | 8+ games coverage |
+|---|---:|---:|
+| QB | 60.7% | 68.0% |
+| RB | 74.5% | 82.0% |
+| WR | 58.6% | 67.2% |
+| TE | 92.3% | 92.3% |
+| Overall | 68.7% | 75.9% |
+
+The target is 80%. QB and WR ranges are too narrow, while TE ranges are too wide. The current p10/p90 values should therefore not be presented as calibrated probabilities.
+
+#### Calibration problems
+
+Historical variance buckets are assigned using realized season-total rank in `howie3/value/distributions.py:73-87`, while current players are assigned using projected rank in `howie3/value/distributions.py:91-97`. This is not a consistent predictive calibration scheme.
+
+In addition, `SEASON_SIGMA` is described as measured from the 2025 backtest in `howie3/value/distributions.py:27-32`, but is reused by the 2025 evaluation in `howie3/evals.py:161-195`. That leaks evaluation-season information into the uncertainty model.
+
+#### Correction
+
+- Calibrate historical players by preseason projection rank, preseason ADP, projected games, and prior-season information.
+- Do not use 2025-derived uncertainty parameters when evaluating 2025.
+- Create rolling train/test windows for every evaluated season.
+- Report calibration by position, tier, and availability bucket.
+- Add confidence intervals to coverage estimates.
+- Use empirical or distributional calibration to target the desired coverage instead of hand-tuning `SEASON_SIGMA`.
+
+### 9. Improve injury and availability modeling — P1
+
+Weekly availability is currently sampled as independent Bernoulli draws in `howie3/value/simulate.py:74-79`. This does not represent clustered injuries or multi-week absences.
+
+Historical availability buckets can also be optimistic because they are measured among the best realized players in each position tier, which selects for players who stayed healthy.
+
+#### Correction
+
+- Model injury duration and consecutive missed games.
+- Use player-specific availability where enough history exists.
+- Add team-level injury/environment shocks.
+- Separate healthy, limited, and unavailable states.
+- Validate predicted games missed against held-out seasons.
+
+### 10. Fix incomplete ADP coverage — P1
+
+The current 2026 half-PPR pool contains 547 projected players, but 328 have no matching ADP record. The current fallback in `howie3/value/availability.py:16-20` treats missing ADP as 100% availability.
+
+That is acceptable for truly undrafted fringe players, but it is unsafe as a general fallback. It distorts late-round availability and replacement-value calculations.
+
+#### Correction
+
+- Add a position/round availability prior for missing ADP.
+- Use another independent ADP source where possible.
+- Mark availability as unknown rather than silently assigning 1.0.
+- Report ADP coverage in the data-quality payload.
+- Add tests for high-projection players with missing ADP.
+
+### 11. Model cross-player and team correlation — P2
+
+The simulation independently samples each player’s season shock, weekly scoring noise, and availability in `howie3/value/simulate.py:71-85`.
+
+This omits important football correlations:
+
+- quarterback and pass-catcher relationships;
+- team offensive environment;
+- game script;
+- shared injuries;
+- opponent and weather effects.
+
+As a result, roster-level tails may overstate diversification and understate correlated downside.
+
+#### Correction
+
+Add at least:
+
+- team-week environment shocks;
+- QB/pass-catcher correlation;
+- shared team availability effects;
+- opponent/game-level scoring shocks.
+
+### 12. Increase Monte Carlo sample size for close decisions — P2
+
+Production recommendations use approximately 150 simulations through `howie3/service.py:255`. That is sufficient for a rough directional estimate, but not for candidates separated by only a few fantasy points.
+
+Different seeds produced stable top-three choices in a basic check, but later candidates moved. The fixed seed makes results reproducible while hiding sampling uncertainty.
+
+#### Correction
+
+Use a two-stage simulation budget:
+
+1. 150–300 simulations for the full board.
+2. 1,000–5,000 simulations for shortlisted candidates.
+
+Expose standard error, rank stability across seeds, probability of being the best choice, and confidence intervals on value differences.
+
 ## What is now considered fixed
 
 The following previous findings appear addressed and have regression coverage:
@@ -214,9 +317,13 @@ The following previous findings appear addressed and have regression coverage:
 5. Close the database connection leak.
 6. Reduce the `mypy` baseline.
 7. Expand evaluation across seasons and league configurations.
+8. Recalibrate uncertainty using strictly preseason information.
+9. Replace missing-ADP availability defaults.
+10. Add clustered injury and team/player correlation.
+11. Increase simulation depth for close decisions.
 
 ## Final assessment
 
 The refreshed code is now a strong prototype with a substantially improved security and data-ownership posture. The packaging boundary and portable simulation artifact are in good shape.
 
-The next release should wait until the Monte Carlo worker is reliable and the model egress contract is structural rather than dependent on the format of each tool’s output. Those two corrections are the remaining architectural risks; the rest is reliability, typing, and evaluation maturity.
+The next release should wait until the Monte Carlo worker is reliable, the model egress contract is structural, and the uncertainty ranges are demonstrably calibrated. The current means are coherent, but the probability ranges and availability model still need empirical correction before being treated as trustworthy forecasts.
