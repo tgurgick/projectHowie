@@ -182,6 +182,7 @@ def current_status(conn: sqlite3.Connection, season: int, include_active: bool =
     for uid in set(research) | set(roster):
         res, ros = research.get(uid), roster.get(uid)
         if res is None:
+            assert ros is not None
             latest[uid] = ros
         elif ros is not None and ros["status"] != "active" and ros["as_of"] > res["as_of"]:
             latest[uid] = ros
