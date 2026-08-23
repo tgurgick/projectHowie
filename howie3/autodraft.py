@@ -215,19 +215,40 @@ class AutoDrafter:
         return self.room_text()
 
     # -- actions (player search box, then the row's button — never coordinates)
+    @staticmethod
+    def room_names(name: str) -> List[str]:
+        """How the room may spell this player: defenses are 'Rams D/ST' /
+        'Packers D/ST' in ESPN, 'LA D/ST' / 'GB D/ST' in Howie."""
+        m = re.match(r"^([A-Z]{2,3}) D/ST$", name)
+        if m:
+            from .graph import TEAM_NAMES
+            full = TEAM_NAMES.get(m.group(1), "")
+            nick = full.split()[-1] if full else ""
+            return [f"{nick} D/ST", f"{full} D/ST", nick, name] if nick else [name]
+        return [name]
+
     def _search(self, name: str):
         """ESPN's player search is an autocomplete: type, then click the
         suggestion (button.player--search--match); the table then shows that
         player's row. Matched by text (names carry apostrophes and periods
-        that break CSS selectors). Returns the suggestion's player id."""
+        that break CSS selectors). Returns the suggestion's player id, or
+        None when no suggestion appeared (then NOTHING may be clicked)."""
         box = self.page.get_by_placeholder("Player Name").first
-        box.fill("", timeout=1500)
-        box.fill(name, timeout=1500)
         matches = self.page.locator("button.player--search--match")
-        try:
-            matches.first.wait_for(state="visible", timeout=2000)
-        except Exception:
+        found = False
+        for spelling in self.room_names(name):
+            box.fill("", timeout=1500)
+            box.fill(spelling, timeout=1500)
+            try:
+                matches.first.wait_for(state="visible", timeout=1500)
+                found = True
+                break
+            except Exception:
+                continue
+        if not found:
+            self._suggestion_ok = False
             return self.player_ids.get(name)
+        self._suggestion_ok = True
         target = None
         for i in range(min(matches.count(), 8)):
             m = matches.nth(i)
@@ -268,18 +289,26 @@ class AutoDrafter:
                         return b
                 except Exception:
                     continue
-        # after the search filter the table holds one player: a lone visible
-        # button with this label is his
-        lone = self.page.locator("button").filter(has_text=pattern)
-        visible = []
-        for i in range(min(lone.count(), 6)):
-            try:
-                if lone.nth(i).is_visible():
-                    visible.append(lone.nth(i))
-            except Exception:
-                continue
-        if len(visible) == 1:
-            return visible[0]
+        # after a SUCCESSFUL suggestion click the table holds one player: a
+        # lone visible button with this label is his — but only if the row
+        # around it names him (never click an unfiltered list's top row)
+        if getattr(self, "_suggestion_ok", False):
+            lone = self.page.locator("button").filter(has_text=pattern)
+            visible = []
+            for i in range(min(lone.count(), 6)):
+                try:
+                    if lone.nth(i).is_visible():
+                        visible.append(lone.nth(i))
+                except Exception:
+                    continue
+            if len(visible) == 1:
+                tokens = [t for sp in self.room_names(name) for t in sp.replace("D/ST", "").split() if len(t) > 2] or [name]
+                try:
+                    row_txt = visible[0].locator("xpath=ancestor::*[4]").inner_text(timeout=300)
+                except Exception:
+                    row_txt = ""
+                if any(t in row_txt for t in tokens):
+                    return visible[0]
         names = self.page.locator(".playerinfo__playername", has_text=name) if name else self.page.locator(".playerinfo__playername")
         for i in range(min(names.count(), 6)):
             el = names.nth(i)

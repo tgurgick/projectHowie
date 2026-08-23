@@ -80,3 +80,11 @@ def test_reconcile_roster_fixes_ownership(settings, tmp_path, monkeypatch, leagu
     assert sorted(mine) == ["CeeDee Lamb", "Drake London"]
     assert service.reconcile_roster(settings, [{"slot": "WR", "name": "C. Lamb", "pos": "WR"},
                                                {"slot": "WR", "name": "D. London", "pos": "WR"}])["changed"] is False
+
+
+def test_defense_room_spellings():
+    from howie3.autodraft import AutoDrafter
+
+    assert AutoDrafter.room_names("GB D/ST")[:2] == ["Packers D/ST", "Green Bay Packers D/ST"]
+    assert AutoDrafter.room_names("LA D/ST")[0] == "Rams D/ST"
+    assert AutoDrafter.room_names("Drake Maye") == ["Drake Maye"]
