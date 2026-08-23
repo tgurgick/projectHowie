@@ -33,6 +33,9 @@ function h(strings, ...vals) {
 /** Newlines -> <br>, everything escaped. For terminal output. */
 function textHtml(s) { return new Raw(esc(s).replace(/\n/g, '<br>')); }
 
+const TEAM_CODES = new Set(['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC',
+  'LA','LAC','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS']);
+
 /**
  * Classify a command-line entry.
  *   '/cmd arg…'         -> {kind:'cmd', cmd, arg, rest[]}
@@ -63,8 +66,8 @@ function classifyInput(line, items, selIdx) {
     if (sel.team) return {kind: 'team', team: sel.team, hit: sel};
   }
   const lower = text.toLowerCase();
-  if (/^[a-z]{2,3}$/.test(lower) && teams.some(t => t.team.toLowerCase() === lower)) {
-    return {kind: 'team', team: lower.toUpperCase()};
+  if (/^[a-z]{2,3}$/.test(lower) && (TEAM_CODES.has(lower.toUpperCase()) || teams.some(t => t.team.toLowerCase() === lower))) {
+    return {kind: 'team', team: lower.toUpperCase()};   // abbreviation beats a player-name prefix
   }
   const teamExact = teams.find(t => t.name.toLowerCase() === lower);
   if (teamExact) return {kind: 'team', team: teamExact.team, hit: teamExact};
@@ -105,5 +108,5 @@ function reasonLine(card, risk) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {esc, Raw, raw, h, textHtml, classifyInput, pickAction, availClass, fmtDelta, reasonLine};
+  module.exports = {esc, Raw, raw, h, textHtml, classifyInput, pickAction, availClass, fmtDelta, reasonLine, TEAM_CODES};
 }

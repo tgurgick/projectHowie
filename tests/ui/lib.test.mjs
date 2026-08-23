@@ -45,6 +45,7 @@ test('classifyInput: commands, questions, players, no match', () => {
   const withTeams = [...items, {id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}, {id: 'unit:DAL-WR', kind: 'unit', name: 'DAL WR room', team: 'DAL'}];
   assert.deepEqual(classifyInput('dallas cowboys', withTeams, -1).team, 'DAL');   // team name -> team report
   assert.equal(classifyInput('dal', [{id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}], -1).team, 'DAL'); // abbreviation
+  assert.equal(classifyInput('PHI', [{uid: 'd', name: 'PHI D/ST', kind: 'player'}, {uid: 'm', name: 'Phil Mafah', kind: 'player'}], -1).team, 'PHI'); // known code wins over player prefixes
   assert.equal(classifyInput('cowboys', [{id: 'team:DAL', kind: 'team', name: 'Dallas Cowboys', team: 'DAL'}, {id: 'unit:DAL-WR', kind: 'unit', name: 'DAL WR room', team: 'DAL'}], -1).team, 'DAL'); // unique team across hits
   assert.equal(classifyInput('xyz', withTeams, 3).kind, 'team');                  // arrow-key selection of a team row
   assert.equal(classifyInput('robinson', withTeams, -1).kind, 'nomatch');         // players still ambiguous
