@@ -173,6 +173,7 @@ class DraftState:
                 raise DraftStateError(f"team {team} is outside 1..{league.num_teams}")
             if mine and team != league.draft_position:
                 raise DraftStateError("a pick marked mine must belong to the user's slot")
+            # a placeholder for a pick the observer never saw may sit on any slot
             if team:
                 have = sum(1 for e in self.events if e.team == team)
                 if have >= league.roster_size:

@@ -200,16 +200,22 @@ class AutoDrafter:
         self.page.wait_for_timeout(250)
         return pid
 
-    def _row_button(self, pid, label: str):
-        """The visible DRAFT / QUEUE button that carries this player id."""
-        if not pid:
-            return None
-        btns = self.page.locator(f"button[data-player-id='{pid}']")
-        for i in range(min(btns.count(), 6)):
+    def _row_button(self, pid, label: str, name: str = ""):
+        """After the suggestion click the table shows only this player: the
+        visible button labelled `label` whose row names him."""
+        btns = self.page.locator("button").filter(has_text=re.compile(label, re.I))
+        for i in range(min(btns.count(), 8)):
             b = btns.nth(i)
             try:
-                if b.is_visible() and re.search(label, b.inner_text(timeout=300), re.I):
-                    return b
+                if not b.is_visible():
+                    continue
+                if name:
+                    row = b.locator("xpath=ancestor::tr[1]")
+                    if not row.count():
+                        row = b.locator("xpath=ancestor::*[contains(@class,'row') or contains(@class,'Table')][1]")
+                    if row.count() and name.split()[-1] not in row.first.inner_text(timeout=300):
+                        continue
+                return b
             except Exception:
                 continue
         return None
@@ -231,14 +237,14 @@ class AutoDrafter:
 
     def _debug_buttons(self, pid) -> str:
         try:
-            btns = self.page.locator(f"button[data-player-id='{pid}']")
-            return " | ".join(btns.nth(i).inner_text(timeout=200).strip() for i in range(min(btns.count(), 4))) or "(no buttons with that id)"
+            btns = self.page.locator("button").filter(has_text=re.compile("draft|queue", re.I))
+            return " | ".join(btns.nth(i).inner_text(timeout=200).strip()[:20] for i in range(min(btns.count(), 6))) or "(no draft/queue buttons)"
         except Exception as e:
             return f"(debug failed: {e.__class__.__name__})"
 
     def click_draft(self, name: str) -> bool:
         pid = self._search(name)
-        btn = self._row_button(pid, "draft")
+        btn = self._row_button(pid, "draft", name)
         if btn is None or not self._click(btn):
             log_event(self.settings, "draft_button_missing", name=name, pid=pid, buttons=self._debug_buttons(pid))
             return False
@@ -255,7 +261,7 @@ class AutoDrafter:
         if name in self.queued:
             return True
         pid = self._search(name)
-        btn = self._row_button(pid, "queue")
+        btn = self._row_button(pid, "queue", name)
         if btn is None or not self._click(btn):
             log_event(self.settings, "queue_button_missing", name=name, pid=pid, buttons=self._debug_buttons(pid))
             return False
@@ -300,12 +306,14 @@ class AutoDrafter:
                 picks = parse_picks(self.picks_text())
                 new = [p for p in picks if (p["round"], p["pick"]) not in self.seen]
                 if new:
-                    r = service.sync_picks(self.settings, [p["name"] for p in new], source="autodraft")
+                    nums = [(p["round"] - 1) * league.num_teams + p["pick"] for p in new]
+                    r = service.sync_picks(self.settings, [p["name"] for p in new], source="autodraft",
+                                           pick_numbers=nums)
                     for p in new:
                         self.seen.add((p["round"], p["pick"]))
                     log_event(self.settings, "sync",
                               picks=[f"{p['round']}.{p['pick']} {p['name']} ({p['owner']})" for p in new],
-                              unresolved=r["unresolved"], next_pick=r["next_pick"])
+                              unresolved=r["unresolved"], gaps=r.get("gaps", []), next_pick=r["next_pick"])
                 state = DraftState.load(self.settings)
                 nxt = state.next_pick_no()
                 if nxt > total:

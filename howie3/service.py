@@ -271,22 +271,33 @@ def reset_draft(settings: Settings, mode: str = "live") -> dict:
     return {"reset": True, "mode": mode, "archived": bool(archived)}
 
 
-def sync_picks(settings: Settings, names: List[str], source: str = "chrome") -> dict:
+def sync_picks(settings: Settings, names: List[str], source: str = "chrome",
+               pick_numbers: Optional[List[int]] = None) -> dict:
     """Bring the draft log up to a pick order observed elsewhere (an ESPN /
-    Sleeper draft room read by Claude in Chrome). Idempotent: names already
-    in the log are skipped, new ones are appended in order; a pick that
-    falls on the user's snake slot is recorded as the user's. Unresolved
-    names are reported, never guessed."""
+    Sleeper draft room). Idempotent: names already in the log are skipped,
+    new ones are appended in order; a pick that falls on the user's snake
+    slot is recorded as the user's. With `pick_numbers` (overall pick per
+    name) the log is aligned to the room's numbering: picks the observer
+    never saw become placeholder events so attribution cannot drift by a
+    slot. Unresolved names are reported, never guessed."""
     league = settings.league
     conn = _conn(settings)
     pool = _pool(settings, conn)
     conn.close()
     from .data.names import name_key
+    from .graph import TEAM_NAMES
     by_key: Dict[str, str] = {}
     for p in pool:
         by_key.setdefault(name_key(p.name), p.uid)
-    added, skipped, unresolved = [], [], []
-    for raw in names:
+        if p.position == "DST" and p.team:
+            full = TEAM_NAMES.get(p.team, "")
+            for alias in (full, full.split()[-1] if full else "", p.team):
+                if alias:
+                    by_key.setdefault(name_key(f"{alias} D/ST"), p.uid)
+                    by_key.setdefault(name_key(f"{alias} DST"), p.uid)
+    added, skipped, unresolved, gaps = [], [], [], []
+    numbers: List[Optional[int]] = list(pick_numbers) if pick_numbers else [None] * len(names)
+    for raw, pick_no in zip(names, numbers):
         key = name_key(raw.strip())
         uid = by_key.get(key)
         if uid is None:
@@ -299,11 +310,23 @@ def sync_picks(settings: Settings, names: List[str], source: str = "chrome") -> 
         if uid in state.taken_uids():
             skipped.append(raw)
             continue
+        if pick_no is not None and pick_no < state.next_pick_no():
+            skipped.append(raw)   # an earlier pick we already have under another name
+            continue
+        while pick_no is not None and state.next_pick_no() < pick_no:
+            gap_no = state.next_pick_no()
+            with state_lock(settings):
+                st = DraftState.load(settings)
+                st.add_pick(gap_no, snake_team_for_pick(league, gap_no), f"gap:{gap_no}", "(unseen pick)",
+                            None, "gap", mine=False, league=league)
+                st.save(settings)
+            gaps.append(gap_no)
+            state = DraftState.load(settings)
         mine = snake_team_for_pick(league, state.next_pick_no()) == league.draft_position
         r = mark_pick(settings, uid, mine=mine, source=source)
         added.append({"name": r["name"], "pick_no": r["pick_no"], "mine": mine})
     state = DraftState.load(settings)
-    return {"added": added, "skipped": len(skipped), "unresolved": unresolved,
+    return {"added": added, "skipped": len(skipped), "unresolved": unresolved, "gaps": gaps,
             "next_pick": state.next_pick_no(),
             "on_clock": snake_team_for_pick(league, state.next_pick_no()) == league.draft_position}
 
