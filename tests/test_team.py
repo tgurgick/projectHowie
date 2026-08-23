@@ -110,3 +110,18 @@ def test_plan_payload_covers_every_round(tmp_path, monkeypatch, league12):
     p2 = service.plan_payload(s, DraftState.load(s))
     assert p2["rows"][0]["state"] == "done" and p2["rows"][0]["player"] == pool[7].name
     assert p2["rows"][1]["state"] == "now" and p2["rows"][1]["pick"] == 17
+
+
+def test_lookahead_gives_best_alt_and_likely_for_next_picks(tmp_path, monkeypatch, league12):
+    from howie3 import service
+
+    s = Settings()
+    if not s.db_path.exists():
+        pytest.skip("howie.db not built")
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    fs = service.lookahead_payload(s, DraftState(created="x"), 3)
+    assert [p["pick"] for p in fs["picks"]] == [8, 17, 32] and fs["picks"][0]["picks_away"] == 7
+    for p in fs["picks"]:
+        assert p["best"]["name"] and 0 <= p["best"]["avail"] <= 1 and len(p["candidates"]) >= 2
+        if p["safe"]:
+            assert p["safe"]["avail"] >= p["best"]["avail"]

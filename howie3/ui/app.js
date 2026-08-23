@@ -1048,6 +1048,15 @@ async function pollBridge() {
       if (e.ts <= lastBridgeTs) continue;
       lastBridgeTs = e.ts; localStorage.setItem('bridgeTs', lastBridgeTs);
       if (e.kind === 'sync') termPrint('dim', 'room: ' + e.picks.join(' · ') + (e.unresolved.length ? ' · unresolved ' + e.unresolved.join(', ') : ''));
+      else if (e.kind === 'foresight') {
+        termPrint('dim', `next ${e.picks.length} picks as the board stands (after pick ${e.next_pick - 1}):`);
+        termPrint('out', e.picks.map(p => {
+          const b = p.best ? `${p.best.pos} ${p.best.name} (${p.best.value}, ${Math.round(p.best.avail * 100)}% there)` : '—';
+          const alt = p.alt ? ` · or ${p.alt.pos} ${p.alt.name} (${Math.round(p.alt.avail * 100)}%)` : '';
+          const safe = p.safe ? ` · likely there: ${p.safe.pos} ${p.safe.name} (${Math.round(p.safe.avail * 100)}%)` : '';
+          return `R${p.round} pick ${p.pick} (${p.picks_away} away) → ${b}${alt}${safe}`;
+        }).join('\n'));
+      }
       else if (e.kind === 'thinking') {
         const band = c => c.p10 != null ? ` ${c.p10}–${c.p90}` : '';
         termPrint('dim', `thinking for pick ${e.for_pick} · ${e.sims ? e.sims + ' simulated seasons' : 'deterministic'} · ${e.seconds}s`);

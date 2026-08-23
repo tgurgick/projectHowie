@@ -425,6 +425,7 @@ class AutoDrafter:
         t_end = time.time() + max_minutes * 60
         last_clock_pick = None
         cached: Dict[str, Any] = {"pick": None, "rows": []}   # Howie's ranking computed one pick early
+        last_foresight = (0.0, -1)   # (time, next_pick) the last "next 3 picks" forecast was logged for
         while time.time() < t_end:
             try:
                 if not configured:
@@ -477,6 +478,12 @@ class AutoDrafter:
                 my_next = next((k for k in range(nxt, min(nxt + 3, total + 1))
                                 if snake_team_for_pick(league, k) == league.draft_position), None)
                 clock = self.is_on_clock()
+                # foresight: the next three of our picks as the board stands (both modes);
+                # refreshed as picks land, at most every 12 s, never while on the clock
+                if not clock and nxt != last_foresight[1] and time.time() - last_foresight[0] > 12:
+                    fs = service.lookahead_payload(self.settings, state, n=3)
+                    last_foresight = (time.time(), nxt)
+                    log_event(self.settings, "foresight", next_pick=nxt, picks=fs["picks"])
                 if clock and nxt != last_clock_pick:
                     last_clock_pick = nxt
                     taken = state.taken_uids()

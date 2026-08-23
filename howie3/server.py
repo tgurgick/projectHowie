@@ -234,6 +234,8 @@ class Handler(BaseHTTPRequestHandler):
                     mc = _mc_cache["data"] if _mc_cache["gen"] == _generation(s, state) else None
                 now_uid = mc["rows"][0]["uid"] if mc and mc.get("rows") else None
                 self._json(service.sequence_payload(s, state, now_uid=now_uid))
+            elif url.path == "/api/lookahead":
+                self._json(service.lookahead_payload(s, DraftState.load(s), int(q.get("n", 3))))
             elif url.path == "/api/plan":
                 self._json(service.plan_payload(s, DraftState.load(s)))
             elif url.path == "/api/season_grid":

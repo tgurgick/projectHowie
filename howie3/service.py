@@ -664,6 +664,47 @@ def sequence_payload(settings: Settings, state: DraftState, now_uid: Optional[st
     }
 
 
+# ------------------------------------------------------------ lookahead (next N picks)
+
+def lookahead_payload(settings: Settings, state: DraftState, n: int = 3) -> dict:
+    """For each of the user's next n picks, given the board right now: what
+    the engine would take there (the best candidate), the runner-up, and the
+    safest fallback — the strongest candidate most likely to still be on the
+    board. Deterministic (no Monte Carlo) so it refreshes between picks."""
+    from .value.policy import apply_rules, roster_counts
+    from .value.roster import evaluate_candidates
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    pool_by_uid = {p.uid: p for p in pool}
+    taken = state.taken_uids()
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    picks = snake_picks(league)
+    upcoming = [k for k in picks if k >= state.next_pick_no()][:n]
+    effects = state.active_rule_effects()
+    out = []
+    for i, k in enumerate(upcoming):
+        rnd = picks.index(k) + 1
+        future = [x for x in picks if x > k]
+        res = evaluate_candidates(pool, roster, k, future, league, taken, top_n=8)
+        res = apply_rules(res, rnd, effects, roster_counts(roster))
+        rows = [{"name": r.player.name, "pos": r.player.position, "value": round(r.final_value),
+                 "avail": round(r.player.p_available(k), 2), "proj": round(r.player.raw or r.player.proj)}
+                for r in res[:6]]
+        best = rows[0] if rows else None
+        safe = max(rows[:6], key=lambda r: (r["avail"], r["value"])) if rows else None
+        out.append({"pick": k, "round": rnd, "picks_away": k - state.next_pick_no(),
+                    "best": best, "alt": rows[1] if len(rows) > 1 else None,
+                    "safe": safe if (safe and best and safe["name"] != best["name"]) else None,
+                    "candidates": rows[:4]})
+        # assume the engine takes its best there, so the following pick is evaluated with it on the roster
+        if best:
+            roster = roster + [next(p for p in pool if p.name == best["name"])]
+    return {"next_pick": state.next_pick_no(), "picks": out}
+
+
 # ------------------------------------------------------------ round-by-round plan (STRATEGY tab)
 
 def plan_payload(settings: Settings, state: DraftState) -> dict:
