@@ -457,6 +457,108 @@ def card_payload(settings: Settings, uid: str) -> dict:
     }
 
 
+# ------------------------------------------------------------ TEAM report
+
+def team_payload(settings: Settings, state: DraftState, team: str) -> dict:
+    """Everything the TEAM tab shows: header facts, the official depth chart
+    fused with projections / ADP / last-season share / status / researched
+    role, vacated volume per room, engine view at the user's next pick, and
+    research freshness."""
+    import json as _json
+
+    from .depth import team_depth
+    from .graph import TEAM_NAMES, ensure_graph_schema
+    from .status import research_coverage
+    from .value.distributions import team_bye_weeks
+
+    team = team.upper()
+    if team not in TEAM_NAMES:
+        raise ValueError(f"Unknown team {team!r}")
+    league = settings.league
+    conn = _conn(settings)
+    ensure_graph_schema(conn)
+    pool = _pool(settings, conn)
+    by_uid = {p.uid: p for p in pool}
+    taken = state.taken_uids()
+    rnd, current_pick, next_pick, _future = _pick_context(settings, state, league)
+    # engine view: where these players sit on the current board
+    board = {r["uid"]: i + 1 for i, r in enumerate(
+        pick_payload(settings, state, sims=0, top_n=25)["rows"])}
+
+    facts = [dict(r) for r in conn.execute(
+        "SELECT entity_id, kind, text, value, confidence, source, created FROM facts "
+        "WHERE entity_id = ? OR entity_id LIKE ? ORDER BY id DESC LIMIT 40",
+        (f"team:{team}", f"unit:{team}-%"))]
+    team_facts = [f for f in facts if f["entity_id"] == f"team:{team}"]
+    unit_facts: Dict[str, list] = {}
+    for f in facts:
+        if f["entity_id"].startswith("unit:"):
+            unit_facts.setdefault(f["entity_id"].rsplit("-", 1)[1], []).append(f)
+    shares = {}
+    for r in conn.execute(
+        "SELECT src, value, attrs FROM edges WHERE kind = 'in_room' AND dst LIKE ?", (f"unit:{team}-%",)):
+        attrs = _json.loads(r["attrs"]) if r["attrs"] else {}
+        last_team = attrs.get("last_team")
+        shares[r["src"].split(":", 1)[1]] = {
+            "share": round(r["value"], 3) if r["value"] is not None else None,
+            "other_team": last_team if (last_team and last_team != team) else None,
+            "targets_last": attrs.get("targets_last"), "carries_last": attrs.get("carries_last")}
+    status_rows = {p.uid: p.status for p in pool if p.status}
+    depth = team_depth(conn, settings.current_season, team)
+    rooms = {}
+    for pos in ("QB", "RB", "WR", "TE"):
+        rows = []
+        seen = set()
+        for d in depth.get(pos, []):
+            p = by_uid.get(d["uid"]) if d["uid"] else None
+            st = status_rows.get(d["uid"]) if d["uid"] else None
+            role = (st or {}).get("role")
+            official = "starter" if d["rank"] == 1 or (pos == "WR" and d["rank"] <= 3) else "depth"
+            rows.append({
+                "rank": d["rank"], "slot": d["slot"], "name": p.name if p else d["name"], "uid": d["uid"],
+                "proj": round(p.raw or p.proj) if p else None, "value": round(p.proj) if p else None,
+                "adp": p.adp if p else None, "taken": bool(d["uid"] and d["uid"] in taken),
+                "avail_next": round(p.p_available(next_pick), 2) if p and p.adp else None,
+                "board_rank": board.get(d["uid"]), "status": status_chip(st),
+                "role": role if role and role != "unknown" else None,
+                "role_disagrees": bool(role and role != "unknown" and (role in ("backup", "depth")) != (official == "depth")),
+                **shares.get(d["uid"] or "", {"share": None, "other_team": None}),
+            })
+            if d["uid"]:
+                seen.add(d["uid"])
+        # projected players the official chart does not list (cut / unsigned / rookies not yet slotted)
+        for p in pool:
+            if p.team == team and p.position == pos and p.uid not in seen:
+                st = status_rows.get(p.uid)
+                rows.append({"rank": None, "slot": None, "name": p.name, "uid": p.uid,
+                             "proj": round(p.raw or p.proj), "value": round(p.proj), "adp": p.adp,
+                             "taken": p.uid in taken, "avail_next": round(p.p_available(next_pick), 2) if p.adp else None,
+                             "board_rank": board.get(p.uid), "status": status_chip(st),
+                             "role": (st or {}).get("role") if (st or {}).get("role") not in (None, "unknown") else None,
+                             "role_disagrees": False, **shares.get(p.uid, {"share": None, "other_team": None})})
+        vac = conn.execute(
+            "SELECT value, text FROM facts WHERE entity_id = ? AND kind = 'vacated_share' ORDER BY id DESC LIMIT 1",
+            (f"unit:{team}-{pos}",)).fetchone()
+        rooms[pos] = {"rows": rows, "vacated": round(vac["value"], 3) if vac else None,
+                      "facts": [f for f in unit_facts.get(pos, []) if f["kind"] != "vacated_share"][:4]}
+    ol = unit_facts.get("OL", [])
+    sos: Dict[str, list] = {}
+    for r in conn.execute(
+        "SELECT position, week, value FROM sos WHERE season = ? AND team = ? AND week BETWEEN 15 AND 17 ORDER BY position, week",
+        (settings.current_season, team)):
+        sos.setdefault(r["position"], []).append({"week": r["week"], "value": round(r["value"], 1)})
+    coverage = next((c for c in research_coverage(conn, settings.current_season) if c["team"] == team), None)
+    dt = next((d[0]["dt"] for d in depth.values() if d), None)
+    bye = team_bye_weeks(conn, settings.current_season).get(team)
+    conn.close()
+    return {
+        "team": team, "name": TEAM_NAMES[team], "bye": bye,
+        "depth_as_of": dt, "current_pick": current_pick, "next_pick": next_pick,
+        "team_facts": team_facts[:8], "ol_facts": ol[:3], "rooms": rooms, "playoff_sos": sos,
+        "coverage": coverage,
+    }
+
+
 # ------------------------------------------------------------ anchors (strategy tab)
 
 def anchors_payload(settings: Settings, state: DraftState) -> dict:

@@ -17,6 +17,7 @@
     <span class="tab active" id="tabBoard" onclick="showTab('board')">BOARD</span>
     <span class="tab" id="tabRoster" onclick="showTab('roster')">ROSTER</span>
     <span class="tab" id="tabStrategy" onclick="showTab('strategy')">STRATEGY</span>
+    <span class="tab" id="tabTeam" onclick="showTab('team')">TEAM</span>
     <span class="tab" id="tabSim" onclick="showTab('sim')">LAB</span>
     <span class="tab" id="tabData" onclick="showTab('data')">DATA</span>
   </nav>
@@ -104,6 +105,18 @@
       </div>
     </div>
 
+
+    <div id="teamView" style="display:none">
+      <div class="ctl" style="justify-content:space-between;align-items:flex-start">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <select id="teamSel"></select>
+          <span class="mono dim" id="teamMeta" style="font-size:11px"></span>
+        </div>
+        <span class="mono dim" id="teamCoverage" style="font-size:11px;text-align:right"></span>
+      </div>
+      <div id="teamHead" class="teamhead"></div>
+      <div id="teamRooms"></div>
+    </div>
 
     <div id="simView">
       <div class="dsec">

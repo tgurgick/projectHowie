@@ -200,6 +200,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(mocksim.aggregates(s))
             elif url.path == "/api/config":
                 self._json(service.config_payload(s))
+            elif url.path == "/api/team":
+                self._json(service.team_payload(s, DraftState.load(s), q.get("team", "PHI")))
             elif url.path == "/api/risk":
                 self._json(service.roster_risk(s, DraftState.load(s)))
             elif url.path == "/api/research/status":

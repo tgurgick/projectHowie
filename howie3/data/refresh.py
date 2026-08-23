@@ -30,12 +30,17 @@ def _ensure_dst_players(conn: sqlite3.Connection) -> int:
     return len(NFL_TEAMS)
 
 
-STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "roster", "sos", "intel", "graph", "verify"]
+STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "roster", "depth", "sos", "intel", "graph", "verify"]
 
 
 def _roster_status(conn, season: int) -> int:
     from ..status import refresh_roster_status
     return refresh_roster_status(conn, season)
+
+
+def _depth_charts(conn, season: int) -> int:
+    from ..depth import refresh_depth_charts
+    return refresh_depth_charts(conn, season)
 
 
 def _rebuild_graph(conn, season: int) -> int:
@@ -81,6 +86,7 @@ def run_refresh(
         )),
         ("pff", lambda: pff.refresh_projections(conn, settings.pff_dir, settings.current_season)),
         ("roster", lambda: _roster_status(conn, settings.current_season)),
+        ("depth", lambda: _depth_charts(conn, settings.current_season)),
         ("sos", lambda: pff_sos.refresh_sos(conn, settings.pff_dir, settings.current_season)),
         ("intel", lambda: legacy_intel.port_legacy_intel(
             conn, settings.data_dir / "fantasy_ppr.db"

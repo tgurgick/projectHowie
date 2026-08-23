@@ -146,7 +146,9 @@ function showTab(t) {
   $('dataView').style.display = t === 'data' ? 'block' : 'none';
   $('simView').style.display = t === 'sim' ? 'block' : 'none';
   $('rosterView').style.display = t === 'roster' ? 'block' : 'none';
-  for (const [id, key] of [['tabRoster', 'roster'], ['tabBoard', 'board'], ['tabStrategy', 'strategy'], ['tabData', 'data'], ['tabSim', 'sim']]) $(id).classList.toggle('active', t === key);
+  $('teamView').style.display = t === 'team' ? 'block' : 'none';
+  for (const [id, key] of [['tabRoster', 'roster'], ['tabBoard', 'board'], ['tabStrategy', 'strategy'], ['tabData', 'data'], ['tabSim', 'sim'], ['tabTeam', 'team']]) $(id).classList.toggle('active', t === key);
+  if (t === 'team') loadTeamTab();
   if (t === 'strategy') loadStrategyTab();
   if (t === 'data') loadDataTab();
   if (t === 'sim') loadSimTab();
@@ -654,6 +656,54 @@ async function askHowie(kind) {
   }
 }
 
+// ---------------- TEAM report ----------------
+
+let TEAM = localStorage.getItem('teamTab') || 'PHI', teamListLoaded = false;
+async function loadTeamTab(team) {
+  if (team) { TEAM = team; localStorage.setItem('teamTab', TEAM); }
+  if (!teamListLoaded) {
+    const st = await api('/api/research/status');
+    $('teamSel').innerHTML = h`${st.teams.map(t => h`<option value="${t.team}">${t.team} — ${t.name}</option>`)}`;
+    $('teamSel').addEventListener('change', () => loadTeamTab($('teamSel').value));
+    teamListLoaded = true;
+  }
+  $('teamSel').value = TEAM;
+  const r = await api('/api/team?team=' + encodeURIComponent(TEAM));
+  renderTeam(r);
+}
+function renderTeam(r) {
+  const cov = r.coverage || {};
+  $('teamMeta').textContent = `${r.name} · bye ${r.bye || '—'} · official depth chart ${r.depth_as_of ? r.depth_as_of.slice(0, 10) : 'not loaded (howie data refresh --steps depth)'} · board at pick ${r.current_pick}, next ${r.next_pick}`;
+  const fresh = cov.latest ? `researched ${cov.latest}` : 'not researched';
+  $('teamCoverage').innerHTML = h`${fresh} · ${cov.players_researched || 0} / ${cov.targets || 0} players · ${cov.facts || 0} facts<br><span class="dim">refresh: run the research-teams workflow for ${r.team}</span>`;
+  const fact = f => h`<div class="factcard"><span class="kindtag">${f.kind}</span> ${f.text}${f.value != null ? h` <span class="mono green">(${f.value})</span>` : ''}<div class="fmeta">${f.source} · conf ${f.confidence}</div></div>`;
+  const sosPos = Object.keys(r.playoff_sos || {});
+  $('teamHead').innerHTML = h`<div class="facts"><p class="sechead">OFFENSE — COACHING · SCHEME · LINE</p>${
+    r.team_facts.length || r.ol_facts.length ? h`${r.team_facts.map(fact)}${r.ol_facts.map(fact)}` : raw('<span class="dim" style="font-size:12px">No researched team facts yet.</span>')}</div>
+    <div><p class="sechead">PLAYOFF SOS · W15–17 <span class="dim" style="letter-spacing:0">(higher = easier)</span></p>${
+      sosPos.length ? h`${sosPos.map(pos => h`<div style="display:flex;align-items:center;gap:8px"><span class="kindtag">${pos}</span><div class="sosrow" style="flex:1">${
+        r.playoff_sos[pos].map(s2 => h`<div style="background:${s2.value >= 6 ? '#12241a' : s2.value >= 4.5 ? '#171509' : '#241210'};color:${s2.value >= 6 ? 'var(--acc)' : s2.value >= 4.5 ? 'var(--amber)' : 'var(--red)'}">W${s2.week} ${s2.value}</div>`)}</div></div>`)}` : raw('<span class="dim" style="font-size:12px">no SoS</span>')}</div>`;
+  $('teamRooms').innerHTML = h`${['QB', 'RB', 'WR', 'TE'].map(pos => {
+    const room = r.rooms[pos] || {rows: []};
+    return h`<div class="room">
+      <div class="roomhead"><p class="sechead" style="margin:0">${pos} ROOM</p>${
+        room.vacated != null ? h`<span class="mono amber" style="font-size:11px">${Math.round(room.vacated * 100)}% of last season's volume left this room</span>` : ''}</div>
+      <table><thead><tr><th>#</th><th>PLAYER</th><th>ROLE</th><th class="r">PROJ</th><th class="r">VALUE</th><th class="r">ADP</th><th class="r">AVAIL @${r.next_pick}</th><th class="r">'25 SHARE</th><th>STATUS</th></tr></thead><tbody>${
+        room.rows.map(row => h`<tr class="${row.taken ? 'taken' : ''} ${row.rank == null ? 'unlisted' : ''}" style="cursor:${row.uid ? 'pointer' : 'default'}" ${row.uid ? h`data-uid="${row.uid}" onclick="openCard(this.dataset.uid)"` : ''}>
+          <td class="mono dim">${row.rank != null ? row.rank : '—'}${row.slot ? h`<span class="slotlbl">${row.slot}</span>` : ''}</td>
+          <td><b style="font-weight:500">${row.name}</b>${row.board_rank ? h`<span class="boardtag">BOARD #${row.board_rank}</span>` : ''}${row.taken ? raw('<span class="slotlbl">TAKEN</span>') : ''}</td>
+          <td><span class="rolechip ${row.role_disagrees ? 'disagree' : ''}" title="${row.role_disagrees ? 'research disagrees with the official depth chart' : 'from research'}">${row.role || ''}${row.role_disagrees ? ' ≠ chart' : ''}</span></td>
+          <td class="mono r mid">${row.proj ?? '—'}</td><td class="mono r">${row.value ?? '—'}</td>
+          <td class="mono r mid">${row.adp ? row.adp.toFixed(1) : '—'}</td>
+          <td class="mono r">${row.avail_next != null ? Math.round(row.avail_next * 100) + '%' : '—'}</td>
+          <td class="mono r mid">${row.share != null ? Math.round(row.share * 100) + '%' : '—'}${row.other_team ? h`<span class="amber" title="earned with ${row.other_team}">*</span>` : ''}</td>
+          <td>${row.status ? h`<span class="stchip ${row.status.level}" style="margin-left:0">${row.status.text}</span>` : ''}</td>
+        </tr>`)}</tbody></table>${
+      room.facts.length ? h`<div style="margin-top:6px">${room.facts.map(fact)}</div>` : ''}
+    </div>`;
+  })}`;
+}
+
 // ---------------- research ----------------
 
 let RSTATUS = null;
@@ -752,10 +802,11 @@ async function handleTerm(line, acItems, cls) {
   try {
     if (cmd === 'help') {
       termPrint('out', ['NAME → while drafting ⏎ marks taken, ⇧⏎ drafts to you, ⇥ opens the card (⏎ = card before the draft starts)',
-        '/card NAME · open a player card', '/mine NAME · draft to me', '/taken NAME · mark taken', '/undo', '/board · top picks now',
+        '/card NAME · open a player card', '/team ABBR · team report (depth chart, status, facts)', '/mine NAME · draft to me', '/taken NAME · mark taken', '/undo', '/board · top picks now',
         '/read · Howie reads the board', '/sim NAME · simulate a season', '/mock N [howie|adp] · run mock drafts', '/research TEAM|NAME · deep research',
         '/sql SELECT … · read-only query', '/data Q · look up a player/team/room', '/strategy · show rules & notes', '/ask Q or ?Q · ask Howie'].join('\n'));
     } else if (cmd === 'ask') { return handleTerm('?' + arg, acItems); }
+    else if (cmd === 'team') { showTab('team'); await loadTeamTab((arg || TEAM).toUpperCase()); }
     else if (cmd === 'card') { const p = await findPlayer(arg); p ? openCard(p.uid) : termPrint('dim', 'no player found'); }
     else if (cmd === 'mine' || cmd === 'taken') { const p = await findPlayer(arg); p ? await mark(p.uid, cmd === 'mine') : termPrint('dim', 'no player found'); }
     else if (cmd === 'undo') { await undoPick(); }

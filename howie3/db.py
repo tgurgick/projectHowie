@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -65,6 +65,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "source TEXT NOT NULL, PRIMARY KEY (season, player_uid, as_of, source))"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_player_status ON player_status(season, player_uid)")
+    if version <= 5:
+        # v6: official team depth charts (nflverse), latest snapshot per team
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS depth_charts ("
+            "season INTEGER NOT NULL, team TEXT NOT NULL, dt TEXT NOT NULL, "
+            "player_uid TEXT, player_name TEXT NOT NULL, position TEXT NOT NULL, "
+            "slot TEXT, rank INTEGER NOT NULL, PRIMARY KEY (season, team, position, slot, rank))"
+        )
     if version != SCHEMA_VERSION:
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
