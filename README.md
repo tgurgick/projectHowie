@@ -55,6 +55,19 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
   client passes through one redaction policy (`howie3/egress.py`): derived
   context only, never per-game stat lines; the agent's raw SQL tool is
   opt-in (`HOWIE_AGENT_SQL=1`).
+- **Draft-flow simulation + sequence** — on every pick the live board is
+  rolled forward a few hundred times with room-like bots (tilted by your
+  league's own draft history via `howie league profile`), giving the engine
+  *conditioned* availability at your next 2–3 picks instead of an ADP curve,
+  and the board a SEQUENCE strip: take X now → Y at your next pick (p%) →
+  Z (p%), fallbacks, runs in progress, and whether the live board overrides
+  the strategy's round plan. `simulate_next_picks` exposes it to the agent.
+- **Coached simulation (`howie coach run`)** — the engine drafts under the
+  strategy sheet, every rule set is scored on the same seeded drafts and the
+  same 2025 replays, Claude proposes up to three candidate changes, and a
+  change is adopted only when its paired gain's 95% CI excludes zero (then
+  confirmed on a holdout seed). Levers: WAIT / NO BEFORE / N BY R / TARGET /
+  NO BYE STACK > n / NO <POS> AGE a+ BEFORE Rk.
 - **Player status layer** — projections assume 17 games for everyone and
   ADP prices injuries only indirectly, so `player_status` holds the typed
   truth the engine acts on (injured + games out, out for season, suspended,
