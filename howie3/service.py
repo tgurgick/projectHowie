@@ -545,6 +545,7 @@ def sequence_payload(settings: Settings, state: DraftState, now_uid: Optional[st
         "plan_prior": prior_plan, "plan_live": best.plan_positions[:FLOW_HORIZON],
         "overrides_plan": override,
         "prior_now": prior[0].player.name if prior else None,
+        "prior_now_pos": prior[0].player.position if prior else None,
         "next": steps, "runs": flow.runs, "horizon_picks": flow.picks, "rollouts": flow.n,
         "urgency": urgency, "blocked_now": sorted(blocked),
     }

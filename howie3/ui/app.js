@@ -79,7 +79,7 @@ function renderSequence() {
   const runs = Object.entries(q.runs || {}).map(([pos, n]) => h`<span class="run">${pos} RUN ${n}/5</span>`);
   el.innerHTML = h`<span class="lbl">SEQUENCE</span><span class="step"><span class="kindtag">${q.now.pos}</span><b>${q.now.name}</b><span class="dim" style="font-size:10px">now @${q.current_pick}</span></span>${
     q.next.map(s => h`<span class="arrow">→</span>${step(s)}`)}${runs}${
-    q.overrides_plan ? h`<span class="override" title="the live board says ${q.now.pos} drains before the plan's ${q.plan_prior[0]}">OVERRIDES PLAN (${q.plan_prior.join(' ')})</span>` : ''}<span style="flex:1"></span><span class="dim" style="font-size:10px">${q.rollouts} rollouts of the live board · hover a row's AVAIL for the source</span>`;
+    q.overrides_plan ? h`<span class="override" title="the strategy's rollout would take ${q.prior_now} (${q.prior_now_pos}) here; the live board says ${q.now.pos} first">LIVE BOARD: ${q.now.pos} BEFORE ${q.prior_now_pos}</span>` : ''}<span style="flex:1"></span><span class="dim" style="font-size:10px">${q.rollouts} rollouts of the live board · hover a row's AVAIL for the source</span>`;
 }
 
 let COMPACT = localStorage.getItem('boardCompact') !== '0';
