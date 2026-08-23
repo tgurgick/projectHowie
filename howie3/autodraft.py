@@ -123,6 +123,7 @@ class AutoDrafter:
         self.headless = headless
         self.seen: set = set()
         self.queued: set = set()
+        self.player_ids: Dict[str, str] = {}   # name -> ESPN data-player-id (learned from QUEUE buttons)
 
     # -- browser
     def _launch(self) -> None:
@@ -223,10 +224,33 @@ class AutoDrafter:
             except Exception:
                 return False
 
+    def _debug_row(self, name: str) -> str:
+        try:
+            owner = self.page.get_by_text(name, exact=False).first.locator("xpath=ancestor::*[3]")
+            return owner.inner_html(timeout=500)[:900]
+        except Exception as e:
+            return f"(no row html: {e.__class__.__name__})"
+
     def click_draft(self, name: str) -> bool:
         self._search(name)
-        btn = self._row_button(name, "^draft$")
+        btn = None
+        pid = self.player_ids.get(name)
+        if pid:
+            # the same data-player-id the QUEUE button carried; the DRAFT
+            # button on the clock is the other visible button with it
+            cands = self.page.locator(f"button[data-player-id='{pid}']")
+            for i in range(min(cands.count(), 6)):
+                b = cands.nth(i)
+                try:
+                    if b.is_visible() and not re.search("queue", b.inner_text(timeout=300), re.I):
+                        btn = b
+                        break
+                except Exception:
+                    continue
+        if btn is None:
+            btn = self._row_button(name, "draft")
         if btn is None or not self._click(btn):
+            log_event(self.settings, "draft_button_missing", name=name, pid=pid, row=self._debug_row(name))
             return False
         self.page.wait_for_timeout(400)
         confirm = self.page.get_by_role("button", name=re.compile("^(draft|confirm|yes)$", re.I))
@@ -241,9 +265,16 @@ class AutoDrafter:
         if name in self.queued:
             return True
         self._search(name)
-        btn = self._row_button(name, "^queue$")
+        btn = self._row_button(name, "queue")
         if btn is None or not self._click(btn):
+            log_event(self.settings, "queue_button_missing", name=name, row=self._debug_row(name))
             return False
+        try:
+            pid = btn.get_attribute("data-player-id", timeout=300)
+            if pid:
+                self.player_ids[name] = pid
+        except Exception:
+            pass
         self.queued.add(name)
         return True
 
