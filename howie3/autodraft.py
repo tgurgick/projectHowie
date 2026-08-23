@@ -106,7 +106,7 @@ def on_clock(text: str) -> bool:
     return "You are on the clock" in text or "You're on the clock!" in text
 
 
-SLOT_RE = re.compile(r"Your first pick: Round 1, Pick (\d+)")
+SLOT_RE = re.compile(r"Round 1, Pick (\d+)")   # 'Your first pick: …' before the start, 'You're on the clock in: N Picks / Round 1, Pick N' after
 TEAMS_RE = re.compile(r"(\d+)-Team")
 ROSTER_RE = re.compile(r"Roster Limits\s*\d+/(\d+) Players")
 
@@ -217,18 +217,28 @@ class AutoDrafter:
     # -- actions (player search box, then the row's button — never coordinates)
     def _search(self, name: str):
         """ESPN's player search is an autocomplete: type, then click the
-        suggestion (button.player--search--match, which carries the player
-        id); the table then shows that player's row. Returns the id."""
+        suggestion (button.player--search--match); the table then shows that
+        player's row. Matched by text (names carry apostrophes and periods
+        that break CSS selectors). Returns the suggestion's player id."""
         box = self.page.get_by_placeholder("Player Name").first
         box.fill("", timeout=1500)
         box.fill(name, timeout=1500)
-        match = self.page.locator("button.player--search--match").filter(has_text=name.split()[-1])
+        matches = self.page.locator("button.player--search--match")
         try:
-            match.first.wait_for(state="visible", timeout=2000)
+            matches.first.wait_for(state="visible", timeout=2000)
         except Exception:
             return self.player_ids.get(name)
-        exact = self.page.locator(f"button.player--search--match[data-player-search-playername='{name}']")
-        target = exact.first if exact.count() else match.first
+        target = None
+        for i in range(min(matches.count(), 8)):
+            m = matches.nth(i)
+            try:
+                if (m.get_attribute("data-player-search-playername", timeout=200) or "").strip() == name:
+                    target = m
+                    break
+            except Exception:
+                continue
+        if target is None:
+            target = matches.filter(has_text=name.split()[-1]).first
         pid = target.get_attribute("data-player-search-playerid", timeout=500)
         target.click(timeout=1500)
         if pid:
@@ -237,21 +247,26 @@ class AutoDrafter:
         return pid
 
     def _row_button(self, pid, label: str, name: str = ""):
-        """After the suggestion click the table shows only this player: the
-        visible button labelled `label` whose row names him."""
-        btns = self.page.locator("button").filter(has_text=re.compile(label, re.I))
-        for i in range(min(btns.count(), 8)):
-            b = btns.nth(i)
+        """The `label` button on THIS player's row: start at his name in the
+        table and walk up to the nearest ancestor that holds exactly one such
+        button — the row, never the table (which holds everyone's)."""
+        pattern = re.compile(label, re.I)
+        names = self.page.locator(".playerinfo__playername", has_text=name) if name else self.page.locator(".playerinfo__playername")
+        for i in range(min(names.count(), 6)):
+            el = names.nth(i)
             try:
-                if not b.is_visible():
+                if not el.is_visible() or (name and el.inner_text(timeout=200).strip() != name):
                     continue
-                if name:
-                    row = b.locator("xpath=ancestor::tr[1]")
-                    if not row.count():
-                        row = b.locator("xpath=ancestor::*[contains(@class,'row') or contains(@class,'Table')][1]")
-                    if row.count() and name.split()[-1] not in row.first.inner_text(timeout=300):
-                        continue
-                return b
+                for depth in range(1, 8):
+                    anc = el.locator(f"xpath=ancestor::*[{depth}]")
+                    if not anc.count():
+                        break
+                    btns = anc.first.locator("button").filter(has_text=pattern)
+                    n = btns.count()
+                    if n == 1 and btns.first.is_visible():
+                        return btns.first
+                    if n > 1:
+                        break  # climbed into a container holding other rows
             except Exception:
                 continue
         return None
