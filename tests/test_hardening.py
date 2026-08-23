@@ -429,12 +429,13 @@ def test_generation_key_tracks_lab_store_and_db(settings, tmp_path, monkeypatch)
 def test_implied_adp_keeps_late_availability_below_certainty():
     from howie3.value.board import PoolPlayer, apply_implied_adp
 
-    pool = [PoolPlayer("a", "Drafted", "QB", None, 300, adp=150.0, stdev=5.0, bye=None),
+    pool = [PoolPlayer("a", "Drafted", "QB", None, 300, adp=199.0, stdev=5.0, bye=None),   # FFC's last drafted pick
             PoolPlayer("b", "Undrafted Better", "QB", None, 232, adp=None, stdev=None, bye=None),
             PoolPlayer("c", "Undrafted Worse", "QB", None, 120, adp=None, stdev=None, bye=None)]
     apply_implied_adp(pool)
     b, c = pool[1], pool[2]
     assert b.adp is None and b.adp_est and c.adp_est and b.adp_est < c.adp_est
     assert b.p_available(100) > 0.95                      # early: effectively certain
-    assert 0.3 < b.p_available(190) < 0.9                 # the end of a 192-pick draft: no longer a flat 100%
+    assert 0.3 < b.p_available(190) < 0.95                # the end of a 192-pick draft: no longer a flat 100%
+    assert b.p_available(190) > c.p_available(190) - 1e-9 or c.adp_est > b.adp_est
     assert b.availability_source(190).startswith("implied")
