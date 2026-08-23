@@ -8,11 +8,24 @@ re-runnable, and can be scored by the eval harness later.
 
 ## The contract
 
-Research output is a JSON file passed to `howie graph import <file>`:
+Research output is a JSON file passed to `howie graph import <file>`. It has
+two halves: **`players`** — a typed status record per draft-relevant player
+(the engine acts on these: out-for-season players leave the board, games
+missed and cut risk scale value) — and **`facts`** — narrative context with
+provenance (shown on cards, read by the agent).
 
 ```json
 {
   "season": 2026,
+  "as_of": "2026-08-22",
+  "players": [
+    {"name": "Quinshon Judkins", "status": "active", "role": "starter",
+     "note": "RB1, no competition added", "confidence": 0.8, "source": "cleveland.com 2026-08-20"},
+    {"name": "Tucker Kraft", "status": "injured", "games_out": 6, "injury": "ACL (Nov 2025)",
+     "role": "starter", "confidence": 0.7, "source": "packers.com 2026-08-19"},
+    {"name": "Some Veteran", "status": "cut_risk", "cut_risk": 0.6, "role": "depth",
+     "note": "WR6 on the depth chart, non-guaranteed deal", "confidence": 0.6, "source": "..."}
+  ],
   "facts": [
     {
       "entity": "team:ARI",
@@ -42,6 +55,12 @@ Research output is a JSON file passed to `howie graph import <file>`:
 }
 ```
 
+- `players[].status`: `active` · `questionable` · `injured` · `out_season` ·
+  `suspended` · `holdout` · `cut_risk` · `released` · `retired`;
+  `games_out` 0–17; `cut_risk` 0–1; `role` `starter` · `committee` ·
+  `backup` · `depth` · `unknown`. The latest `as_of` wins; on the same day
+  research beats the automatic nflverse roster feed (`howie data refresh
+  --steps roster`).
 - `entity`: `team:ABBR`, `unit:ABBR-POS`, or `player:<name>` (names resolve
   through the ID crosswalk; unresolvable names fail the import loudly).
 - `kind`: short slug — `scheme_note`, `role_note`, `injury_note`,
@@ -54,5 +73,11 @@ Research output is a JSON file passed to `howie graph import <file>`:
 
 ## Skills
 
-- `research-team.md` — deep-dive one NFL team's offense (run 32×, parallelizable)
-- Run before the draft; re-run when news breaks; commit the JSON outputs.
+- `research-team.md` — one team: every draft-relevant player's status + the
+  offense (run 32×, parallelizable). The `research-teams` Claude Code
+  workflow runs it with subagents: research → skeptical validation → import.
+- Bookkeeping: `howie research targets TEAM` (the checklist),
+  `howie research coverage` (per-team players researched / facts / latest),
+  `howie research stale --days 7` (teams to hand back to the workflow).
+- Cadence: a full pass before the draft ("run the research-teams workflow
+  for all"), then `stale` weekly in-season or whenever news breaks.

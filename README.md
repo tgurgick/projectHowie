@@ -43,8 +43,20 @@ howie serve          # the draft-night cockpit → http://127.0.0.1:8787
   client passes through one redaction policy (`howie3/egress.py`): derived
   context only, never per-game stat lines; the agent's raw SQL tool is
   opt-in (`HOWIE_AGENT_SQL=1`).
-- **`skills/`** — research playbooks whose only output is structured facts
-  (`howie graph import`), never prose.
+- **Player status layer** — projections assume 17 games for everyone and
+  ADP prices injuries only indirectly, so `player_status` holds the typed
+  truth the engine acts on (injured + games out, out for season, suspended,
+  holdout, cut risk, role). Two writers: the free nflverse roster feed
+  (`howie data refresh --steps roster`, automatic) and the research
+  workflow. Applied after the market anchor: an ACL leaves the board no
+  matter what a stale ADP says; games missed and cut risk scale value; the
+  board, cards and search show the chip and its source.
+- **`skills/` + the `research-teams` workflow** — Claude Code subagents
+  research every draft-relevant player on a team (status record each) plus
+  the offense (facts with provenance), a skeptic validates, the result is
+  imported. `howie research targets TEAM` is the checklist, `howie research
+  coverage` the scoreboard, `howie research stale` what to re-run — a full
+  pass before the draft, then weekly or when news breaks.
 
 Architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
 

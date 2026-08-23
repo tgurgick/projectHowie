@@ -131,7 +131,7 @@ def evaluate_candidates(
             continue
         if defer_kdst and pos in ("K", "DST"):
             continue
-        avail = [p for p in pools[pos] if p.p_available(current_pick) >= min_p_available]
+        avail = [p for p in pools[pos] if p.draftable and p.p_available(current_pick) >= min_p_available]
         candidates.extend(avail[:8])
 
     results: List[PickPlan] = []

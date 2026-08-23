@@ -30,7 +30,12 @@ def _ensure_dst_players(conn: sqlite3.Connection) -> int:
     return len(NFL_TEAMS)
 
 
-STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "sos", "intel", "graph", "verify"]
+STEP_ORDER = ["crosswalk", "players", "dst", "games", "weekly", "adp", "pff", "roster", "sos", "intel", "graph", "verify"]
+
+
+def _roster_status(conn, season: int) -> int:
+    from ..status import refresh_roster_status
+    return refresh_roster_status(conn, season)
 
 
 def _rebuild_graph(conn, season: int) -> int:
@@ -41,6 +46,7 @@ STEP_PRECONDITIONS = {
     "weekly": ("games", "Load games first (weekly stats attach to the schedule)."),
     "adp": ("players", "Load the crosswalk/players first (ADP resolves against them)."),
     "pff": ("players", "Load the crosswalk/players first (projections resolve against them)."),
+    "roster": ("projections", "Load projections first (roster status is recorded for the draft pool)."),
     "graph": ("weekly_stats", "Load weekly stats first (shares/vacated volume derive from them)."),
 }
 
@@ -74,6 +80,7 @@ def run_refresh(
             conn, settings.current_season, settings.league.num_teams
         )),
         ("pff", lambda: pff.refresh_projections(conn, settings.pff_dir, settings.current_season)),
+        ("roster", lambda: _roster_status(conn, settings.current_season)),
         ("sos", lambda: pff_sos.refresh_sos(conn, settings.pff_dir, settings.current_season)),
         ("intel", lambda: legacy_intel.port_legacy_intel(
             conn, settings.data_dir / "fantasy_ppr.db"

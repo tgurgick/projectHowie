@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..config import LeagueConfig
+from ..status import availability_factor, current_status
 from .availability import p_available
 
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
@@ -36,6 +37,12 @@ class PoolPlayer:
     # Blended into the ADP model with weight n / (n + EMPIRICAL_PRIOR_N), so a
     # handful of drafts nudge and a large sample dominates.
     emp_avail: Optional[Dict[int, Tuple[float, int]]] = None
+    # Current status row (howie3.status) — None when nothing is known.
+    status: Optional[dict] = None
+
+    @property
+    def draftable(self) -> bool:
+        return not (self.status and self.status["status"] in ("out_season", "released", "retired"))
 
     def p_available(self, pick: float) -> float:
         model = p_available(self.adp, self.stdev, pick)
@@ -112,7 +119,28 @@ def load_pool(
         for r in rows
         if r["position"] in POSITIONS
     ]
-    return apply_market_anchor(pool, market_anchor)
+    pool = apply_market_anchor(pool, market_anchor)
+    # Status is applied AFTER the anchor: a stale ADP must not pull an
+    # injured or released player's value back up.
+    return apply_status(pool, current_status(conn, season))
+
+
+def apply_status(pool: List[PoolPlayer], statuses: Dict[str, dict]) -> List[PoolPlayer]:
+    """Scale each player's engine value by his availability (games he will
+    play × P(not cut)); out-for-season / released / retired go to zero and
+    are excluded from candidates. `raw` keeps the source projection."""
+    if not statuses:
+        return pool
+    for p in pool:
+        row = statuses.get(p.uid)
+        if row is None:
+            continue
+        p.status = row
+        if p.raw is None:
+            p.raw = p.proj
+        p.proj = round(p.proj * availability_factor(row), 1)
+    pool.sort(key=lambda p: -p.proj)
+    return pool
 
 
 def snake_picks(league: LeagueConfig, rounds: Optional[int] = None) -> List[int]:

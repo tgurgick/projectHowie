@@ -196,3 +196,11 @@
   .preptoggle:hover { color: var(--acc); }
   #drawer:not(.clock) .preptoggle { display: none; }
   .conflict { color: var(--amber); }
+
+  /* ---- player status chips (roster feed + research) ---- */
+  .stchip { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; padding: 1px 5px; margin-left: 6px; border: 1px solid; vertical-align: middle; }
+  .stchip.out { color: var(--red); border-color: var(--red); }
+  .stchip.warn { color: var(--amber); border-color: var(--amber); }
+  .stchip.note { color: var(--mid); border-color: var(--line2); }
+  .stline { font-family: var(--mono); font-size: 11px; margin-top: 6px; line-height: 1.5; }
+  .stline .stchip { margin-left: 0; }

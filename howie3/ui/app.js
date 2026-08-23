@@ -92,10 +92,11 @@ function renderBoard() {
       dist = h`<div class="dist"><div class="band" style="left:${L(m.p10)}; width:${W(m.p10, m.p90)}"></div><div class="core" style="left:${L(c1)}; width:${W(c1, c2)}"></div><div class="tick" style="left:${L(m.value)}"></div></div>`;
     }
     const tags = (r.rules || []).map(f => h`<span class="ruletag ${f.type}">${f.text}</span>`);
+    const stchip = r.status ? h`<span class="stchip ${r.status.level}" title="player status (roster feed / research)">${r.status.text}</span>` : '';
     const isBest = i === 0 && FILTER === 'ALL';
     return h`<tr class="${isBest ? 'best' : ''}" onclick="openCard('${r.uid}')" style="cursor:pointer">
       <td class="mono dim">${i + 1}</td>
-      <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${isBest ? raw('<span class="besttag">BEST</span>') : ''}${tags}</td>
+      <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${isBest ? raw('<span class="besttag">BEST</span>') : ''}${stchip}${tags}</td>
       <td class="mono r mid c-proj">${r.proj}</td>
       <td class="mono r mid c-adp">${r.adp ? r.adp.toFixed(1) : '—'}</td>
       <td>${availbar}</td>
@@ -258,6 +259,7 @@ async function openCard(uid) {
       <div class="cardhead">
         <div style="font-size:19px;font-weight:700;line-height:1.15">${c.name}</div>
         <div class="mono mid" style="font-size:11px;margin-top:3px"><span class="kindtag">${c.pos}</span> ${c.team || ''} · BYE ${c.bye || '—'} · ADP ${c.adp ? c.adp.toFixed(1) : '—'}${c.adp_stdev ? ' ± ' + c.adp_stdev.toFixed(1) : ''}</div>
+        ${c.status ? h`<div class="stline"><span class="stchip ${c.status.level}">${c.status.text}</span> <span class="mid">${c.status_detail.note || c.status_detail.injury || ''}</span> <span class="dim">· ${c.status_detail.source} · ${c.status_detail.as_of}${c.status_detail.role && c.status_detail.role !== 'unknown' ? ' · ' + c.status_detail.role : ''}</span></div>` : ''}
         ${c.taken ? h`<div class="ctarow"><span class="mono amber" style="font-size:11px;letter-spacing:1.5px;padding:9px 0">TAKEN · PICK ${c.taken_pick} · ${(c.taken_by || '').toUpperCase()}</span></div>`
           : h`<div class="ctarow"><button class="danger" onclick="mark('${c.uid}', false)">MARK TAKEN</button><button class="primary" onclick="mark('${c.uid}', true)">DRAFT TO ME</button></div>`}
       </div>
@@ -560,7 +562,7 @@ function attachAutocomplete(input, onPick, opts = {}) {
   const render = () => {
     if (!items.length) { drop.style.display = 'none'; return; }
     drop.style.display = 'block';
-    drop.innerHTML = h`${items.map((r, i) => h`<div class="acitem ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kindtag ${r.kind === 'player' ? 'P' : ''}">${r.kind === 'player' ? 'P' : r.kind === 'unit' ? 'U' : 'T'}</span><span class="${r.taken ? 'dim' : ''}">${r.name}</span><span class="mono dim" style="font-size:10px">${r.position || ''} ${r.team || ''}${r.proj ? ' · ' + r.proj : ''}${r.taken ? raw(' · <span class="amber">taken</span>') : ''}</span></div>`)}`;
+    drop.innerHTML = h`${items.map((r, i) => h`<div class="acitem ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kindtag ${r.kind === 'player' ? 'P' : ''}">${r.kind === 'player' ? 'P' : r.kind === 'unit' ? 'U' : 'T'}</span><span class="${r.taken ? 'dim' : ''}">${r.name}</span><span class="mono dim" style="font-size:10px">${r.position || ''} ${r.team || ''}${r.proj ? ' · ' + r.proj : ''}${r.taken ? raw(' · <span class="amber">taken</span>') : ''}${r.status ? h` · <span class="${r.status.level === 'out' ? 'red' : 'amber'}">${r.status.text}</span>` : ''}</span></div>`)}`;
   };
   const pick = (i) => { const r = items[i]; if (!r) return; input.value = r.name; items = []; render(); onPick && onPick(r); };
   drop.addEventListener('mousedown', e => { const el = e.target.closest('.acitem'); if (el) { e.preventDefault(); pick(+el.dataset.i); } });

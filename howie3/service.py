@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .config import LeagueConfig, Settings
 from .db import connect
 from .payloads import JsonDict, RosterSimPayload
+from .status import chip as status_chip
 from .state import DraftState, snake_team_for_pick, state_lock
 from .value.board import POSITIONS, PoolPlayer, expected_kth_best, load_pool, snake_picks
 
@@ -228,7 +229,7 @@ def search_payload(settings: Settings, q: str, limit: int = 8) -> List[dict]:
                 continue  # not draft-relevant this season
             row.update({
                 "uid": uid, "proj": round(p.raw or p.proj), "adp": p.adp,
-                "taken": uid in taken,
+                "taken": uid in taken, "status": status_chip(p.status),
             })
         out.append(row)
     conn.close()
@@ -267,6 +268,7 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
             "avail_now": round(r.player.p_available(current_pick), 2),
             "avail_next": round(r.player.p_available(next_pick), 2),
             "avail_src": r.player.availability_source(next_pick),
+            "status": status_chip(r.player.status),
             "value": round(value),
             "p10": round(r.sim.p10) if (sims and r.sim) else None,
             "p90": round(r.sim.p90) if (sims and r.sim) else None,
@@ -430,6 +432,8 @@ def card_payload(settings: Settings, uid: str) -> dict:
     return {
         "uid": uid, "name": player.name, "pos": player.position, "team": player.team,
         "taken": taken_event is not None,
+        "status": status_chip(player.status),
+        "status_detail": player.status,
         "taken_pick": taken_event.pick_no if taken_event else None,
         "taken_by": ("you" if taken_event.mine else f"team {taken_event.team}" if taken_event.team else "another team") if taken_event else None,
         "bye": player.bye, "proj": round(player.raw or player.proj, 1),

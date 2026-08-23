@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -53,6 +53,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "confidence REAL, updated_at TEXT, "
             "PRIMARY KEY (season, player_name, team))"
         )
+    if version <= 4:
+        # v5: machine-actionable player status (injury / suspension / cut risk /
+        # role) from the nflverse roster feed and the research workflow. One
+        # row per (player, as_of); the latest row is the current status.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS player_status ("
+            "season INTEGER NOT NULL, player_uid TEXT NOT NULL, as_of TEXT NOT NULL, "
+            "status TEXT NOT NULL, games_out INTEGER NOT NULL DEFAULT 0, injury TEXT, "
+            "role TEXT, cut_risk REAL NOT NULL DEFAULT 0, note TEXT, confidence REAL, "
+            "source TEXT NOT NULL, PRIMARY KEY (season, player_uid, as_of, source))"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_player_status ON player_status(season, player_uid)")
     if version != SCHEMA_VERSION:
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()

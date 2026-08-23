@@ -291,10 +291,14 @@ def import_facts(conn: sqlite3.Connection, path: Path, season: int) -> int:
     unresolvable references fail the import (no silent drops)."""
     ensure_graph_schema(conn)
     doc = json.loads(Path(path).read_text())
-    unknown = set(doc) - {"facts", "edges", "season"}
+    unknown = set(doc) - {"facts", "edges", "season", "players", "as_of", "source"}
     if unknown:
         raise ValueError(f"Unknown top-level keys in fact import: {sorted(unknown)}")
     count = 0
+    if doc.get("players"):
+        from .status import import_player_status
+
+        count += import_player_status(conn, doc, doc.get("season", season))
     for f in doc.get("facts", []):
         required = {"entity", "kind", "text", "confidence", "source"}
         missing = required - set(f)

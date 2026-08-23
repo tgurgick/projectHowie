@@ -203,6 +203,74 @@ def graph_import(path: str) -> None:
     console.print(f"[green]Imported {n} facts/edges from {path}[/green]")
 
 
+@main.group()
+def research() -> None:
+    """Research bookkeeping: who to research, what is covered, what is stale."""
+
+
+@research.command("targets")
+@click.argument("team")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable (for the research workflow)")
+def research_targets_cmd(team: str, as_json: bool) -> None:
+    """Every draft-relevant player on TEAM with the status we already hold."""
+    import json as _json
+
+    from .db import connect
+    from .status import research_targets
+
+    settings = Settings()
+    conn = connect(settings.db_path)
+    rows = research_targets(conn, settings.current_season, team, settings.league.scoring_format)
+    conn.close()
+    if as_json:
+        click.echo(_json.dumps(rows))
+        return
+    from rich.table import Table as RTable
+
+    t = RTable(title=f"{team.upper()} — {len(rows)} players to cover")
+    for c in ("pos", "player", "proj", "ADP", "known status"):
+        t.add_column(c)
+    for r in rows:
+        t.add_row(r["position"], r["name"], str(r["proj"]), f"{r['adp']:.0f}" if r["adp"] else "—", r["known_status"])
+    console.print(t)
+
+
+@research.command("coverage")
+def research_coverage_cmd() -> None:
+    """Per-team research coverage and freshness."""
+    from rich.table import Table as RTable
+
+    from .db import connect
+    from .status import research_coverage
+
+    settings = Settings()
+    conn = connect(settings.db_path)
+    rows = research_coverage(conn, settings.current_season)
+    conn.close()
+    t = RTable(title="research coverage")
+    for c in ("team", "players", "researched", "facts", "latest"):
+        t.add_column(c, justify="right")
+    for r in rows:
+        style = "green" if r["players_researched"] >= r["targets"] and r["targets"] else ("yellow" if r["facts"] else "red")
+        t.add_row(f"[{style}]{r['team']}[/{style}]", str(r["targets"]), str(r["players_researched"]),
+                  str(r["facts"]), r["latest"] or "—")
+    console.print(t)
+
+
+@research.command("stale")
+@click.option("--days", default=7, help="Research older than this is stale")
+def research_stale_cmd(days: int) -> None:
+    """Teams that need (re)research — paste the list into the workflow."""
+    from .db import connect
+    from .status import stale_teams
+
+    settings = Settings()
+    conn = connect(settings.db_path)
+    teams = stale_teams(conn, settings.current_season, days)
+    conn.close()
+    click.echo(" ".join(teams) if teams else "nothing stale")
+
+
 @main.command()
 @click.argument("name", nargs=-1, required=True)
 def player(name) -> None:
