@@ -223,6 +223,32 @@ def autodraft_events(n: int) -> None:
 
 
 @main.group()
+def league() -> None:
+    """Your league's own history as engine inputs."""
+
+
+@league.command("profile")
+@click.argument("recaps", nargs=-1, required=True)
+def league_profile_cmd(recaps) -> None:
+    """Build data/league_profile.json (positions by round) from parsed ESPN
+    draft recaps; the bots, the draft-flow sim and the mock lab then model
+    this room instead of an average one."""
+    import json as _json
+    from pathlib import Path
+
+    from .league_profile import build_profile, profile_path
+
+    docs = [_json.loads(Path(r).read_text()) for r in recaps]
+    prof = build_profile(docs, source=", ".join(Path(r).name for r in recaps))
+    settings = Settings()
+    profile_path(settings).write_text(_json.dumps(prof, indent=1))
+    console.print(f"[green]profile written[/green] ({prof['drafts']} drafts, {prof['picks']} picks)")
+    for r, row in prof["by_round"].items():
+        top = sorted(row.items(), key=lambda kv: -kv[1])[:3]
+        console.print(f"  R{r:>2}: " + "  ".join(f"{pos} {int(v * 100)}%" for pos, v in top if v))
+
+
+@main.group()
 def coach() -> None:
     """Coached simulation: the engine drafts, Claude coaches the strategy sheet."""
 

@@ -35,7 +35,7 @@ class FlowResult:
 
 def draft_flow(pool: Sequence[PoolPlayer], state: DraftState, league: LeagueConfig,
                n: int = 300, horizon: int = 3, seed: Optional[int] = None,
-               my_plan: Optional[Sequence[str]] = None) -> FlowResult:
+               my_plan: Optional[Sequence[str]] = None, profile: Optional[dict] = None) -> FlowResult:
     """Roll the draft forward `n` times from the live board.
 
     At the user's own intermediate picks the rollout assumes the planned
@@ -88,7 +88,7 @@ def draft_flow(pool: Sequence[PoolPlayer], state: DraftState, league: LeagueConf
             else:
                 rnd = (pick_no - 1) // league.num_teams + 1
                 choice = bot_pick(draftable, frozenset(taken), tp.setdefault(team, {}), rnd, league, rng,
-                                  recent_positions=recent)
+                                  recent_positions=recent, profile=profile)
                 if choice:
                     tp[team][choice.position] = tp[team].get(choice.position, 0) + 1
             if choice is None:

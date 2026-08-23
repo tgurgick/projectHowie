@@ -33,7 +33,8 @@ NEED_SHIFT = 4.0      # ADP picks of urgency for an unfilled starting slot (roun
 
 def bot_pick(pool: List[PoolPlayer], taken: frozenset, team_positions: Dict[str, int],
              rnd: int, league, rng: np.random.Generator,
-             recent_positions: Optional[List[str]] = None) -> Optional[PoolPlayer]:
+             recent_positions: Optional[List[str]] = None,
+             profile: Optional[dict] = None) -> Optional[PoolPlayer]:
     """One bot pick. Bots read the market (ADP + noise) and, like real
     drafters, react to positional RUNS (three of the last five picks at one
     position make that position feel urgent) and to their own NEEDS (an
@@ -82,6 +83,15 @@ def bot_pick(pool: List[PoolPlayer], taken: frozenset, team_positions: Dict[str,
             if team_positions.get(pos, 0) < need:
                 shift[pos] = shift.get(pos, 0.0) + NEED_SHIFT
     window = sorted(candidates, key=lambda p: p.adp if p.adp else 999)[:24]
+    if profile:
+        # the room's habit this round vs what the market window offers
+        from .league_profile import position_shift
+
+        share: Dict[str, float] = {}
+        for p in window:
+            share[p.position] = share.get(p.position, 0.0) + 1.0 / len(window)
+        for pos, v in position_shift(profile, rnd, share).items():
+            shift[pos] = shift.get(pos, 0.0) + v
     perceived = [
         rng.normal(p.adp, max((p.stdev or 2.0), 2.0) * 1.25) - shift.get(p.position, 0.0)  # type: ignore[arg-type]  # adp is None only via the no-candidates fallback; guarding it would change pick behavior
         for p in window
@@ -93,10 +103,13 @@ def advance_bots(settings: Settings, state: DraftState, pool: List[PoolPlayer],
                  seed: int = 11) -> List[dict]:
     """Let bots pick until the user is on the clock (or the draft ends).
     Returns the picks made."""
+    from .league_profile import load_profile
+
     league = settings.league
     me = league.draft_position
     total = league.num_teams * league.roster_size
     made = []
+    profile = load_profile(settings)
     while True:
         pick_no = state.next_pick_no()
         if pick_no > total:
@@ -112,7 +125,7 @@ def advance_bots(settings: Settings, state: DraftState, pool: List[PoolPlayer],
         rng = np.random.default_rng(seed * 100_000 + pick_no)
         recent = [e.position or "" for e in state.events[-RUN_WINDOW:]]
         choice = bot_pick(pool, state.taken_uids(), team_positions, rnd,
-                          league, rng, recent_positions=recent)
+                          league, rng, recent_positions=recent, profile=profile)
         if choice is None:
             break
         event = state.add_pick(pick_no, team, choice.uid, choice.name,

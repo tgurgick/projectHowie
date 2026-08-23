@@ -74,8 +74,11 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
     from .state import DraftState
     from .value.board import load_pool
 
+    from .league_profile import load_profile
+
     if effects is None and policy == "howie":
         effects = DraftState.load(settings).active_rule_effects()
+    profile = load_profile(settings)
     league = settings.league
     conn = connect(settings.db_path)
     pool = load_pool(conn, settings.current_season, league.scoring_format,
@@ -109,7 +112,7 @@ def run_mock_drafts(settings: Settings, n: int, policy: str = "adp",
                     tp = team_positions.setdefault(team, {})
                     choice = bot_pick(pool, frozenset(taken), tp,
                                       (pick_no - 1) // league.num_teams + 1, league, rng,
-                                      recent_positions=recent)
+                                      recent_positions=recent, profile=profile)
                     if choice:
                         tp[choice.position] = tp.get(choice.position, 0) + 1
                 if choice is None:

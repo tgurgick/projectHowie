@@ -49,12 +49,14 @@ def draft_flow_for(settings: Settings, state: DraftState, pool: List[PoolPlayer]
     """The live board rolled forward to the user's next picks, cached per
     draft generation (identity + length) so every payload in a request
     cycle shares one simulation."""
+    from .league_profile import load_profile
     from .value.flow import draft_flow
 
     key = f"{state.created}:{state.seed}:{len(state.events)}:{settings.league.draft_position}"
     flow = _FLOW_CACHE.get(key)
     if flow is None:
-        flow = draft_flow(pool, state, settings.league, n=FLOW_ROLLOUTS, horizon=FLOW_HORIZON, my_plan=plan)
+        flow = draft_flow(pool, state, settings.league, n=FLOW_ROLLOUTS, horizon=FLOW_HORIZON, my_plan=plan,
+                          profile=load_profile(settings))
         _FLOW_CACHE.clear()
         _FLOW_CACHE[key] = flow
     return flow
@@ -475,7 +477,7 @@ def positions_payload(settings: Settings, state: DraftState) -> dict:
 
 # ------------------------------------------------------------ sequence: the next 2-3 picks as one decision
 
-def sequence_payload(settings: Settings, state: DraftState) -> dict:
+def sequence_payload(settings: Settings, state: DraftState, now_uid: Optional[str] = None) -> dict:
     """Explore/exploit over the user's next picks, from the live board:
     which position to take NOW because its tier is draining, what to wait
     for because it survives, with the conditioned probabilities, a
@@ -505,7 +507,8 @@ def sequence_payload(settings: Settings, state: DraftState) -> dict:
     results = apply_rules(results, rnd, effects, roster_counts(roster))
     if not results:
         return {"now": None, "next": [], "runs": flow.runs, "horizon_picks": flow.picks}
-    best = results[0]
+    # follow the board's Monte Carlo best when the server has one for this generation
+    best = next((r for r in results if now_uid and r.player.uid == now_uid), results[0])
     steps = []
     blocked = {pos for pos, until in effects.get("wait", []) + effects.get("ban", []) if rnd < until}
     used = {best.player.uid}
