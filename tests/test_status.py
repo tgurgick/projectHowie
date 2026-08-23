@@ -50,6 +50,9 @@ def test_import_contract_and_validation(tmp_path):
         st.import_player_status(conn, {"players": [{"name": "Healthy Guy", "status": "injured", "games_out": 30}]}, 2026)
     with pytest.raises(ValueError, match="Cannot resolve"):
         st.import_player_status(conn, {"players": [{"name": "Nobody Real", "status": "active"}]}, 2026)
+    from howie3.graph import _resolve_entity
+    assert _resolve_entity(conn, "player:GB D/ST") == "player:dst:GB"
+    assert _resolve_entity(conn, "player:cle DST") == "player:dst:CLE"
     # graph import accepts facts + players in one document
     from howie3.graph import import_facts
     f = tmp_path / "r.json"
@@ -84,7 +87,13 @@ def test_roster_feed_mapping_and_precedence(tmp_path):
     assert cur["00-0000002"]["games_out"] == 3 and cur["00-0000002"]["source"].startswith("research")
     old = (date.today() - timedelta(days=10)).isoformat()
     st.import_player_status(conn, {"as_of": old, "players": [{"name": "Six Weeks", "status": "active"}]}, 2026)
-    assert st.current_status(conn, 2026)["00-0000003"]["status"] == "suspended"
+    assert st.current_status(conn, 2026)["00-0000003"]["status"] == "suspended", "a newer non-active roster signal wins"
+    # but a newer plain ACT roster row never erases researched information
+    st.import_player_status(conn, {"as_of": old, "players": [
+        {"name": "Healthy Guy", "status": "questionable", "games_out": 1, "injury": "groin", "role": "starter"}]}, 2026)
+    st.refresh_roster_status(conn, 2026, frame=frame)   # Healthy Guy is ACT today
+    cur = st.current_status(conn, 2026, include_active=True)
+    assert cur["00-0000001"]["status"] == "questionable" and cur["00-0000001"]["role"] == "starter"
     conn.close()
 
 

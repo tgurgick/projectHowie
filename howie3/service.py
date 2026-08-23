@@ -503,7 +503,9 @@ def team_payload(settings: Settings, state: DraftState, team: str) -> dict:
             "share": round(r["value"], 3) if r["value"] is not None else None,
             "other_team": last_team if (last_team and last_team != team) else None,
             "targets_last": attrs.get("targets_last"), "carries_last": attrs.get("carries_last")}
-    status_rows = {p.uid: p.status for p in pool if p.status}
+    from .status import current_status
+
+    status_rows = current_status(conn, settings.current_season, include_active=True)
     depth = team_depth(conn, settings.current_season, team)
     rooms = {}
     for pos in ("QB", "RB", "WR", "TE"):

@@ -15,6 +15,7 @@ Entity ids: "player:<uid>", "team:<abbr>", "unit:<abbr>-<POS>".
 """
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -334,6 +335,9 @@ def _resolve_entity(conn: sqlite3.Connection, ref: str) -> str:
     if kind == "player":
         if ident.startswith("00-") or ident.startswith("mfl:") or ident.startswith("dst:"):
             return f"player:{ident}"
+        dst = re.match(r"^([A-Za-z]{2,3})\s+D/?ST$", ident.strip())
+        if dst:  # "GB D/ST" as the research targets list prints it
+            return f"player:dst:{dst.group(1).upper()}"
         uid = resolve_uid(conn, ident)
         if uid is None:
             # ambiguous or unknown name: prefer the draft-relevant one (has a

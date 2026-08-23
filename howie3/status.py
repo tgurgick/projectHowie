@@ -162,16 +162,33 @@ def refresh_roster_status(conn: sqlite3.Connection, season: int, frame=None) -> 
 
 # ---------------------------------------------------------------- read
 
-def current_status(conn: sqlite3.Connection, season: int) -> Dict[str, dict]:
-    """uid -> current status row (latest as_of; research beats the roster
-    feed on the same day). Active rows with nothing to say are omitted."""
+def current_status(conn: sqlite3.Connection, season: int, include_active: bool = False) -> Dict[str, dict]:
+    """uid -> current status row.
+
+    Precedence: the latest researched row wins. The roster feed overrides it
+    only with a NEWER non-active signal (reserve, suspension, release) — an
+    "ACT" roster row carries no health information and must never erase a
+    researched injury, role or cut risk. With no research, the latest roster
+    row stands. Active rows with nothing to say are omitted unless
+    include_active (the TEAM report wants researched roles too)."""
     rows = conn.execute(
         "SELECT player_uid, as_of, status, games_out, injury, role, cut_risk, note, confidence, source "
-        "FROM player_status WHERE season = ? ORDER BY player_uid, as_of, "
-        "CASE WHEN source = ? THEN 0 ELSE 1 END", (season, ROSTER_SOURCE)).fetchall()
-    latest: Dict[str, dict] = {}
+        "FROM player_status WHERE season = ? ORDER BY player_uid, as_of", (season,)).fetchall()
+    research: Dict[str, dict] = {}
+    roster: Dict[str, dict] = {}
     for r in rows:
-        latest[r["player_uid"]] = dict(r)   # ordered ascending: the last write wins
+        (roster if r["source"] == ROSTER_SOURCE else research)[r["player_uid"]] = dict(r)  # ascending: last wins
+    latest: Dict[str, dict] = {}
+    for uid in set(research) | set(roster):
+        res, ros = research.get(uid), roster.get(uid)
+        if res is None:
+            latest[uid] = ros
+        elif ros is not None and ros["status"] != "active" and ros["as_of"] > res["as_of"]:
+            latest[uid] = ros
+        else:
+            latest[uid] = res
+    if include_active:
+        return latest
     return {uid: r for uid, r in latest.items()
             if not (r["status"] == "active" and r["games_out"] == 0 and r["cut_risk"] == 0)}
 
