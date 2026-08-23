@@ -1570,14 +1570,21 @@ def roster_risk(settings: Settings, state: DraftState) -> dict:
                 level = "warn"; reasons.append(f"waited on {pos} past R{until} — still none")
         empty = max(need_slots - have, 0)
         if empty and pos in ("QB", "RB", "WR", "TE"):
-            avail_now = [p for p in pool if p.position == pos and p.uid not in taken
-                         and p.p_available(current_pick) >= 0.1]
-            top = avail_now[0].proj if avail_now else 0
-            good_next = [p for p in avail_now if p.p_available(next_pick) >= 0.5 and p.proj >= 0.8 * top]
-            if len(good_next) <= empty:
-                level = "danger"; reasons.append(f"board thin: {len(good_next)} {pos} likely at pick {next_pick} near the top tier")
-            elif len(good_next) <= 3 * empty and level == "ok" and rnd >= 3:
-                level = "warn"; reasons.append(f"{pos} getting thin: {len(good_next)} near-tier options likely at {next_pick}")
+            # THIN means: starter-grade players (>= the league's replacement
+            # level at the position, NOT the top tier — the top tier never
+            # survives, that's just a draft) may not cover the empty slots
+            # at your next pick.
+            pos_pool = [p for p in pool if p.position == pos]
+            n_starters = league.num_teams * need_slots + (league.num_teams * league.flex_slots // 3 if pos in ("RB", "WR", "TE") else 0)
+            replacement = pos_pool[n_starters - 1].proj if len(pos_pool) >= n_starters else 0
+            startable_next = [p for p in pos_pool if p.uid not in taken
+                              and p.proj >= replacement and p.p_available(next_pick) >= 0.5]
+            if len(startable_next) < empty:
+                level = "danger"
+                reasons.append(f"only {len(startable_next)} starter-grade {pos} likely left at pick {next_pick} for {empty} empty slot{'s' if empty > 1 else ''}")
+            elif len(startable_next) < 2 * empty and level == "ok":
+                level = "warn"
+                reasons.append(f"{pos} getting thin: {len(startable_next)} starter-grade options likely at {next_pick}")
         out[pos] = {"level": level, "have": have, "need": need_slots, "reasons": reasons}
     summary = [f"{pos} {'⚠' if v['level'] == 'warn' else '✖'} {v['reasons'][0]}"
                for pos, v in out.items() if v["level"] != "ok"]

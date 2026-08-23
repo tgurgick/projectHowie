@@ -465,3 +465,19 @@ def test_reset_archives_the_draft_and_sync_is_idempotent(settings, tmp_path, mon
     assert len(store["drafts"][0]["picks"]) == 13 and len(store["drafts"][0]["mine"]) == 1
     assert DraftState.load(settings).events == []
     assert service.reset_draft(settings, "live")["archived"] is False  # nothing to archive twice
+
+
+def test_roster_risk_quiet_on_an_empty_early_board(settings, tmp_path, monkeypatch, league12):
+    from howie3 import service
+
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    st = DraftState(created="x", mode="live"); st.save(settings)
+    r = service.roster_risk(settings, DraftState.load(settings))
+    assert all(v["level"] == "ok" for pos, v in r["positions"].items() if pos in ("QB", "RB", "WR", "TE")), r["summary"]
+    # drain the startable RBs: with one empty RB slot and none likely left, it must flag
+    conn = service._conn(settings); pool = service._pool(settings, conn); conn.close()
+    rbs = [p for p in pool if p.position == "RB"][:70]
+    for p in rbs:
+        service.mark_pick(settings, p.uid, mine=False)
+    r = service.roster_risk(settings, DraftState.load(settings))
+    assert r["positions"]["RB"]["level"] in ("warn", "danger")
