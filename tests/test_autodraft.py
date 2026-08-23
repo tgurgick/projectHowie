@@ -42,3 +42,10 @@ def test_event_log_roundtrip(tmp_path, monkeypatch):
     ev = autodraft.recent_events(s)
     assert [e["kind"] for e in ev] == ["start", "sync"] and ev[1]["next_pick"] == 2
     assert autodraft.recent_events(s, 1)[0]["kind"] == "sync"
+
+
+def test_room_config_from_page_text():
+    text = "Roster Limits\n0/16 Players\n...\nYour draft is about to start\n\nYour first pick: Round 1, Pick 10\n"
+    cfg = autodraft.room_config(text, "ESPN Fantasy Football Draft - Beginner 10-Team H2H Points PPR Mock")
+    assert cfg == {"num_teams": 10, "draft_position": 10, "roster_size": 16, "scoring_type": "ppr"}
+    assert autodraft.room_config("nothing", "Half PPR 12-Team") == {"num_teams": 12, "scoring_type": "half_ppr"}

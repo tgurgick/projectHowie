@@ -83,6 +83,34 @@ def on_clock(text: str) -> bool:
     return "You are on the clock" in text or "You're on the clock!" in text
 
 
+SLOT_RE = re.compile(r"Your first pick: Round 1, Pick (\d+)")
+TEAMS_RE = re.compile(r"(\d+)-Team")
+ROSTER_RE = re.compile(r"Roster Limits\s*\d+/(\d+) Players")
+
+
+def room_config(text: str, title: str) -> dict:
+    """League shape the room itself states: teams, your slot, scoring, roster
+    size. Whatever it doesn't state is left alone."""
+    out: dict = {}
+    m = TEAMS_RE.search(title) or TEAMS_RE.search(text)
+    if m:
+        out["num_teams"] = int(m.group(1))
+    m = SLOT_RE.search(text)
+    if m:
+        out["draft_position"] = int(m.group(1))
+    m = ROSTER_RE.search(text)
+    if m:
+        out["roster_size"] = int(m.group(1))
+    low = title.lower()
+    if "half" in low:
+        out["scoring_type"] = "half_ppr"
+    elif "ppr" in low:
+        out["scoring_type"] = "ppr"
+    elif "standard" in low:
+        out["scoring_type"] = "standard"
+    return out
+
+
 # ---------------------------------------------------------------- the bridge
 
 class AutoDrafter:
@@ -181,12 +209,25 @@ class AutoDrafter:
         if self.autopilot and not self.real and not re.search(r"mock|practice", title, re.I):
             log_event(self.settings, "refused", reason="page is not a mock/practice room (pass --real to override)")
             self.autopilot = False
-        league = self.settings.league
-        total = league.num_teams * league.roster_size
+        configured = False
         t_end = time.time() + max_minutes * 60
         last_clock_pick = None
         while time.time() < t_end:
             try:
+                if not configured:
+                    # the room states the league shape and your seat; take it
+                    # and wipe the board before the first pick lands
+                    cfg = room_config(self.room_text(), self.page.title())
+                    if cfg.get("draft_position"):
+                        service.update_config(self.settings, cfg)
+                        service.reset_draft(self.settings, "live")
+                        log_event(self.settings, "configured", **cfg)
+                        configured = True
+                    else:
+                        time.sleep(POLL_SECONDS)
+                        continue
+                league = self.settings.league
+                total = league.num_teams * league.roster_size
                 picks = parse_picks(self.picks_text())
                 new = [p for p in picks if (p["round"], p["pick"]) not in self.seen]
                 if new:

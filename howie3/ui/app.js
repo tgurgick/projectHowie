@@ -1053,6 +1053,7 @@ async function pollBridge() {
       else if (e.kind === 'queued') termPrint('dim', `queued ${e.name} for pick ${e.for_pick}`);
       else if (e.kind === 'error') termPrint('dim', 'bridge error: ' + e.error);
       else if (e.kind === 'start') termPrint('out', `bridge connected: ${e.title} · autopilot ${e.autopilot ? 'ON' : 'off'}`);
+      else if (e.kind === 'configured') termPrint('out', `room: ${e.num_teams || '?'} teams · your slot ${e.draft_position} · ${e.scoring_type || ''} · board wiped`);
       else if (e.kind === 'refused') termPrint('dim', 'bridge refused autopilot: ' + e.reason);
       else if (e.kind === 'complete') termPrint('out', 'draft complete — run /coach review');
     }
