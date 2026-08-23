@@ -228,6 +228,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/coach/status":
                 from . import coach
                 self._json({**coach.STATUS, "sessions": coach.load_sessions(s)["sessions"][-5:]})
+            elif url.path == "/api/sequence":
+                self._json(service.sequence_payload(s, DraftState.load(s)))
             elif url.path == "/api/plan":
                 self._json(service.plan_payload(s, DraftState.load(s)))
             elif url.path == "/api/season_grid":

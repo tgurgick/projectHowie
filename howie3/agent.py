@@ -190,6 +190,20 @@ TOOLS: List[Dict[str, Any]] = [
         "input_examples": [{}],
     },
     {
+        "name": "simulate_next_picks",
+        "strict": True,
+        "description": (
+            "Roll the live draft forward to the user's next 2-3 picks a few hundred "
+            "times with room-like bots: which position to take NOW because its tier "
+            "is draining, what survives to the next picks (with probabilities and a "
+            "fallback), starter-tier survivors per position, runs in progress, and "
+            "whether the live board overrides the strategy's round plan. Use this for "
+            "any 'should I wait' or sequencing question."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "input_examples": [{}],
+    },
+    {
         "name": "entity_context",
         "strict": True,
         "description": (
@@ -332,6 +346,13 @@ def _player_info_tool(args: Dict[str, Any], settings: Settings) -> str:
     return json.dumps(card, default=str)
 
 
+def _sequence_tool(args: Dict[str, Any], settings: Settings) -> str:
+    from . import service
+    from .state import DraftState
+
+    return json.dumps(service.sequence_payload(settings, DraftState.load(settings)), default=str)
+
+
 def _entity_context_tool(args: Dict[str, Any], settings: Settings) -> str:
     from .db import connect
     from .graph import entity_context, search as g_search
@@ -352,6 +373,7 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "draft_pick": _draft_pick_tool,
     "player_info": _player_info_tool,
     "entity_context": _entity_context_tool,
+    "simulate_next_picks": _sequence_tool,
 }
 
 

@@ -62,6 +62,26 @@ function renderRail() {
   $('nextPicks').textContent = ST.my_next_picks.join(' · ') || '—';
 }
 
+let SEQ = null, seqGen = '';
+async function loadSequence() {
+  const gen = `${ST.mode}:${ST.next_pick_no}:${ST.log.length}`;
+  if (gen === seqGen) return;
+  seqGen = gen;
+  try { SEQ = await api('/api/sequence'); } catch (e) { return; }
+  renderSequence();
+}
+function renderSequence() {
+  const q = SEQ, el = $('seqStrip');
+  if (!q || !q.now || ST.complete) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const pc = p => p >= 0.75 ? '' : p >= 0.5 ? 'lo' : 'vlo';
+  const step = (s) => h`<span class="step"><span class="kindtag">${s.pos}</span>${s.target ? h`<b style="font-weight:500">${s.target.name}</b> <span class="p ${pc(s.target.p)}">${Math.round(s.target.p * 100)}%</span>` : h`<span class="dim">nobody likely</span>`}${s.fallback ? h` <span class="fb">else ${s.fallback.name} ${Math.round(s.fallback.p * 100)}%</span>` : ''}<span class="dim" style="font-size:10px">@${s.pick}</span></span>`;
+  const runs = Object.entries(q.runs || {}).map(([pos, n]) => h`<span class="run">${pos} RUN ${n}/5</span>`);
+  el.innerHTML = h`<span class="lbl">SEQUENCE</span><span class="step"><span class="kindtag">${q.now.pos}</span><b>${q.now.name}</b><span class="dim" style="font-size:10px">now @${q.current_pick}</span></span>${
+    q.next.map(s => h`<span class="arrow">→</span>${step(s)}`)}${runs}${
+    q.overrides_plan ? h`<span class="override" title="the live board says ${q.now.pos} drains before the plan's ${q.plan_prior[0]}">OVERRIDES PLAN (${q.plan_prior.join(' ')})</span>` : ''}<span style="flex:1"></span><span class="dim" style="font-size:10px">${q.rollouts} rollouts of the live board · hover a row's AVAIL for the source</span>`;
+}
+
 let COMPACT = localStorage.getItem('boardCompact') !== '0';
 function toggleCompact() { COMPACT = !COMPACT; localStorage.setItem('boardCompact', COMPACT ? '1' : '0'); renderBoard(); }
 
@@ -84,7 +104,8 @@ function renderBoard() {
     const dc = detOnly ? 'dim' : delta === 0 ? 'green' : (delta > -8 ? 'mid' : 'red');
     const p = r.avail_next;
     const lab = r.avail_src && r.avail_src !== 'model';
-    const availbar = h`<span class="bar" title="${lab ? 'availability: ' + r.avail_src + ' (mock lab blended with the ADP model)' : 'availability: ADP model'}"><i style="width:${Math.round(p * 100)}%; background:var(--${availClass(p)})"></i></span><span class="mono mid" style="font-size:12px">${Math.round(p * 100)}%</span>${lab ? raw('<span class="labtag" title="blended with mock-lab drafts">LAB</span>') : ''}`;
+    const srcTitle = r.avail_src === 'flow' ? 'availability: the live board rolled forward with room-like bots' : lab ? 'availability: ' + r.avail_src + ' (mock lab blended with the ADP model)' : 'availability: ADP model';
+    const availbar = h`<span class="bar" title="${srcTitle}"><i style="width:${Math.round(p * 100)}%; background:var(--${availClass(p)})"></i></span><span class="mono mid" style="font-size:12px">${Math.round(p * 100)}%</span>${r.avail_src === 'flow' ? raw('<span class="labtag" title="live board rolled forward">FLOW</span>') : lab ? raw('<span class="labtag" title="blended with mock-lab drafts">LAB</span>') : ''}`;
     let dist = raw(mc ? '<span class="dim mono" style="font-size:11px">—</span>' : '<span class="dim mono" style="font-size:11px">sims…</span>');
     if (m && span) {
       const [lo, hi] = span, w = hi - lo;

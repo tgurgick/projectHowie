@@ -40,6 +40,36 @@ def _me(settings: Settings) -> int:
     return settings.league.draft_position
 
 
+_FLOW_CACHE: Dict[str, object] = {}
+FLOW_ROLLOUTS = 250
+FLOW_HORIZON = 3
+
+
+def draft_flow_for(settings: Settings, state: DraftState, pool: List[PoolPlayer], plan=None):
+    """The live board rolled forward to the user's next picks, cached per
+    draft generation (identity + length) so every payload in a request
+    cycle shares one simulation."""
+    from .value.flow import draft_flow
+
+    key = f"{state.created}:{state.seed}:{len(state.events)}:{settings.league.draft_position}"
+    flow = _FLOW_CACHE.get(key)
+    if flow is None:
+        flow = draft_flow(pool, state, settings.league, n=FLOW_ROLLOUTS, horizon=FLOW_HORIZON, my_plan=plan)
+        _FLOW_CACHE.clear()
+        _FLOW_CACHE[key] = flow
+    return flow
+
+
+def _pool_with_flow(settings: Settings, conn: sqlite3.Connection, state: DraftState) -> List[PoolPlayer]:
+    """The pool with conditioned availability attached for the next picks."""
+    from .value.flow import attach
+
+    pool = _pool(settings, conn)
+    flow = draft_flow_for(settings, state, pool)
+    attach(pool, flow)
+    return pool
+
+
 def _pick_context(settings: Settings, state: DraftState,
                   league: Optional[LeagueConfig] = None) -> Tuple[int, int, int, List[int]]:
     """(round, current_pick, next_pick, future_picks) for the user's turn.
@@ -310,7 +340,7 @@ def pick_payload(settings: Settings, state: DraftState, sims: int = 0, top_n: in
 
     league = settings.league
     conn = _conn(settings)
-    pool = _pool(settings, conn)
+    pool = _pool_with_flow(settings, conn, state)
     pool_by_uid = {p.uid: p for p in pool}
     taken = state.taken_uids()
     roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
@@ -398,7 +428,7 @@ def positions_payload(settings: Settings, state: DraftState) -> dict:
 
     league = settings.league
     conn = _conn(settings)
-    pool = _pool(settings, conn)
+    pool = _pool_with_flow(settings, conn, state)
     conn.close()
     pool_by_uid = {p.uid: p for p in pool}
     taken = state.taken_uids()
@@ -443,6 +473,80 @@ def positions_payload(settings: Settings, state: DraftState) -> dict:
     return {"current_pick": current_pick, "next_pick": next_pick, "rows": out}
 
 
+# ------------------------------------------------------------ sequence: the next 2-3 picks as one decision
+
+def sequence_payload(settings: Settings, state: DraftState) -> dict:
+    """Explore/exploit over the user's next picks, from the live board:
+    which position to take NOW because its tier is draining, what to wait
+    for because it survives, with the conditioned probabilities, a
+    fallback at each pick, and the run indicator. The plan (strategy prior)
+    is reported next to the sequence so an override is explicit."""
+    from .value.flow import attach
+    from .value.policy import apply_rules, roster_counts
+    from .value.roster import evaluate_candidates
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    pool_by_uid = {p.uid: p for p in pool}
+    taken = state.taken_uids()
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    rnd, current_pick, next_pick, future = _pick_context(settings, state, league)
+    effects = state.active_rule_effects()
+    # 1. the strategy prior: the rollout WITHOUT conditioned availability
+    prior = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6)
+    prior = apply_rules(prior, rnd, effects, roster_counts(roster))
+    prior_plan = prior[0].plan_positions[:FLOW_HORIZON] if prior else []
+    # 2. the same decision with the live board rolled forward (plan-aware at my own picks)
+    flow = draft_flow_for(settings, state, pool, plan=prior_plan)
+    attach(pool, flow)
+    results = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6)
+    results = apply_rules(results, rnd, effects, roster_counts(roster))
+    if not results:
+        return {"now": None, "next": [], "runs": flow.runs, "horizon_picks": flow.picks}
+    best = results[0]
+    steps = []
+    blocked = {pos for pos, until in effects.get("wait", []) + effects.get("ban", []) if rnd < until}
+    used = {best.player.uid}
+    later = [k for k in flow.picks if k > current_pick][:FLOW_HORIZON]
+    for j, k in enumerate(later):
+        pos = best.plan_positions[j] if j < len(best.plan_positions) else None
+        if not pos or pos == "—":
+            continue
+        r_no = rnd + 1 + j
+        cands = [p for p in pool if p.position == pos and p.uid not in taken and p.uid not in used
+                 and p.draftable and p.flow_avail and k in p.flow_avail]
+        likely = sorted(cands, key=lambda p: -p.proj)
+        fa = lambda q: (q.flow_avail or {}).get(k, 0.0)  # noqa: E731
+        target = next((p for p in likely if fa(p) >= 0.5), None)
+        fallback = next((p for p in likely if fa(p) >= 0.75 and p is not target), None)
+        best_hope = likely[0] if likely else None
+        if target:
+            used.add(target.uid)
+        steps.append({
+            "pick": k, "round": r_no, "pos": pos,
+            "target": {"name": target.name, "p": round(fa(target), 2), "proj": round(target.raw or target.proj)} if target else None,
+            "fallback": {"name": fallback.name, "p": round(fa(fallback), 2), "proj": round(fallback.raw or fallback.proj)} if fallback else None,
+            "best_hope": {"name": best_hope.name, "p": round(fa(best_hope), 2)} if best_hope and best_hope is not target else None,
+            "survivors": flow.survivors.get(k, {}),
+        })
+    # urgency by position right now (what the decision is made of)
+    pos_rows = positions_payload(settings, state)["rows"]
+    urgency = [{"pos": r["pos"], "cost_of_waiting": r["cost"], "avail_next": r["avail_next"], "player": r["player"]} for r in pos_rows[:4]]
+    override = bool(prior_plan) and best.player.position != (prior[0].player.position if prior else None)
+    return {
+        "current_pick": current_pick, "round": rnd,
+        "now": {"name": best.player.name, "pos": best.player.position, "uid": best.player.uid,
+                "proj": round(best.player.raw or best.player.proj), "value": round(best.final_value)},
+        "plan_prior": prior_plan, "plan_live": best.plan_positions[:FLOW_HORIZON],
+        "overrides_plan": override,
+        "prior_now": prior[0].player.name if prior else None,
+        "next": steps, "runs": flow.runs, "horizon_picks": flow.picks, "rollouts": flow.n,
+        "urgency": urgency, "blocked_now": sorted(blocked),
+    }
+
+
 # ------------------------------------------------------------ round-by-round plan (STRATEGY tab)
 
 def plan_payload(settings: Settings, state: DraftState) -> dict:
@@ -456,7 +560,7 @@ def plan_payload(settings: Settings, state: DraftState) -> dict:
 
     league = settings.league
     conn = _conn(settings)
-    pool = _pool(settings, conn)
+    pool = _pool_with_flow(settings, conn, state)
     conn.close()
     pool_by_uid = {p.uid: p for p in pool}
     taken = state.taken_uids()

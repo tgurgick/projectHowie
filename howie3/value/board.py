@@ -42,6 +42,10 @@ class PoolPlayer:
     emp_avail: Optional[Dict[int, Tuple[float, int]]] = None
     # Current status row (howie3.status) — None when nothing is known.
     status: Optional[dict] = None
+    # Draft-flow availability at the user's next picks, conditioned on the
+    # live board (value/flow.py). Beats the lab blend and the analytic model
+    # for those picks.
+    flow_avail: Optional[Dict[int, float]] = None
     # Availability prior for players with NO market ADP: an implied pick past
     # the drafted range, ordered by projection, with a wide spread. Never
     # shown as an ADP; only used so late-round availability is not a flat 100%.
@@ -52,6 +56,8 @@ class PoolPlayer:
         return not (self.status and self.status["status"] in ("out_season", "released", "retired"))
 
     def p_available(self, pick: float) -> float:
+        if self.flow_avail and int(pick) in self.flow_avail:
+            return self.flow_avail[int(pick)]
         model = (p_available(self.adp, self.stdev, pick) if self.adp is not None
                  else p_available(self.adp_est, IMPLIED_ADP_STDEV, pick))
         if self.emp_avail:
@@ -63,6 +69,8 @@ class PoolPlayer:
         return model
 
     def availability_source(self, pick: float) -> str:
+        if self.flow_avail and int(pick) in self.flow_avail:
+            return "flow"
         emp = (self.emp_avail or {}).get(int(pick))
         if emp:
             return f"blend n={emp[1]}"
