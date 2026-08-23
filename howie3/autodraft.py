@@ -240,7 +240,13 @@ class AutoDrafter:
         if target is None:
             target = matches.filter(has_text=name.split()[-1]).first
         pid = target.get_attribute("data-player-search-playerid", timeout=500)
-        target.click(timeout=1500)
+        try:
+            target.click(timeout=2500)
+        except Exception:
+            try:
+                target.click(force=True, timeout=1500)
+            except Exception:
+                pass
         if pid:
             self.player_ids[name] = pid
         self.page.wait_for_timeout(250)
@@ -251,12 +257,35 @@ class AutoDrafter:
         table and walk up to the nearest ancestor that holds exactly one such
         button — the row, never the table (which holds everyone's)."""
         pattern = re.compile(label, re.I)
+        # the row buttons carry ESPN's player id (the same id the search
+        # suggestion carries): the most direct match when we have it
+        if pid:
+            byid = self.page.locator(f"button[data-player-id='{pid}']").filter(has_text=pattern)
+            for i in range(min(byid.count(), 4)):
+                b = byid.nth(i)
+                try:
+                    if b.is_visible():
+                        return b
+                except Exception:
+                    continue
+        # after the search filter the table holds one player: a lone visible
+        # button with this label is his
+        lone = self.page.locator("button").filter(has_text=pattern)
+        visible = []
+        for i in range(min(lone.count(), 6)):
+            try:
+                if lone.nth(i).is_visible():
+                    visible.append(lone.nth(i))
+            except Exception:
+                continue
+        if len(visible) == 1:
+            return visible[0]
         names = self.page.locator(".playerinfo__playername", has_text=name) if name else self.page.locator(".playerinfo__playername")
         for i in range(min(names.count(), 6)):
             el = names.nth(i)
             try:
-                if not el.is_visible() or (name and el.inner_text(timeout=200).strip() != name):
-                    continue
+                if not el.is_visible() or (name and name not in el.inner_text(timeout=200)):
+                    continue  # the cell may carry an injury tag: "Christian McCaffrey Q"
                 for depth in range(1, 8):
                     anc = el.locator(f"xpath=ancestor::*[{depth}]")
                     if not anc.count():
