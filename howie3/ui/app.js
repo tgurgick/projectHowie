@@ -97,7 +97,7 @@ function renderBoard() {
   if (mc) rows = [...rows].sort((a, b) =>
     (mcRows[b.uid] ? mcRows[b.uid].value : b.value - 900) - (mcRows[a.uid] ? mcRows[a.uid].value : a.value - 900));
   const best = rows.length ? (mc && mcRows[rows[0].uid] ? mcRows[rows[0].uid].value : rows[0].value) : 0;
-  const detBest = PICK.rows.length ? PICK.rows[0].value : 0;   // deterministic best, for rows MC didn't cover
+  const detBest = PICK.rows.length ? PICK.rows[0].value : 0;   // deterministic best, for any row MC hasn't covered yet
   $('rows').innerHTML = h`${rows.map((r, i) => {
     const m = mcRows[r.uid];
     const value = m ? m.value : r.value;

@@ -76,7 +76,7 @@ def _kick_mc(settings: Settings, gen: str) -> None:
             state = DraftState.load(settings)
             if _generation(settings, state) != gen:
                 return
-            data = service.pick_payload(settings, state, sims=MC_SIMS, top_n=10)
+            data = service.pick_payload(settings, state, sims=MC_SIMS, top_n=40)
             with _lock:
                 _mc_cache["error"] = None
                 if _generation(settings, DraftState.load(settings)) == gen:
