@@ -140,7 +140,7 @@ async function resetDraft() {
 
 // ---------------- tabs + strategy ----------------
 
-function showTab(t) {
+function showTab(t, opts = {}) {
   $('boardView').style.display = t === 'board' ? '' : 'none';
   $('strategyView').style.display = t === 'strategy' ? 'block' : 'none';
   $('dataView').style.display = t === 'data' ? 'block' : 'none';
@@ -148,7 +148,7 @@ function showTab(t) {
   $('rosterView').style.display = t === 'roster' ? 'block' : 'none';
   $('teamView').style.display = t === 'team' ? 'block' : 'none';
   for (const [id, key] of [['tabRoster', 'roster'], ['tabBoard', 'board'], ['tabStrategy', 'strategy'], ['tabData', 'data'], ['tabSim', 'sim'], ['tabTeam', 'team']]) $(id).classList.toggle('active', t === key);
-  if (t === 'team') loadTeamTab();
+  if (t === 'team' && !opts.noload) loadTeamTab();
   if (t === 'strategy') loadStrategyTab();
   if (t === 'data') loadDataTab();
   if (t === 'sim') loadSimTab();
@@ -659,7 +659,10 @@ async function askHowie(kind) {
 // ---------------- TEAM report ----------------
 
 let TEAM = localStorage.getItem('teamTab') || 'PHI', teamListLoaded = false;
+let teamSeq = 0;
 async function loadTeamTab(team) {
+  const seq = ++teamSeq;  // the latest request wins; an earlier load must not overwrite it
+  showTab('team', {noload: true});
   if (!teamListLoaded) {
     const st = await api('/api/research/status');
     $('teamSel').innerHTML = h`${st.teams.map(t => h`<option value="${t.team}">${t.team} — ${t.name}</option>`)}`;
@@ -667,6 +670,7 @@ async function loadTeamTab(team) {
     teamListLoaded = true;
   }
   const r = await api('/api/team?team=' + encodeURIComponent(team || TEAM));
+  if (seq !== teamSeq) return;
   TEAM = r.team; localStorage.setItem('teamTab', TEAM);
   $('teamSel').value = TEAM;
   renderTeam(r);
@@ -781,7 +785,11 @@ async function handleEntry(line, items, selIdx, ev) {
   }
   if (cls.kind === 'team') {
     termPrint('cmd', '› ' + (cls.hit ? cls.hit.name : cls.team) + '  → team report');
-    showTab('team'); return loadTeamTab(cls.team).catch(e => termPrint('dim', e.message));
+    return loadTeamTab(cls.team).catch(e => termPrint('dim', e.message));
+  }
+  if (cls.kind === 'nomatch' && /^[a-z .'-]{3,}$/i.test(line) && line.split(/\s+/).length <= 3) {
+    // nickname or partial team name ("philly", "niners"): the server resolves those
+    try { await loadTeamTab(line); termPrint('cmd', '› ' + line + '  → team report'); return; } catch (e) {}
   }
   if (cls.kind === 'nomatch') {
     termPrint('cmd', '› ' + line);
@@ -805,7 +813,7 @@ async function handleTerm(line, acItems, cls) {
     return;
   }
   if (cls.kind === 'player') return openCard(cls.hit.uid);
-  if (cls.kind === 'team') { showTab('team'); return loadTeamTab(cls.team); }
+  if (cls.kind === 'team') return loadTeamTab(cls.team);
   if (cls.kind !== 'cmd') return;
   const {cmd, rest, arg} = cls;
   try {
@@ -815,7 +823,7 @@ async function handleTerm(line, acItems, cls) {
         '/read · Howie reads the board', '/sim NAME · simulate a season', '/mock N [howie|adp] · run mock drafts', '/research TEAM|NAME · deep research',
         '/sql SELECT … · read-only query', '/data Q · look up a player/team/room', '/strategy · show rules & notes', '/ask Q or ?Q · ask Howie'].join('\n'));
     } else if (cmd === 'ask') { return handleTerm('?' + arg, acItems); }
-    else if (cmd === 'team') { showTab('team'); await loadTeamTab(arg || TEAM); }
+    else if (cmd === 'team') { await loadTeamTab(arg || TEAM); }
     else if (cmd === 'card') { const p = await findPlayer(arg); p ? openCard(p.uid) : termPrint('dim', 'no player found'); }
     else if (cmd === 'mine' || cmd === 'taken') { const p = await findPlayer(arg); p ? await mark(p.uid, cmd === 'mine') : termPrint('dim', 'no player found'); }
     else if (cmd === 'undo') { await undoPick(); }
