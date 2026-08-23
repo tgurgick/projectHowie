@@ -252,7 +252,7 @@ async function loadAnchors() {
 }
 
 async function loadStrategyTab() {
-  loadAnchors();
+  loadAnchors(); loadPlan();
   strategy = await api('/api/strategy');
   renderRules();
   if (!$('notes').matches(':focus')) $('notes').value = strategy.notes;
@@ -276,6 +276,24 @@ async function loadStrategyTab() {
   })}`;
 }
 
+async function loadPlan() {
+  const p = await api('/api/plan');
+  const depthBar = (d, pos) => {
+    const n = d[pos], cap = p.starters[pos] * 3 + 2;
+    const cls = n === 0 ? 'gone' : n <= 2 ? 'thin' : 'ok';
+    return h`<span title="${n} starter-tier ${pos} likely still there"><i class="${cls}" style="opacity:${Math.min(1, 0.35 + n / cap)}"></i>${pos} ${n}</span>`;
+  };
+  $('planRows').innerHTML = h`${p.rows.map(r => {
+    const rules = (r.rules || []).map(t => h`<span class="ruletag ${t.type}">${t.text}</span> `);
+    if (r.state === 'done') return h`<div class="planrow done"><div class="rnd">R${r.round}<br>pick ${r.pick}</div><div class="target"><span class="kindtag">${r.pos}</span> ${r.player} <span class="mono dim">${r.pts ?? ''}</span></div><div class="dim mono" style="font-size:10px">taken</div><div></div></div>`;
+    const target = r.pos ? h`<span class="kindtag">${r.pos}</span>${r.state === 'now' ? h` ${r.player} <span class="mono dim">${r.pts}</span>` : h` <span class="mono mid">~${r.pts} pts</span><span class="agree">${Math.round((r.agree || 0) * 100)}% agree</span>`}` : raw('<span class="dim">—</span>');
+    return h`<div class="planrow ${r.state}"><div class="rnd">R${r.round}<br>pick ${r.pick}${r.state === 'now' ? raw('<br><span class="green">NOW</span>') : ''}</div>
+      <div class="target">${target}${r.alt ? h`<div class="dim" style="font-size:10px;margin-top:2px">or ${r.alt}</div>` : ''}</div>
+      <div class="depthbars">${p.positions.map(pos => depthBar(r.depth || {}, pos))}</div>
+      <div class="why">${rules}</div></div>`;
+  })}`;
+}
+
 function renderRules() {
   $('rules').innerHTML = strategy.rules.length ? h`${strategy.rules.map((r, i) => h`<div class="rulerow ${r.on ? '' : 'off'}">
       <span class="dot" onclick="toggleRule(${i})"></span>
@@ -288,7 +306,7 @@ function renderRules() {
 }
 async function saveStrategy() {
   strategy = await api('/api/strategy', {rules: strategy.rules, notes: $('notes').value});
-  renderRules();
+  renderRules(); loadPlan();
   (strategy.conflicts || []).forEach(c => termPrint('dim', h`<span class="conflict">rule conflict:</span> ${c}`));
   $('notesSaved').textContent = '— saved';
   setTimeout(() => $('notesSaved').textContent = '', 1500);

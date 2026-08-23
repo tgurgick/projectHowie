@@ -85,3 +85,28 @@ def test_season_grid_marks_byes_outs_and_empty_slots(tmp_path, monkeypatch, leag
     assert len(live) == 16 and all(c["name"] == rb.name and c["pts"] > 0 for c in live)
     assert g["week_totals"][rb.bye - 1]["bye"] == [rb.name]
     assert {c["level"] for c in live} <= {"green", "yellow", "red"}
+
+
+def test_plan_payload_covers_every_round(tmp_path, monkeypatch, league12):
+    from howie3 import service
+
+    s = Settings()
+    if not s.db_path.exists():
+        pytest.skip("howie.db not built")
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    st = DraftState(created="x", mode="live", rules=[__import__("howie3.state", fromlist=["Rule"]).Rule("WAIT QB UNTIL R6")]); st.save(s)
+    p = service.plan_payload(s, DraftState.load(s))
+    assert [r["round"] for r in p["rows"]] == list(range(1, 17))
+    assert p["rows"][0]["state"] == "now" and p["rows"][0]["pos"] and p["rows"][0]["player"]
+    assert all(r["state"] == "plan" for r in p["rows"][1:])
+    assert all(set(r["depth"]) == {"QB", "RB", "WR", "TE"} for r in p["rows"])
+    assert any(t["type"] == "wait" and t["pos"] == "QB" for t in p["rows"][0]["rules"])
+    assert not any(t["pos"] == "QB" for t in p["rows"][6]["rules"]), "the wait rule expires at R6"
+    # a completed pick shows as done and the plan advances
+    conn = service._conn(s); pool = service._pool(s, conn); conn.close()
+    for q in pool[:7]:
+        service.mark_pick(s, q.uid, mine=False)
+    service.mark_pick(s, pool[7].uid, mine=True)
+    p2 = service.plan_payload(s, DraftState.load(s))
+    assert p2["rows"][0]["state"] == "done" and p2["rows"][0]["player"] == pool[7].name
+    assert p2["rows"][1]["state"] == "now" and p2["rows"][1]["pick"] == 17

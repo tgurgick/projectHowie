@@ -241,3 +241,15 @@
   .sgrid .legend { display: flex; flex-direction: column; gap: 7px; font-size: 10px; color: var(--dim); font-family: var(--mono); min-width: 200px; padding-top: 22px; }
   .sgrid .legend i { display: inline-block; width: 14px; height: 10px; margin-right: 6px; vertical-align: middle; }
   .sgrid .legend .base { margin-top: 6px; line-height: 1.6; }
+
+  /* ---- round-by-round plan (STRATEGY tab) ---- */
+  .planrow { display: grid; grid-template-columns: 54px 1fr 150px 1fr; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid #131a15; font-size: 12px; }
+  .planrow .rnd { font-family: var(--mono); font-size: 10px; color: var(--dim); line-height: 1.3; }
+  .planrow.done { opacity: .55; } .planrow.now { background: #0f1a13; margin: 0 -8px; padding: 7px 8px; }
+  .planrow .target .kindtag { font-size: 11px; padding: 2px 7px; }
+  .planrow .agree { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-left: 6px; }
+  .depthbars { display: flex; gap: 8px; }
+  .depthbars span { font-family: var(--mono); font-size: 9px; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 2px; width: 30px; }
+  .depthbars i { display: block; width: 100%; height: 4px; background: var(--line2); }
+  .depthbars i.ok { background: #2f8a55; } .depthbars i.thin { background: var(--amber); } .depthbars i.gone { background: var(--red); }
+  .planrow .why { color: var(--mid); font-size: 11px; line-height: 1.45; }

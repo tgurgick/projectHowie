@@ -433,6 +433,92 @@ def positions_payload(settings: Settings, state: DraftState) -> dict:
     return {"current_pick": current_pick, "next_pick": next_pick, "rows": out}
 
 
+# ------------------------------------------------------------ round-by-round plan (STRATEGY tab)
+
+def plan_payload(settings: Settings, state: DraftState) -> dict:
+    """What to optimize for at each of the user's picks, from the engine's
+    rollouts under the current strategy: completed rounds show what was taken;
+    the current pick shows the best candidate; future rounds show the
+    position the top candidates' plans agree on (with the expected points
+    that position carries at that pick), the runner-up, how deep each
+    position still runs at that pick, and the rules in force that round."""
+    from .value.roster import evaluate_candidates
+
+    league = settings.league
+    conn = _conn(settings)
+    pool = _pool(settings, conn)
+    conn.close()
+    pool_by_uid = {p.uid: p for p in pool}
+    taken = state.taken_uids()
+    roster = [pool_by_uid[u] for u in state.my_uids(league) if u in pool_by_uid]
+    rnd, current_pick, next_pick, future = _pick_context(settings, state, league)
+    picks = snake_picks(league)
+    effects = state.active_rule_effects()
+    starters = {"QB": league.qb_slots, "RB": league.rb_slots, "WR": league.wr_slots, "TE": league.te_slots}
+    flex_share = league.flex_slots / 3.0
+
+    # depth: starter-tier players at each position likely (>= 50%) to still be there at pick k
+    def depth_at(k: int) -> Dict[str, int]:
+        out = {}
+        for pos, n_slots in starters.items():
+            n = int(league.num_teams * (n_slots + (flex_share if pos != "QB" else 0)))
+            tier = [p for p in pool if p.position == pos and p.draftable][:n]
+            out[pos] = sum(1 for p in tier if p.uid not in taken and p.p_available(k) >= 0.5)
+        return out
+
+    mine_events = [e for e in state.events if e.mine]
+    rows: List[dict] = []
+    # completed rounds
+    for i, e in enumerate(mine_events):
+        p = pool_by_uid.get(e.player_uid)
+        rows.append({"round": i + 1, "pick": e.pick_no, "state": "done", "pos": e.position,
+                     "player": e.player_name, "pts": round(p.raw or p.proj) if p else None})
+    # the engine's view from the current pick forward
+    results = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6) if current_pick <= picks[-1] else []
+    best = results[0] if results else None
+    votes: Dict[int, Dict[str, List[float]]] = {}
+    for r in results:
+        for j, (pos, pts) in enumerate(r.plan):
+            votes.setdefault(j, {}).setdefault(pos, []).append(pts)
+    if best is not None:
+        rows.append({"round": rnd, "pick": current_pick, "state": "now", "pos": best.player.position,
+                     "player": best.player.name, "pts": round(best.player.raw or best.player.proj),
+                     "alt": results[1].player.position if len(results) > 1 and results[1].player.position != best.player.position else None,
+                     "depth": depth_at(current_pick), "rules": _round_rules(effects, rnd)})
+    for j, k in enumerate(future):
+        v = votes.get(j, {})
+        tpos: Optional[str] = None
+        talt: Optional[str] = None
+        pts_list: List[float] = []
+        agree = 0.0
+        if v:
+            ranked = sorted(v.items(), key=lambda kv: (-len(kv[1]), -max(kv[1])))
+            tpos, pts_list = ranked[0]
+            talt = ranked[1][0] if len(ranked) > 1 else None
+            agree = len(pts_list) / max(len(results), 1)
+        r_no = rnd + 1 + j
+        rows.append({"round": r_no, "pick": k, "state": "plan", "pos": tpos,
+                     "pts": round(sum(pts_list) / len(pts_list)) if pts_list else None,
+                     "agree": round(agree, 2), "alt": talt, "depth": depth_at(k),
+                     "rules": _round_rules(effects, r_no)})
+    return {"rows": rows, "current_round": rnd, "positions": list(starters),
+            "starters": starters, "roster_size": league.roster_size}
+
+
+def _round_rules(effects: Dict[str, list], rnd: int) -> List[dict]:
+    out = []
+    for pos, until in effects.get("wait", []):
+        if rnd < until:
+            out.append({"type": "wait", "pos": pos, "text": f"no {pos} until R{until}"})
+    for pos, before in effects.get("ban", []):
+        if rnd < before:
+            out.append({"type": "ban", "pos": pos, "text": f"no {pos} before R{before}"})
+    for pos, n, by in effects.get("need", []):
+        if rnd <= by:
+            out.append({"type": "need", "pos": pos, "text": f"{n} {pos} by R{by}"})
+    return out
+
+
 # ------------------------------------------------------------ player card
 
 def card_payload(settings: Settings, uid: str) -> dict:

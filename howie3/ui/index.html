@@ -98,10 +98,13 @@
             <input id="newRule" placeholder='e.g. WAIT QB UNTIL R6 · TARGET McBride · NO K BEFORE R14' style="flex:1; background:var(--panel2); border:1px solid var(--line2); color:var(--hi); font-family:var(--mono); font-size:12px; padding:8px 10px; outline:none;">
             <button onclick="addRule()">ADD</button>
           </div>
-        </div>
-        <div style="flex:1; min-width:300px;">
-          <p class="sechead">NOTES <span class="dim" style="letter-spacing:0" id="notesSaved"></span></p>
+          <p class="sechead" style="margin-top:22px">NOTES <span class="dim" style="letter-spacing:0" id="notesSaved"></span></p>
           <textarea id="notes" placeholder="Your read on the draft — travels into the agent's context and the pre-draft brief."></textarea>
+        </div>
+        <div style="flex:1.3; min-width:360px;">
+          <p class="sechead">ROUND BY ROUND <span class="dim" style="letter-spacing:0">— what the engine optimizes for at each of your picks under the current strategy</span></p>
+          <div id="planRows"></div>
+          <div class="footnote" style="padding-top:8px">TARGET = the position the top candidates' draft plans agree on at that pick (agreement %), with the expected points it carries. DEPTH = starter-tier players at each position likely (≥50%) to still be there. Rules in force that round are tagged.</div>
         </div>
       </div>
     </div>
