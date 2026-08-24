@@ -347,6 +347,8 @@ def reconcile_roster(settings: Settings, roster: List[dict]) -> dict:
     conn.close()
 
     def resolve(name: str, pos: Optional[str]) -> Optional[str]:
+        if name.upper().endswith(("D/ST", "DST")):
+            pos = "DST"   # bench D/ST rows carry no (POS) marker
         key = name_key(name)
         exact = [p for p in pool if name_key(p.name) == key and (not pos or p.position == pos)]
         if len(exact) == 1:
