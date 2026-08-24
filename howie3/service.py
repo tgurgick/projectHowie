@@ -473,6 +473,8 @@ def _browse_position(settings: Settings, state: DraftState, pos: str, top_n: int
     effects = state.active_rule_effects()
     picks = snake_picks(league)
     rows: List[JsonDict] = []
+    from .mocksim import sim_adp_table
+    sim_adp = sim_adp_table(settings)
     avail_pool = [p for p in pool if p.position == pos and p.uid not in taken]
     best_val = avail_pool[0].proj if avail_pool else 0
     for p in avail_pool[:max(top_n, 30)]:
@@ -482,8 +484,10 @@ def _browse_position(settings: Settings, state: DraftState, pos: str, top_n: int
             if k > current_pick and p.p_available(k) < 0.5:
                 gone_by = i + 1
                 break
+        sa = sim_adp.get(p.uid)
         rows.append({
             "adp_round": adp_round, "gone_by_round": gone_by,
+            "sim_adp": sa[0] if sa else None, "sim_adp_n": sa[1] if sa else 0,
             "uid": p.uid, "name": p.name, "pos": p.position, "team": p.team,
             "proj": round(p.raw or p.proj), "adp": p.adp,
             "avail_now": round(p.p_available(current_pick), 2),
@@ -522,6 +526,8 @@ def _candidates_payload(settings: Settings, state: DraftState, sims: int = 0, to
     rows: List[JsonDict] = []
     span = _outcome_span(results, sims)
     picks = snake_picks(league)
+    from .mocksim import sim_adp_table
+    sim_adp = sim_adp_table(settings)
     for r in results:
         fired = _fired_rules(r.player, rnd, effects)
         value = r.sim.mean if (sims and r.sim) else r.final_value
@@ -533,8 +539,10 @@ def _candidates_payload(settings: Settings, state: DraftState, sims: int = 0, to
             if k > current_pick and r.player.p_available(k) < 0.5:
                 gone_by = i + 1
                 break
+        sa = sim_adp.get(r.player.uid)
         rows.append({
             "adp_round": adp_round, "gone_by_round": gone_by,
+            "sim_adp": sa[0] if sa else None, "sim_adp_n": sa[1] if sa else 0,
             "uid": r.player.uid, "name": r.player.name, "pos": r.player.position,
             "team": r.player.team, "proj": round(r.player.raw or r.player.proj),
             "adp": r.player.adp,

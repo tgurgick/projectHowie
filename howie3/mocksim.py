@@ -187,6 +187,27 @@ def import_external(settings: Settings, text: str, source: str = "external") -> 
 
 
 _AVAIL_CACHE: Dict[str, object] = {"sig": None, "table": {}}
+_SIMADP_CACHE: Dict[str, object] = {"sig": None, "table": {}}
+
+
+def sim_adp_table(settings: Settings) -> Dict[str, Tuple[float, int]]:
+    """uid -> (average pick across all stored drafts, n drafts he was taken
+    in). Every source counts: local sims, cockpit mocks, real imported rooms."""
+    p = store_path(settings)
+    if not p.exists():
+        return {}
+    sig = (p.stat().st_mtime_ns, p.stat().st_size)
+    if _SIMADP_CACHE["sig"] == sig:
+        return _SIMADP_CACHE["table"]  # type: ignore[return-value]
+    tot: Dict[str, float] = {}
+    n: Dict[str, int] = {}
+    for d in load_store(settings)["drafts"]:
+        for i, uid in enumerate(d.get("picks") or []):
+            tot[uid] = tot.get(uid, 0.0) + i + 1
+            n[uid] = n.get(uid, 0) + 1
+    table = {uid: (round(tot[uid] / n[uid], 1), n[uid]) for uid in tot}
+    _SIMADP_CACHE.update({"sig": sig, "table": table})
+    return table
 
 
 def availability_table(settings: Settings) -> Dict[str, Dict[int, Tuple[float, int]]]:

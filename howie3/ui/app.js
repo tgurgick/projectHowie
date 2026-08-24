@@ -24,8 +24,11 @@ async function refresh(fast) {
   if (FILTER !== 'ALL') { try { BROWSE = await api('/api/pick?top=30&pos=' + FILTER); } catch (e) {} }
   renderBoard();
   if ($('strategyView').style.display !== 'none' && !fast) loadStrategyTab();
+  // the round-by-round replans as picks land while the tab is open
+  if ($('strategyView').style.display !== 'none' && ST.next_pick_no !== lastPlanPick) { lastPlanPick = ST.next_pick_no; loadPlan(); }
   if ($('rosterView').style.display !== 'none') loadSeasonGrid();
 }
+let lastPlanPick = null;
 
 function drafting() { return !!(ST && ST.log.length && !ST.complete); }
 
@@ -127,6 +130,7 @@ function renderBoard() {
       <td><span class="kindtag">${r.pos}</span> <b style="font-weight:500">${r.name}</b> <span class="mono dim" style="font-size:11px">${r.team || ''}</span>${star}${isBest ? raw('<span class="besttag">BEST</span>') : ''}${stchip}${badges}${tags}</td>
       <td class="mono r mid c-proj">${r.proj}</td>
       <td class="mono r mid c-adp">${r.adp ? r.adp.toFixed(1) : '—'}</td>
+      <td class="mono r mid c-adp" title="${r.sim_adp ? 'average pick ' + r.sim_adp + ' across ' + r.sim_adp_n + ' stored drafts' : 'not drafted in any stored draft'}">${r.sim_adp ?? '—'}</td>
       <td class="mono r mid" title="${r.adp_round ? 'market round R' + r.adp_round : 'undrafted in mocks'}${r.gone_by_round ? ' · likely gone before your R' + r.gone_by_round + ' pick' : ' · likely there at every remaining pick'}">${r.adp_round ? 'R' + r.adp_round : '—'}${r.gone_by_round ? h`<span class="dim" style="font-size:10px"> ›R${r.gone_by_round}</span>` : ''}</td>
       <td>${availbar}</td>
       <td class="mono r" style="font-weight:600">${value}</td>

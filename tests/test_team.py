@@ -125,3 +125,34 @@ def test_lookahead_gives_best_alt_and_likely_for_next_picks(tmp_path, monkeypatc
         assert p["best"]["name"] and 0 <= p["best"]["avail"] <= 1 and len(p["candidates"]) >= 2
         if p["safe"]:
             assert p["safe"]["avail"] >= p["best"]["avail"]
+
+
+def test_plan_adapts_to_the_roster_and_sim_adp_is_reported(tmp_path, monkeypatch, league12):
+    from howie3 import mocksim, service
+
+    s = Settings()
+    if not s.db_path.exists():
+        pytest.skip("howie.db not built")
+    monkeypatch.setattr(DraftState, "path", staticmethod(lambda st: tmp_path / "draft.json"))
+    monkeypatch.setattr(mocksim, "store_path", lambda st: tmp_path / "mock_sims.json")
+    st = DraftState(created="x", mode="live"); st.save(s)
+    base = service.plan_payload(s, DraftState.load(s))
+    base_wr = sum(1 for r in base["rows"] if r["state"] == "plan" and r["pos"] == "WR")
+    # draft two WRs to me early (slot 8): the remaining plan must shed WRs
+    conn = service._conn(s); pool = service._pool(s, conn); conn.close()
+    wrs = [p for p in pool if p.position == "WR" and p.draftable][:2]
+    for i, p in enumerate(pool[:7]):
+        service.mark_pick(s, p.uid, mine=False)
+    service.mark_pick(s, wrs[0].uid, mine=True)
+    for p in pool[8:16]:
+        if p.uid not in DraftState.load(s).taken_uids():
+            service.mark_pick(s, p.uid, mine=False)
+    service.mark_pick(s, wrs[1].uid, mine=True)
+    p2 = service.plan_payload(s, DraftState.load(s))
+    later_wr = sum(1 for r in p2["rows"] if r["state"] == "plan" and r["pos"] == "WR")
+    assert [r["state"] for r in p2["rows"][:2]] == ["done", "done"]
+    assert later_wr < base_wr, (base_wr, later_wr)
+    # sim ADP flows onto board rows once drafts exist in the store
+    mocksim.run_mock_drafts(s, 3, policy="adp", seed=3)
+    rows = service.pick_payload(s, DraftState.load(s), top_n=5)["rows"]
+    assert any(r["sim_adp"] is not None and r["sim_adp_n"] == 3 for r in rows)
