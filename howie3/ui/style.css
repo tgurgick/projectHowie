@@ -272,3 +272,21 @@
   .seq .run { font-family: var(--mono); font-size: 10px; color: var(--amber); letter-spacing: 1px; }
   .seq .override { font-family: var(--mono); font-size: 10px; color: var(--acc); letter-spacing: 1px; }
   .seq .fb { color: var(--dim); font-size: 11px; }
+
+  /* ---- badges (value/badges.py) and favorites ---- */
+  .badge { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; padding: 1px 5px;
+           margin-left: 4px; border: 1px solid; vertical-align: middle; cursor: help; }
+  .badge.b-RISK  { color: var(--red);   border-color: var(--red); }
+  .badge.b-DRAG  { color: var(--amber); border-color: var(--amber); }
+  .badge.b-BOOST { color: var(--acc);   border-color: var(--acc); }
+  .badge.b-VALUE { color: var(--acc);   border-color: var(--acc); }
+  .badge.b-PATH  { color: var(--acc);   border-color: var(--acc); }
+  .badgerow { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px;
+              align-items: baseline; margin-top: 8px; }
+  .badgerow .badge { margin-left: 0; justify-self: start; }
+  .badgewhy { font-family: var(--mono); font-size: 10px; color: var(--mid); line-height: 1.5; }
+  .star { margin-left: 6px; color: var(--line2); cursor: pointer; font-size: 13px;
+          vertical-align: middle; user-select: none; }
+  .star:hover { color: var(--amber); }
+  .star.on { color: var(--amber); }
+  .star:focus-visible { outline: 1px solid var(--acc); outline-offset: 2px; }

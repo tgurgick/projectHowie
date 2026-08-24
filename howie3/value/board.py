@@ -11,11 +11,12 @@ high marginal value. This replaces static VORP as the ranking signal.
 """
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..config import LeagueConfig
 from ..status import availability_factor, current_status
+from . import badges
 from .availability import p_available
 
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
@@ -51,6 +52,9 @@ class PoolPlayer:
     # the drafted range, ordered by projection, with a wide spread. Never
     # shown as an ADP; only used so late-round availability is not a flat 100%.
     adp_est: Optional[float] = None
+    # Structural signals the projection does not carry (value/badges.py).
+    # Never scales `proj` — spent by value/policy.py on the pick order only.
+    badges: List[dict] = field(default_factory=list)
 
     @property
     def draftable(self) -> bool:
@@ -143,7 +147,9 @@ def load_pool(
     apply_implied_adp(pool)
     # Status is applied AFTER the anchor: a stale ADP must not pull an
     # injured or released player's value back up.
-    return apply_status(pool, current_status(conn, season))
+    pool = apply_status(pool, current_status(conn, season))
+    badges.compute(conn, pool)
+    return pool
 
 
 def _age_on(birthdate: Optional[str], season: int) -> Optional[float]:
