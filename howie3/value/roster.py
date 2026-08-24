@@ -36,7 +36,8 @@ class PickPlan:
         return [pos for pos, _ in self.plan]
 
 
-KDST_RESERVE_PICKS = 2  # K/DST become candidates only in the last (open slots + 2) picks
+KDST_RESERVE_PICKS = 2
+SCARCITY_EPS = 8.0        # final-value points within which availability breaks the tie  # K/DST become candidates only in the last (open slots + 2) picks
 
 
 def _rollout(
@@ -156,6 +157,15 @@ def evaluate_candidates(
         -round(r.final_value),
         -r.player.proj * bench_weight.get(r.player.position, 0.0),
     ))
+    # Scarcity tie-break: the rollout is greedy and its final values are noisy
+    # to a few points, so within SCARCITY_EPS of the best the candidate LESS
+    # likely to survive to the next pick wins. Stops "take him now" on a
+    # player who is 100% there a round later (waiting cost zero).
+    if results and future_picks:
+        nxt = future_picks[0]
+        best_v = results[0].final_value
+        results.sort(key=lambda r: (r.final_value < best_v - SCARCITY_EPS,
+                                    r.player.p_available(nxt), -r.final_value))
     return results[:top_n]
 
 

@@ -34,8 +34,8 @@ def test_apply_rules_blocks_forces_and_targets():
     # a target far below the best candidate stays where the engine put him
     far = [_pp("q", "Josh Allen", "QB", 300), _pp("t", "Trey McBride", "TE", 240)]
     assert apply_rules(far, 1, fx, {})[0].player.name == "Josh Allen"
-    close = [_pp("q", "Josh Allen", "QB", 300), _pp("t", "Trey McBride", "TE", 290)]
-    assert apply_rules(close, 1, fx, {})[0].player.name == "Trey McBride"
+    close = [_pp("q", "Josh Allen", "QB", 300), _pp("t", "Trey McBride", "TE", 295)]
+    assert apply_rules(close, 1, fx, {})[0].player.name == "Trey McBride"   # within TARGET_TOLERANCE (8)
     assert roster_counts([results[1].player, results[2].player]) == {"RB": 1, "WR": 1}
 
 

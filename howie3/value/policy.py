@@ -14,11 +14,18 @@ Effects on a ranked candidate list for the user's round `rnd`:
                 only when he is within TARGET_TOLERANCE points of the best
                 candidate: a target is "take him when it's close", never
                 "take him at any cost" (a pick-17 target stays a tag at pick 5)
+  badges      — structural signals (value/badges.py) shift a candidate's
+                position in the order by a few engine points, without
+                touching his projection. Worth about half a target at most,
+                so a badge settles a close call and never overrules a real
+                gap in value.
 """
 
 from typing import Dict, List, Sequence
 
-TARGET_TOLERANCE = 15.0   # engine value points a target may trail the best by and still jump the line
+from .badges import nudge_of
+
+TARGET_TOLERANCE = 8.0   # engine value points a target may trail the best by and still jump the line
 
 
 def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
@@ -38,6 +45,7 @@ def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
 
     allowed = [r for r in results if r.player.position not in blocked and not too_old(r.player)] or list(results)
     caps = effects.get("bye_cap", [])
+    stacked: set = set()
     if caps and roster:
         cap = min(caps)
         bye_counts: Dict[int, int] = {}
@@ -46,7 +54,6 @@ def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
                 bye_counts[p.bye] = bye_counts.get(p.bye, 0) + 1
         stacked = {r.player.uid for r in allowed
                    if getattr(r.player, "bye", None) and bye_counts.get(r.player.bye, 0) + 1 > cap}
-        allowed = [r for r in allowed if r.player.uid not in stacked] + [r for r in allowed if r.player.uid in stacked]
 
     forced = set()
     for pos, n, by in effects.get("need", []):
@@ -62,9 +69,15 @@ def apply_rules(results: Sequence, rnd: int, effects: Dict[str, list],
 
     def rank(r) -> tuple:
         is_target = any(t and t in name_key(r.player.name) for t in targets) and value(r) >= best_value - TARGET_TOLERANCE
-        return (0 if is_target else 1, 0 if r.player.position in forced else 1)
+        # Inside a band the order is engine value plus the badge stack. The
+        # nudge is clamped in badges.py, so this bends close calls and leaves
+        # genuine gaps in value alone.
+        return (0 if is_target else 1,
+                0 if r.player.position in forced else 1,
+                1 if r.player.uid in stacked else 0,
+                -(value(r) + nudge_of(getattr(r.player, "badges", None))))
 
-    return sorted(allowed, key=rank)  # stable: engine order within each band
+    return sorted(allowed, key=rank)
 
 
 def roster_counts(roster: Sequence) -> Dict[str, int]:

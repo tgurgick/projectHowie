@@ -539,7 +539,7 @@ class AutoDrafter:
                                   fallback="queue" if (not ok and self.queued) else None)
                     # the pick after this one may also be ours (the turn): prepare it
                     cached = {"pick": None, "rows": []}
-                elif not clock and my_next is not None and self.autopilot and cached["pick"] != my_next:
+                elif not clock and my_next is not None and cached["pick"] != my_next:
                     # one or two picks away: run the Monte Carlo on the top candidates
                     # (there is time now, not on the clock), stream the reasoning, and
                     # put the top two in the room's queue so the timer fallback is his
@@ -551,10 +551,11 @@ class AutoDrafter:
                     log_event(self.settings, "thinking", for_pick=my_next, seconds=round(time.time() - t0, 1), **why)
                     # the queue is rebuilt in Howie's order: a leftover from the
                     # previous pick must never sit above the current best
-                    removed = self.clear_queue()
-                    for r in rows[:2]:
-                        if self.queue(r["name"]):
-                            log_event(self.settings, "queued", name=r["name"], for_pick=my_next, cleared=removed)
+                    if self.autopilot:
+                        removed = self.clear_queue()
+                        for r in rows[:2]:
+                            if self.queue(r["name"]):
+                                log_event(self.settings, "queued", name=r["name"], for_pick=my_next, cleared=removed)
             except Exception as e:  # keep the loop alive; the log shows what broke
                 msg = f"{e.__class__.__name__}: {e}"
                 if "Target page" in msg or "has been closed" in msg:
