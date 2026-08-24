@@ -46,6 +46,7 @@ def _rollout(
     future_picks: Sequence[int],
     league: LeagueConfig,
     taken: frozenset,
+    blocked=None,        # (pos, future_index) -> True when a strategy rule bans it there
 ) -> Tuple[float, List[Tuple[str, float]]]:
     """Greedily complete the draft; returns (final lineup value, plan)."""
     by_pos = {pos: list(pts) for pos, pts in roster_pts.items()}
@@ -59,6 +60,8 @@ def _rollout(
         # all draft) defer to the end on their own; steep tiers get grabbed.
         best = None  # (urgency, gain_now, pos, pts)
         for pos in POSITIONS:
+            if blocked is not None and blocked(pos, i):
+                continue
             pts_now = expected_kth_best(pools[pos], pick, claims[pos] + 1, taken)
             if pts_now <= 0:
                 continue
@@ -97,8 +100,24 @@ def evaluate_candidates(
     taken: frozenset = frozenset(),
     min_p_available: float = 0.10,
     top_n: int = 12,
+    effects: Optional[Dict[str, list]] = None,
+    current_round: Optional[int] = None,
 ) -> List[PickPlan]:
-    """Rank the realistic candidates at the current pick by final roster value."""
+    """Rank the realistic candidates at the current pick by final roster value.
+
+    With `effects` and `current_round`, the ROLLOUT honors the strategy
+    sheet's wait/ban windows too, so the plan (and the round-by-round view
+    built from it) never schedules a position inside a banned round."""
+    blocked = None
+    if effects and current_round is not None:
+        windows: Dict[str, int] = {}
+        for pos_, until in list(effects.get("wait", [])) + list(effects.get("ban", [])):
+            windows[pos_] = max(windows.get(pos_, 0), until)
+
+        def blocked(pos_, i):  # future pick i is the user's round current_round + 1 + i
+            until = windows.get(pos_)
+            return until is not None and (current_round + 1 + i) < until
+
     pools: Dict[str, List[PoolPlayer]] = {pos: [] for pos in POSITIONS}
     roster_uids = {p.uid for p in roster}
     for player in pool:
@@ -141,7 +160,7 @@ def evaluate_candidates(
         take_pts[cand.position] = roster_pts.get(cand.position, []) + [cand.proj]
         pools_after = dict(pools)
         pools_after[cand.position] = [p for p in pools[cand.position] if p.uid != cand.uid]
-        value, plan = _rollout(take_pts, pools_after, future_picks, league, taken)
+        value, plan = _rollout(take_pts, pools_after, future_picks, league, taken, blocked=blocked)
         results.append(PickPlan(cand, value, plan))
 
     # Primary: expected final lineup points. Secondary (breaks the late-round

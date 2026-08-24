@@ -513,7 +513,7 @@ def _candidates_payload(settings: Settings, state: DraftState, sims: int = 0, to
 
     effects = state.active_rule_effects()
     results = evaluate_candidates(pool, roster, current_pick, future, league,
-                                  taken, top_n=max(top_n, 24))
+                                  taken, top_n=max(top_n, 24), effects=effects, current_round=rnd)
     if sims > 0:
         results = mc_rerank(conn, results, roster, pool, league,
                             settings.current_season, n_sims=sims)
@@ -737,7 +737,8 @@ def lookahead_payload(settings: Settings, state: DraftState, n: int = 3) -> dict
     for i, k in enumerate(upcoming):
         rnd = picks.index(k) + 1
         future = [x for x in picks if x > k]
-        res = evaluate_candidates(pool, roster, k, future, league, taken, top_n=8)
+        res = evaluate_candidates(pool, roster, k, future, league, taken, top_n=8,
+                                  effects=effects, current_round=rnd)
         res = apply_rules(res, rnd, effects, roster_counts(roster))
         rows = [{"name": r.player.name, "pos": r.player.position, "value": round(r.final_value),
                  "avail": round(r.player.p_available(k), 2), "proj": round(r.player.raw or r.player.proj)}
@@ -795,7 +796,8 @@ def plan_payload(settings: Settings, state: DraftState) -> dict:
         rows.append({"round": i + 1, "pick": e.pick_no, "state": "done", "pos": e.position,
                      "player": e.player_name, "pts": round(p.raw or p.proj) if p else None})
     # the engine's view from the current pick forward
-    results = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6) if current_pick <= picks[-1] else []
+    results = evaluate_candidates(pool, roster, current_pick, future, league, taken, top_n=6,
+                                  effects=effects, current_round=rnd) if current_pick <= picks[-1] else []
     best = results[0] if results else None
     votes: Dict[int, Dict[str, List[float]]] = {}
     for r in results:
